@@ -36,7 +36,7 @@ beforeEach(() => {
 });
 
 function makeQueryBuilder() {
-  // PostgREST chain: .insert().select().single() / .update().eq() /
+  // PostgREST chain: .insert().select().single() / .update().eq().select() /
   // .select().eq().maybeSingle() (PR 119: createContact pre-flight
   // lookup for the duplicate-phone case)
   const single = vi.fn().mockResolvedValue({ data: { id: 'inserted-uuid' }, error: null });
@@ -45,11 +45,15 @@ function makeQueryBuilder() {
   // pre-flight phone lookup). Calling .eq().maybeSingle() returns
   // null = no existing contact.
   const selectEq = vi.fn(() => ({ maybeSingle }));
-  const select = vi.fn(() => ({ single, eq: selectEq }));
-  const eq = vi.fn().mockResolvedValue({ data: null, error: null });
-  const insert = vi.fn(() => ({ select }));
+  const insertSelect = vi.fn(() => ({ single, eq: selectEq }));
+  const updateSelect = vi.fn().mockResolvedValue({ data: [{ id: 'updated-uuid' }], error: null });
+  const eq = vi.fn(() => {
+    const resolved = { data: [{ id: 'updated-uuid' }], error: null };
+    return Object.assign(Promise.resolve(resolved), { select: updateSelect });
+  });
+  const insert = vi.fn(() => ({ select: insertSelect }));
   const update = vi.fn(() => ({ eq }));
-  return { insert, update, select, eq, single, maybeSingle, selectEq };
+  return { insert, update, select: insertSelect, eq, single, maybeSingle, selectEq, updateSelect };
 }
 
 describe('createContact — UUID guards on Supabase INSERT', () => {
@@ -228,5 +232,57 @@ describe('patchContact — UUID guards on Supabase UPDATE', () => {
     const sent = qb.update.mock.calls[0][0];
     expect(sent.pipeline_column_id).toBe(realCol);
     expect(sent.owner_agent_id).toBe(realAgent);
+  });
+
+  it('folds email to lowercase, trims, and stores empty as null', async () => {
+    const qb = makeQueryBuilder();
+    (supabase.from as unknown as ReturnType<typeof vi.fn>).mockReturnValue(qb);
+
+    const { result } = renderHook(() => useContactPersistence());
+    const realContact = '22222222-2222-2222-2222-222222222222';
+    await act(async () => {
+      await result.current.patchContact(realContact, {
+        email: '  Jim@EverydayHome.co.uk  ',
+      });
+    });
+    expect(qb.update.mock.calls[0][0].email).toBe('jim@everydayhome.co.uk');
+
+    await act(async () => {
+      await result.current.patchContact(realContact, { email: '   ' });
+    });
+    expect(qb.update.mock.calls[1][0].email).toBeNull();
+  });
+
+  it('reports when RLS matches zero rows instead of toasting Saved', async () => {
+    const qb = makeQueryBuilder();
+    qb.updateSelect.mockResolvedValue({ data: [], error: null });
+    (supabase.from as unknown as ReturnType<typeof vi.fn>).mockReturnValue(qb);
+
+    const { result } = renderHook(() => useContactPersistence());
+    let res: true | string = true;
+    await act(async () => {
+      res = await result.current.patchContact('22222222-2222-2222-2222-222222222222', {
+        email: 'owner@everydayhome.co.uk',
+      });
+    });
+    expect(res).toBe('Save did not land on this lead');
+  });
+
+  it('names a unique-email clash so the agent can pick another address', async () => {
+    const qb = makeQueryBuilder();
+    qb.updateSelect.mockResolvedValue({
+      data: null,
+      error: { message: 'duplicate key value violates unique constraint "wk_contacts_email_uniq"' },
+    });
+    (supabase.from as unknown as ReturnType<typeof vi.fn>).mockReturnValue(qb);
+
+    const { result } = renderHook(() => useContactPersistence());
+    let res: true | string = true;
+    await act(async () => {
+      res = await result.current.patchContact('22222222-2222-2222-2222-222222222222', {
+        email: 'taken@example.com',
+      });
+    });
+    expect(res).toBe('This email is already used by another contact');
   });
 });

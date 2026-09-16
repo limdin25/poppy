@@ -8,7 +8,7 @@ vi.mock('@/integrations/supabase/client', () => ({
   },
 }));
 
-import { isRealContactId, UUID_RE } from '../useContactPersistence';
+import { isRealContactId, UUID_RE, normalizeContactEmail } from '../useContactPersistence';
 
 describe('isRealContactId', () => {
   it('accepts a canonical UUIDv4', () => {
@@ -33,5 +33,22 @@ describe('isRealContactId', () => {
   it('UUID_RE is exported for callers that need their own check', () => {
     expect(UUID_RE.test('123e4567-e89b-12d3-a456-426614174000')).toBe(true);
     expect(UUID_RE.test('contact-1')).toBe(false);
+  });
+});
+
+describe('normalizeContactEmail', () => {
+  it('trims and lowercases a real address', () => {
+    expect(normalizeContactEmail('  Jim@EverydayHome.CO.UK  ')).toBe('jim@everydayhome.co.uk');
+  });
+
+  it('turns blank, spaces, null and undefined into null', () => {
+    expect(normalizeContactEmail('')).toBeNull();
+    expect(normalizeContactEmail('   ')).toBeNull();
+    expect(normalizeContactEmail(null)).toBeNull();
+    expect(normalizeContactEmail(undefined)).toBeNull();
+  });
+
+  it('keeps plus-addressing and dots, which agents actually type', () => {
+    expect(normalizeContactEmail('Hugo+office@hostunico.com')).toBe('hugo+office@hostunico.com');
   });
 });

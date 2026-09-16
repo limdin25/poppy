@@ -42,6 +42,13 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Not authorized" }, { status: 401 });
   }
 
+  // THE SAME STOP BUTTON, on the other end. Pausing only the scheduler would
+  // still let everything already queued go out, which is not what "stop" means.
+  // Belt and braces: the conductor stops making them, this stops sending them.
+  if ((process.env.VIDEO_PIPELINE_PAUSED ?? "").trim() === "1") {
+    return NextResponse.json({ published: 0, paused: true, results: [] });
+  }
+
   const supabase = createAdminClient();
   const now = new Date().toISOString();
 

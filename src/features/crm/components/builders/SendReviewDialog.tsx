@@ -47,8 +47,15 @@ interface Props {
   smsDrafts: { opener: string; details: string };
   /** Which draft to open on. "details" is what follows a phone call. */
   initialDraft?: 'opener' | 'details';
-  sentToday: number;
-  dailyCap: number;
+  /** How many builder messages went out today, and how many of those were the
+   *  machine's. Shown as information. IT IS NOT A GATE ANY MORE: it was, and it
+   *  locked Pedro out at 17:58 on 2026-08-25 with "Only 0 of today's 20 can
+   *  still go out" when all twenty were invites the automation had fired at
+   *  06:00 and 07:00, hours before he found the builder himself. */
+  sentToday: { total: number; automated: number; byPeople: number };
+  /** The most builders one press may message. The real risk at a desk with tick
+   *  boxes is a mis-click picking a dozen, not a daily total. */
+  maxPerSend: number;
   onSend: (input: {
     channel: SendChannel;
     contentSid?: string;
@@ -64,7 +71,7 @@ const MAX_SEGMENTS = 3;
 export default function SendReviewDialog({
   open, onClose, recipients, facts, houseNumberKnown,
   blockedReason, blockedBySms, smsDrafts, initialDraft = 'opener',
-  sentToday, dailyCap, onSend,
+  sentToday, maxPerSend, onSend,
 }: Props) {
   const [channel, setChannel] = useState<SendChannel>('sms');
   const [draftKind, setDraftKind] = useState<'opener' | 'details'>(initialDraft);
@@ -124,8 +131,7 @@ export default function SendReviewDialog({
 
   const preview = chosen ? renderTemplate(chosen.body, vars) : '';
   const blanks = chosen ? Object.entries(vars).filter(([, v]) => !v.trim()) : [];
-  const room = Math.max(0, dailyCap - sentToday);
-  const overCap = recipients.length > room;
+  const overCap = recipients.length > maxPerSend;
 
   const bad = useMemo(() => (channel === 'sms' ? nonGsm7(smsBody) : []), [channel, smsBody]);
   const segments = useMemo(() => (channel === 'sms' && smsBody ? smsSegments(smsBody) : 0), [channel, smsBody]);
@@ -184,7 +190,7 @@ export default function SendReviewDialog({
         ) : null}
         {overCap ? (
           <Warn>
-            Only {room} of today&apos;s {dailyCap} can still go out and you have {recipients.length} selected.
+            That is {recipients.length} builders in one go. Send up to {maxPerSend} at a time.
             Send fewer, or wait until tomorrow.
           </Warn>
         ) : null}
@@ -309,7 +315,12 @@ export default function SendReviewDialog({
         </div>
 
         <div className="mt-3 flex items-center justify-between gap-2">
-          <span className="text-[10.5px] text-[#6B7280]">{sentToday} of {dailyCap} sent today</span>
+          <span className="text-[10.5px] text-[#6B7280]">
+            {sentToday.total === 0
+              ? 'Nothing sent to a builder today'
+              : `${sentToday.total} sent to builders today${
+                sentToday.automated ? `, ${sentToday.automated} of them before the automation was turned off` : ''}`}
+          </span>
           <div className="flex gap-2">
             <button onClick={onClose} className="rounded-[8px] border border-[#E5E7EB] bg-white px-3 py-1.5 text-[11.5px] font-medium text-[#6B7280]">
               Cancel

@@ -8,7 +8,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import {
-  normaliseUkPhone, isUkMobile, filterBuilderCandidates, planRosterChanges,
+  normaliseUkPhone, isUkMobile, filterBuilderCandidates, mobilesOnly, MAX_ROSTER_REVIEWS, planRosterChanges,
   WIDENING_RADII_M, DEFAULT_RADIUS_M,
   type PlaceCandidate, type ScrapedBuilder,
 } from '../api/lib/builder-scrape.js';
@@ -56,17 +56,65 @@ describe('filterBuilderCandidates', () => {
     ];
     expect(filterBuilderCandidates(rows).map((r) => r.name)).toEqual(['Smith Building Ltd']);
   });
-  it('ranks best-reviewed first, the OPPOSITE of the lead-gen scraper', () => {
+  it('ranks the SMALLEST first, which is the opposite of what it used to do', () => {
+    // Reversed 2026-08-26 on two days of real calls. Every builder who agreed
+    // to attend was a one-van trade (4 to 16 reviews); the big ones answered
+    // with a switchboard and said they do councils, schools, the NHS, or
+    // commercial only, or asked £150 up front.
     const rows = [
       cand({ name: 'Small Outfit', reviews: 5 }),
-      cand({ name: 'Established Builder', reviews: 220 }),
-      cand({ name: 'Mid Builder', reviews: 60 }),
+      cand({ name: 'Busier Builder', reviews: 45 }),
+      cand({ name: 'Mid Builder', reviews: 20 }),
     ];
     expect(filterBuilderCandidates(rows).map((r) => r.name))
-      .toEqual(['Established Builder', 'Mid Builder', 'Small Outfit']);
-    // A 220-review builder passing IS the proof there is no review ceiling:
-    // max-reviews belongs to the video funnel's hunt for weak businesses.
-    expect(SRC).not.toMatch(/max[-_]?reviews/i);
+      .toEqual(['Small Outfit', 'Mid Builder', 'Busier Builder']);
+  });
+
+  it('THROWS OUT anything over fifty reviews', () => {
+    // Hugo, 2026-08-26: "if they have more than a hundred reviews forget it.
+    // Focus on fifty and less, no matter if they have better reviews. We want
+    // the Jerry next door." The cost is recorded in the source: AJM Home
+    // Improvements has 61 and said yes, so this rule loses one of the six wins.
+    expect(MAX_ROSTER_REVIEWS).toBe(50);
+    expect(filterBuilderCandidates([cand({ name: 'Big Builder', reviews: 220 })])).toEqual([]);
+    expect(filterBuilderCandidates([cand({ name: 'Over The Line', reviews: 51 })])).toEqual([]);
+    expect(filterBuilderCandidates([cand({ name: 'Just Inside', reviews: 50 })])).toHaveLength(1);
+  });
+
+  it('breaks a review tie on the better rating, so no-reviews does not always win', () => {
+    const rows = [
+      cand({ name: 'Unrated', reviews: 0, rating: null }),
+      cand({ name: 'Good Small Trade', reviews: 0, rating: 5 }),
+    ];
+    expect(filterBuilderCandidates(rows).map((r) => r.name))
+      .toEqual(['Good Small Trade', 'Unrated']);
+  });
+
+  describe('mobilesOnly', () => {
+    // THE SHARPEST SIGNAL MEASURED: every builder who agreed to attend answered
+    // a mobile (6 of 6); every builder on a landline said no (10 of 10).
+    // Hugo, 2026-08-26: "not mobile first. Only mobile."
+    const b = (name: string, phoneE164: string) =>
+      ({ name, phoneE164, address: '', placeId: name, rating: null, reviews: null });
+
+    it('keeps the man who answers his own phone and DROPS the switchboard', () => {
+      const out = mobilesOnly([
+        b('Office Ltd', '+441234567890'),
+        b('One Van Trade', '+447700900123'),
+        b('Another Office', '+442012345678'),
+        b('Second Trade', '+447700900456'),
+      ]);
+      expect(out.map((x) => x.name)).toEqual(['One Van Trade', 'Second Trade']);
+    });
+
+    it('keeps the order it was given, so the review ranking survives', () => {
+      const out = mobilesOnly([b('Mobile A', '+447700900001'), b('Mobile B', '+447700900002')]);
+      expect(out.map((x) => x.name)).toEqual(['Mobile A', 'Mobile B']);
+    });
+
+    it('would rather return nobody than an office', () => {
+      expect(mobilesOnly([b('Office Ltd', '+441234567890')])).toEqual([]);
+    });
   });
   it('a missing business_status is kept (details differ across regions)', () => {
     expect(filterBuilderCandidates([cand({ businessStatus: null })])).toHaveLength(1);

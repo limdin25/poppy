@@ -66,12 +66,30 @@ interface Props {
  *  property working agreement, so it is what the email has to say too. */
 const COMPANY = 'Unico';
 
-/** The email that is ALWAYS there, before any model is asked.
+/** The email that goes out minutes after call one.
  *
- *  Pedro asked, in as many words: "where can I find the template email to send
- *  to them while on the call?" This is the answer, and it is pre-filled rather
- *  than hidden behind a picker. If the model is slow, down, or writes something
- *  he does not like, this is what sends. No figure appears in it, ever. */
+ *  IT ASKS FOR NOTHING, and that is the whole design. Hugo, 2026-08-26:
+ *
+ *    "I think after the call we just need an email like this. Thanks for your
+ *     time. We are interested in the property. We are cash buyers, buying
+ *     through a limited company, with no mortgage and no chain. Once we have
+ *     viewed the property and assessed the works required, we can move quickly
+ *     and come back to you with an offer for the vendor."
+ *
+ *  What it replaced asked for a video walkthrough, a floor plan and an EPC, and
+ *  told the branch we could "move quickly without dragging anyone out to a
+ *  viewing". Three problems in one email: it argued against the builder visit we
+ *  ring them for the next day, it asked a stranger for three favours before we
+ *  had offered anything, and on Pearson Street it asked for things the agent had
+ *  answered out loud two minutes earlier.
+ *
+ *  Now it does the two jobs that actually matter minutes after a call: they have
+ *  our address, and they know we are cash with no chain. The viewing is stated
+ *  as a matter of course rather than negotiated, which is what we want, because
+ *  the builder goes to the viewing.
+ *
+ *  NO FIGURE, EVER. Call one never carries one, and this template has no way to
+ *  render one. */
 export function videoRequestTemplate(opts: {
   street: string;
   person?: string | null;
@@ -79,22 +97,13 @@ export function videoRequestTemplate(opts: {
 }): { subject: string; body: string } {
   const hi = opts.person ? `Hi ${opts.person},` : 'Hi,';
   return {
-    subject: `${opts.street}, the video walkthrough`,
+    subject: `${opts.street}, cash buyer`,
     body: [
       hi,
       '',
-      `Thanks for your time just now on ${opts.street}. As promised, here is my email so you have it.`,
+      `Thanks for your time. We are interested in the property on ${opts.street}.`,
       '',
-      'When you get a minute, could you send over a video walkthrough of it? Even a quick walk round on your phone next time you are there is perfect, and you do not need to be in it. Our builder prices the works off the video, which is how we can move quickly without dragging anyone out to a viewing.',
-      '',
-      // Self-qualifying on purpose: this template cannot read the call, so the
-      // ask carries its own condition. On Pearson Street the old wording ("if
-      // they are on file, those two are useful") went out minutes after the
-      // agent had said the floor plan was on the advert, and she had to answer
-      // it a second time.
-      'If the floor plan and the full EPC are not already on the advert, could you send those over too?',
-      '',
-      `We are a cash buyer, a limited company, no mortgage and no chain, so once we have had a proper look I will come back to you with something you can put to the vendor.`,
+      'We are cash buyers, buying through a limited company, with no mortgage and no chain. Once we have viewed the property and assessed the works required, we can move quickly and come back to you with an offer for the vendor.',
       '',
       'Thanks,',
       `${opts.fromName}`,

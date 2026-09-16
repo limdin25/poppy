@@ -121,14 +121,24 @@ describe('2. the answers reach the writers', () => {
 })
 
 describe('3. the prompts refuse the asks the call already answered', () => {
-  it('a refused walkthrough is never asked for again', () => {
-    expect(DRAFT).toMatch(/UNLESS the call shows they have already said no to a video/)
+  // SUPERSEDED 2026-08-26, BY SOMETHING STRONGER. These two used to check that
+  // the call-one email did not RE-ASK for a walkthrough the branch had refused,
+  // or for a document the agent said was on the advert. Hugo then took the asks
+  // out altogether: "after the call we just need an email like this", and the
+  // email he wrote asks for nothing at all. A rule the prompt cannot break beats
+  // a rule it must remember, so the assertion is now the absence of every ask.
+  it('the call-one prompt asks for NOTHING, so there is nothing to re-ask', () => {
+    const video = DRAFT.slice(DRAFT.indexOf('const SYSTEM_VIDEO'), DRAFT.indexOf('const SYSTEM_ADDRESS_ONLY'))
+    expect(video).toMatch(/DO NOT ASK FOR ANYTHING/)
+    expect(video).toMatch(/No video, no walkthrough, no floor plan, no EPC/)
   })
 
-  it('a document the agent located is not asked for', () => {
-    expect(DRAFT).toMatch(/on the advert, on the listing or online, DO NOT ask for it/)
-    // The old unconditional wording is gone.
-    expect(DRAFT).not.toMatch(/If the floor plan or the full EPC came up as missing on the call, ask for those/)
+  it('the call-one prompt may never talk the branch out of the viewing', () => {
+    // The builder goes to the viewing. An email that says nobody has to travel
+    // argues against the call we make to the same branch the next day.
+    const video = DRAFT.slice(DRAFT.indexOf('const SYSTEM_VIDEO'), DRAFT.indexOf('const SYSTEM_ADDRESS_ONLY'))
+    expect(video).toMatch(/NEVER say or imply that we will not need a viewing/)
+    expect(video).toMatch(/once we have viewed the property/)
   })
 
   it('an accepted offer changes the job of EVERY kind that could chase', () => {
@@ -150,7 +160,10 @@ describe('4. the draft fires on a hand-typed address, not only a heard one', () 
     expect(PANE).toMatch(/if \(drafted\.current \|\| touched\.current\) return/)
   })
 
-  it('the blind template self-qualifies its floor plan ask', () => {
-    expect(PANE).toMatch(/not already on the advert/)
+  it('the blind template has no ask left to qualify', () => {
+    // It used to say "if the floor plan and the full EPC are not already on the
+    // advert, could you send those over too?". There is no ask in it now.
+    expect(PANE).not.toMatch(/could you send those over too/)
+    expect(PANE).toMatch(/We are cash buyers, buying through a limited company/)
   })
 })

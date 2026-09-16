@@ -451,7 +451,7 @@ export default function LiveCallScreen() {
       {isPropertyCall ? (
         <div
           className="flex-1 overflow-hidden"
-          style={{ paddingTop: 'var(--followup-banner-h, 0px)' }}
+          style={{ paddingTop: 'calc(var(--followup-banner-h, 0px) + var(--callback-banner-h, 0px))' }}
           data-testid="inbound-property-room"
         >
           <PropertyCallRoom
@@ -481,7 +481,7 @@ export default function LiveCallScreen() {
         direction="horizontal"
         autoSaveId="smsv2-live-call-layout-v2"
         className="flex-1 overflow-hidden"
-        style={{ paddingTop: 'var(--followup-banner-h, 0px)' }}
+        style={{ paddingTop: 'calc(var(--followup-banner-h, 0px) + var(--callback-banner-h, 0px))' }}
       >
         {/* COL 1 — lead context */}
         <ResizablePanel defaultSize={20} minSize={14} className="bg-white border-r border-[#E5E7EB] flex flex-col overflow-hidden">

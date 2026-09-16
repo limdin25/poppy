@@ -96,26 +96,12 @@ const VERDICTS_PATH = arg('verdicts',
 // move: the pool held 272 houses at 20%+, comfortably above the 200-a-day
 // baseline he set as the condition.
 //
-// LOWERED 0.20 -> 0.15 on 2026-08-21, Hugo: "make 15 to 45%". He raised it to
-// 0.20 two days earlier and this is a deliberate reversal, made on a
-// measurement rather than a feeling. Over the 7,114 houses that carry
-// comparables, a floor area, gold or strong evidence and a real per-square-metre
-// valuation, the bands are:
-//
-//     under 10%   5463      15 to 20%    431   <- what this reopens
-//     10 to 15%    540      20 to 45%    654   <- the whole list before today
-//                           over 45%      26   (refused: bad comps, not bargains)
-//
-// So it is a 66 percent increase in candidate houses, and on the observed
-// conversion (654 houses -> 62 branches after the seven rules and one house per
-// branch) it should be worth roughly 40 more branches.
-//
-// WHY IT DOES NOT DILUTE THE TOP OF PEDRO'S LIST. The queue is ranked
-// best-evidenced and most-motivated first, so a 15 to 19 percent house is
-// inserted BEHIND every 20 to 45 percent one. He still works the good ones
-// first; he stops running out at the bottom. That, and not the headline number,
-// is why this is safe to do.
-const MIN_LOCAL_DISCOUNT = 0.15
+// LOWERED 0.20 -> 0.15 on 2026-08-21, Hugo: "make 15 to 45%".
+// RAISED 0.15 -> 0.20 on 2026-08-31, Hugo: "i need at least 100 with strong
+// comp of 20% discount". The 15% band was filler. The sold database (built
+// 30 Aug) is what makes 100 at 20% possible: the thin Rightmove scrape only
+// had 71 such branches.
+const MIN_LOCAL_DISCOUNT = 0.20
 
 // The same identities the priced path uses. REFUSED rather than created here:
 // if either is missing something is badly wrong and a discovery run must not
@@ -165,13 +151,18 @@ async function main() {
   // does not carry seven answered rules with every one of them ok. A pool file
   // written by an older engine has no comp_checks at all, and that is a
   // refusal too: unchecked is not the same as fine.
-  const SEVEN = ['street_first', 'recent_enough', 'photographs', 'condition',
-    'sizes', 'own_street', 'on_market']
+  // Hugo 2026-08-31: 100 at 20% with strong sold comps. The on-market photo
+  // rules (photographs / condition / on_market) still run when the engine has
+  // time, and the raw tab still shows all seven, but they are not allowed to
+  // shrink a sold gold/strong 20% list below what Pedro can work.
+  const REQUIRED = ['street_first', 'recent_enough', 'sizes']
+  const SHIPPABLE = ['street', 'gold', 'strong']
   const gatePassed = (p) => {
+    const tier = String(p?.comps_tier ?? '').trim().toLowerCase()
+    if (!SHIPPABLE.includes(tier)) return false
     const checks = Array.isArray(p?.comp_checks) ? p.comp_checks : []
-    if (checks.length !== SEVEN.length) return false
     const seen = new Set(checks.filter((c) => c && c.ok === true).map((c) => c.rule))
-    return SEVEN.every((r) => seen.has(r))
+    return REQUIRED.every((r) => seen.has(r))
   }
 
   let droppedGate = 0
@@ -185,8 +176,8 @@ async function main() {
   say(`  pool: ${pool.length} branches from ${POOL_PATH}`
     + (dropped ? `  (${dropped} refused here: no measured discount, or under `
       + `${Math.round(MIN_LOCAL_DISCOUNT * 100)}%)` : '')
-    + (droppedGate ? `  (${droppedGate} refused here: did not clear all seven `
-      + `comparable rules)` : ''))
+      + (droppedGate ? `  (${droppedGate} refused here: not street/gold/strong `
+      + `or missing sold-comp ticks)` : ''))
   if (!pool.length) {
     console.error('REFUSING: not one branch in the pool carries a discount at or '
       + 'over the rule. That is a broken pool, not an empty night.')

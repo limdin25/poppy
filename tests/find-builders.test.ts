@@ -144,8 +144,24 @@ describe('the send', () => {
     expect(draft).toBeLessThan(send);
   });
 
-  it('enforces the daily cap, which the manual path never did', () => {
-    expect(ROUTE).toMatch(/settings\.daily_cap - already/);
+  it('caps ONE PRESS, and never caps a human by the day', () => {
+    // REPLACED THE DAILY CAP 2026-08-25, because the daily cap locked out the
+    // only person who should never be locked out. Pedro, at 17:58, having found
+    // a builder himself and got him on the phone: "I found a builder and im
+    // trying to send him the details via text but hey elsie doesnt give me an
+    // option to send the text." The desk said "Only 0 of today's 20 can still
+    // go out", and all twenty were WhatsApp invites the automation had fired at
+    // 06:00 and 07:00 that morning, hours before he found anybody.
+    //
+    // A daily total guards nothing a human does: he types each message and
+    // reads it back. What it does guard is a tick-box list and a mis-click, so
+    // that is what is capped now.
+    expect(ROUTE).toMatch(/builderIds\.length > MAX_BUILDERS_PER_SEND/);
+    expect(ROUTE).not.toMatch(/settings\.daily_cap - already/);
+  });
+
+  it('writes down that a PERSON sent it, so the count can tell us from the machine', () => {
+    expect(ROUTE).toMatch(/sent_by: who\.id/);
   });
 
   it('refuses anything that is not an approved template shape', () => {

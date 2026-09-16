@@ -93,8 +93,8 @@ export interface ScrapedBuilder {
 /**
  * A UK phone in E164, or null when it is not one.
  * Accepts "07123 456789", "+44 7123 456789", "0044...", "(01204) 55 55 55".
- * Landlines are kept: the roster's phone is also for CALLING a builder, and
- * the outreach engine separately restricts WhatsApp drafts to +447 mobiles.
+ * Landlines still PARSE here, because this is a general phone normaliser. They
+ * are dropped from the roster later by mobilesOnly(), which explains why.
  */
 export function normaliseUkPhone(raw: string | null | undefined): string | null {
   let s = String(raw ?? '').replace(/[^\d+]/g, '');
@@ -114,17 +114,77 @@ export function isUkMobile(e164: string | null | undefined): boolean {
 /**
  * Keep only rows that can honestly go on the roster: operational, filed by
  * Google as a trade rather than a shop, and not a merchant or a multiple.
- * Ranked best-reviewed first, because the roster wants builders a branch and
- * an investor will take seriously.
+ *
+ * RANKED SMALLEST FIRST, AND IT USED TO BE THE EXACT OPPOSITE.
+ *
+ * This sorted best-reviewed first, on the reasoning that "the roster wants an
+ * established builder a branch will take seriously". Two days of real calls,
+ * 25 to 26 August 2026, said that reasoning was wrong. The big ones will not
+ * do the job we are asking:
+ *
+ *   Edenstone Homes (44 reviews)  a housebuilder, switchboard, "press one for
+ *                                 accounts"
+ *   Morspan Construction (19)     "is this for a private residence?"
+ *   D M Habens (2)                "we do councils, schools and the NHS"
+ *   A P Waters (17)               "I can email the QS to see"
+ *   Master Builder Services (56)  "£150 in advance, I will never do this free"
+ *
+ * while every builder who said YES was a one-van trade: JL Brickwork (16),
+ * Sycamore Carpentry (15), PZ Builders (13), CJS Builders (6), Everyday Home
+ * Improvements (4).
+ *
+ * Hugo, 2026-08-26: "we should scrape small businesses, not the big
+ * corporations. Less than fifty reviews, zero reviews better."
+ *
+ * A HARD CEILING AT FIFTY, Hugo's call on 2026-08-26: "if they have more than a
+ * hundred reviews forget it. Focus on fifty and less, no matter if they have
+ * better reviews. We want the Jerry next door."
+ *
+ * The one thing it costs, recorded so nobody has to rediscover it: AJM Home
+ * Improvements has 61 reviews and said yes on the first call, so this rule
+ * would have excluded one of the six wins. Hugo was told and chose the ceiling
+ * anyway, because the other twenty over-fifty firms were switchboards.
  */
+export const MAX_ROSTER_REVIEWS = 50;
+
 export function filterBuilderCandidates(rows: PlaceCandidate[]): PlaceCandidate[] {
   return rows
     .filter((r) =>
       r.name
       && (r.businessStatus == null || r.businessStatus === 'OPERATIONAL')
       && isTrader(r.types)
-      && !NON_TRADER.test(r.name))
-    .sort((a, b) => (b.reviews ?? 0) - (a.reviews ?? 0));
+      && !NON_TRADER.test(r.name)
+      && (r.reviews ?? 0) <= MAX_ROSTER_REVIEWS)
+    // Fewest reviews first. A tie goes to the better-rated one, so "no reviews
+    // at all" does not automatically outrank a good four-review trade.
+    .sort((a, b) => (a.reviews ?? 0) - (b.reviews ?? 0) || (b.rating ?? 0) - (a.rating ?? 0));
+}
+
+/**
+ * MOBILES ONLY. A landline is not ranked below a mobile, it is not on the
+ * roster at all.
+ *
+ * THE SHARPEST SIGNAL IN THE WHOLE DATA SET, measured across the first two days
+ * of real builder calls (25 to 26 August 2026):
+ *
+ *   every builder who agreed to attend answered a MOBILE      6 of 6
+ *   every builder on a LANDLINE said no                      10 of 10
+ *
+ * A landline means an office, a receptionist and a switchboard, and behind it a
+ * company that quotes commercial work off drawings: "press one for accounts"
+ * (Edenstone Homes), "is this for a private residence?" (Morspan), "we do
+ * councils, schools and the NHS" (D M Habens), "I'll email the QS" (A P Waters).
+ * A mobile is the man who turns up in a van.
+ *
+ * Hugo, 2026-08-26: "not mobile first. Only mobile. We don't even want it if
+ * it's not mobile."
+ *
+ * Measured cost on the roster as it stood: 83 of 196 builders are landlines and
+ * are now excluded. The widening radius ladder is what makes that safe, because
+ * a thin outcode goes further out rather than taking an office.
+ */
+export function mobilesOnly(rows: ScrapedBuilder[]): ScrapedBuilder[] {
+  return rows.filter((r) => isUkMobile(r.phoneE164));
 }
 
 export interface RosterPlan {
@@ -318,7 +378,7 @@ export async function scrapeBuildersForOutcode(
       });
     }
   }
-  return out;
+  return mobilesOnly(out);
 }
 
 /** The radii tried, in order, when the first one finds nobody.

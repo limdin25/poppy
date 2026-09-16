@@ -67,6 +67,50 @@ Every component designed for mobile first, then scales up.
 
 ---
 
+## NOTHING TEXTS ANYBODY ON ITS OWN. NO AI ANSWERS THE PHONE.
+
+**Hugo, 2026-08-26, twice and urgently:** *"We need to turn off the AI
+receptionist ASAP and also the text, very very important."* Then: *"Make a note
+everyone, turn off all text automation and receptionist."*
+
+This is a standing rule, not a temporary state. **Do not re-arm any of it
+without Hugo saying so in his own words in that session.**
+
+### What happened, so nobody switches it back on to be helpful
+
+Jordan Lee of JL Brickwork, a builder we had **already booked onto a viewing**,
+rang the number our own text told him to ring. It reached the Retell
+receptionist, which then sent him two automatic texts, one of them quoting **his
+own mobile number back at him as a sales lead**, and the other pitching him an AI
+receptionist. He told Pedro at 15:40:
+
+> *"I tried phoning your number back and it sounded like a dodgy AI thing and
+> I'm getting loads of weird text software... that just led us to believe it's
+> not genuine."*
+
+He nearly walked off the viewing. Twenty six of those pitches had gone to eight
+people who rang that line.
+
+### What is off, and where
+
+| Off | Where | How to check |
+|---|---|---|
+| The AI answering any phone number | Twilio: all 3 numbers removed from the Retell SIP trunk `TK6634fb175ebebc312bb6683327cb0ee6` and repointed at `wk-voice-twiml-incoming` | list the trunk's phone numbers, it must be empty |
+| The after-call recap and sales pitch texts | `CALLER_RECAP_BUSINESS_IDS` in `api/webhooks/retell.ts` is an EMPTY set | `tests/receptionist-off.test.ts` |
+| Builder invites, chases and escalation emails | all 3 builder crons off `vercel.json` AND answering 410 | `tests/builder-automation-off.test.ts` |
+| The AI property caller | retired 2026-08-09, deleted | `tests/property-no-ai-calls.test.ts` |
+| Video auto-send | `enabled:false` | see Claude memory `project_video_auto_send` |
+
+**THERE ARE TWO HALVES TO THE RECEPTIONIST AND BOTH ARE OFF.** The code half and
+the phone half. Re-arming one is re-arming nothing, and a half-armed system texts
+people the AI never even spoke to. Check the trunk before you believe anything.
+
+### What still sends, and it is not automation
+
+A human pressing send: the CRM inbox, the dialer, the Find Builders desk. That
+is Pedro doing his job and it stays. The line is simple: **a person chose to send
+it, or it does not go.**
+
 ## No long dashes
 
 A standing rule, not a preference, and it is enforced rather than remembered.
@@ -406,3 +450,18 @@ If this project genuinely needs a phone number, buy it a different one and say s
 The whole point of this note is that a number is cheap and a burned sender reputation is not.
 
 Full detail: `/Users/hugo/Whats/lemlin-react/docs/TWILIO_AND_THE_LEMLIN_NUMBER.md`
+
+## The WhatsApp number +447460035763 is gone (2026-08-31)
+
+Hugo's decision, recorded to avoid confusion: the WhatsApp sender
+`+447460035763` (used by the Maria persona, and before that the plumbing
+business; both businesses are closed) now belongs to **Lemlin**
+(`/Users/hugo/Whats/lemlin-stays`). Its inbound webhook was repointed on
+2026-08-31 from this project's Supabase function
+(`wk-sms-incoming` on `loggyxryrhqsbtqpteog`) to
+`https://lemlin-app.vercel.app/api/webhooks/twilio`.
+
+Do NOT send WhatsApp from this number out of Poppy, and do not repoint the
+webhook back. Poppy's WhatsApp channel is Unipile, not this Twilio sender.
+Inbound replies from old Poppy contacts now hit Lemlin, which drops them
+without creating anything (they never match a Lemlin reservation or thread).

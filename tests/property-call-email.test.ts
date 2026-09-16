@@ -34,15 +34,35 @@ describe('the template that is always in the box', () => {
     // "where can I find the template email to send to them while on the call?"
     expect(t.subject).toContain('Orion Way')
     expect(t.body).toMatch(/^Hi Doug,/)
-    expect(t.body).toMatch(/video walkthrough/i)
+    expect(t.body).toMatch(/cash buyers/i)
     expect(t.body).toMatch(/Pedro/)
     expect(t.body).toMatch(/Unico/)
   })
 
-  it('asks for the video and says why, in words an agent will act on', () => {
-    expect(t.body).toMatch(/builder prices the works/i)
-    expect(t.body).toMatch(/you do not need to be in it/i)
-    expect(t.body).toMatch(/floor plan|EPC/i)
+  it('ASKS FOR NOTHING, which is the whole design', () => {
+    // Hugo, 2026-08-26: "I think after the call we just need an email like
+    // this." What it replaced asked for a video walkthrough, a floor plan and
+    // an EPC, and told the branch we could move "without dragging anyone out to
+    // a viewing", which argued against the builder visit we ring them for the
+    // next day.
+    expect(t.body).not.toMatch(/video|walkthrough/i)
+    expect(t.body).not.toMatch(/floor plan|EPC/i)
+    expect(t.body).not.toMatch(/could you send|please send|can you send/i)
+  })
+
+  it('never talks the branch out of the viewing our builder goes to', () => {
+    expect(t.body).not.toMatch(/without dragging|nobody has to travel|save (you )?a trip/i)
+    expect(t.body).toMatch(/once we have viewed the property/i)
+  })
+
+  it('says what we are, because that is the one thing worth saying on call one', () => {
+    expect(t.body).toMatch(/limited company/i)
+    expect(t.body).toMatch(/no mortgage and no chain/i)
+    expect(t.body).toMatch(/come back to you with an offer for the vendor/i)
+  })
+
+  it('still carries no figure of any kind', () => {
+    expect(t.body).not.toMatch(/£|\d{2},\d{3}/)
   })
 
   it('greets the branch when nobody gave their name', () => {

@@ -584,16 +584,46 @@ export async function sendOutreachRow(
   return { ok: true, status: 'sent' };
 }
 
-/** Sends made today (UK day), for the auto-mode daily cap. */
-export async function sentToday(sb: Sb): Promise<number> {
+/** Sends made today (UK day). Information, not a gate on a human.
+ *
+ *  IT USED TO BE A GATE AND IT LOCKED THE WRONG PERSON OUT. Pedro, 17:58 on
+ *  2026-08-25, having found a builder himself and got him on the phone: "I found
+ *  a builder and im trying to send him the details via text but hey elsie doesnt
+ *  give me an option to send the text." The desk had refused him with "Only 0 of
+ *  today's 20 can still go out", and all twenty were WhatsApp invites the
+ *  automation had fired at 06:00 and 07:00 that morning, hours before he found
+ *  anybody. A cap built to stop a MACHINE looking like a spammer had spent
+ *  itself and then blocked the one human who had done the work.
+ *
+ *  `sent_by` is the CRM user who pressed send, and NULL means the machine. The
+ *  automation was retired the same day (tests/builder-automation-off.test.ts),
+ *  so the automated count is now a historical number and stays here only so the
+ *  desk can show what went out today. */
+export async function sentToday(sb: Sb): Promise<{ total: number; automated: number; byPeople: number }> {
   const now = new Date();
   const ukMidnight = new Date(`${new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London' }).format(now)}T00:00:00`);
-  const { count } = await sb
+  const base = () => sb
     .from('brrr_builder_outreach')
     .select('id', { count: 'exact', head: true })
     .gte('sent_at', ukMidnight.toISOString());
-  return count ?? 0;
+  const [{ count: total }, { count: automated }] = await Promise.all([
+    base(),
+    base().is('sent_by', null),
+  ]);
+  return {
+    total: total ?? 0,
+    automated: automated ?? 0,
+    byPeople: (total ?? 0) - (automated ?? 0),
+  };
 }
+
+/** The most builders one press may message.
+ *
+ *  This is what REPLACED the daily cap on the desk, and it guards the real risk
+ *  there: the list is tickable, so a mis-click can pick a dozen. A daily total
+ *  guards nothing a human does, because a human types each message and reads it
+ *  back before it goes. Ten is more builders than any one house needs. */
+export const MAX_BUILDERS_PER_SEND = 10;
 
 /** The nudge for a builder who never answered the invite at all, kept VERBATIM
  *  in step with the Meta template `builder_viewing_followup`
@@ -1082,33 +1112,52 @@ export function blockedReasonForChannel(
  *  UK NUMBERS ONLY, and that is not tidiness. A US toll-free line cannot text a
  *  UK mobile at all (Twilio 21612, learned 2026-07-16), and it fails in a way
  *  that reads as a successful send. */
+type NumberRow = {
+  e164?: string; channel?: string; sms_enabled?: boolean;
+  is_active?: boolean; voice_enabled?: boolean;
+};
+
 export async function resolveSmsFrom(sb: Sb, agentId: string | null): Promise<string> {
-  const usable = (n: { e164?: string; channel?: string; sms_enabled?: boolean; is_active?: boolean } | null) =>
+  const usable = (n: NumberRow | null) =>
     !!n && n.channel === 'sms' && !!n.sms_enabled && !!n.is_active && String(n.e164 ?? '').startsWith('+44');
+
+  const COLS = 'e164, channel, sms_enabled, is_active, voice_enabled';
 
   if (agentId) {
     const { data: assigned } = await (sb.from('wk_number_agents') as any)
-      .select('is_primary, wk_numbers(e164, channel, sms_enabled, is_active)')
+      .select(`is_primary, wk_numbers(${COLS})`)
       .eq('agent_id', agentId);
-    const rows = ((assigned ?? []) as Array<{
-      is_primary: boolean;
-      wk_numbers: { e164: string; channel: string; sms_enabled: boolean; is_active: boolean } | null;
-    }>).filter((r) => usable(r.wk_numbers));
+    const rows = ((assigned ?? []) as Array<{ is_primary: boolean; wk_numbers: NumberRow | null }>)
+      .filter((r) => usable(r.wk_numbers));
     if (rows.length) {
       const primary = rows.find((r) => r.is_primary);
-      return (primary ?? rows[0]).wk_numbers!.e164;
+      return (primary ?? rows[0]).wk_numbers!.e164!;
     }
   }
 
+  // THE FALLBACK MUST BE ABLE TO TAKE A CALL, and that is not a nicety.
+  //
+  // Every builder message ends "give me a ring on this number". Pedro's live
+  // login had no number assigned to it, so this fell through to the oldest SMS
+  // number in the workspace, +447576558278, whose voice goes to the Elsie AI
+  // receptionist. Jordan Lee of JL Brickwork rang it back twice on 2026-08-26
+  // and told Pedro at 15:40 exactly what happened:
+  //
+  //   "I tried phoning your number back and it sounded like a dodgy AI thing
+  //    and I'm getting loads of weird text software... that just led us to
+  //    believe it's not genuine."
+  //
+  // He nearly walked off a booked viewing over it. So a number that cannot
+  // ring a human is the LAST resort here, never the first.
   const { data: nums } = await sb
     .from('wk_numbers')
-    .select('e164, channel, sms_enabled, is_active')
+    .select(COLS)
     .eq('sms_enabled', true)
     .eq('is_active', true)
     .order('created_at', { ascending: true });
-  const first = ((nums ?? []) as Array<{ e164: string; channel: string; sms_enabled: boolean; is_active: boolean }>)
-    .find((n) => usable(n));
-  return first?.e164 ?? '';
+  const all = ((nums ?? []) as NumberRow[]).filter((n) => usable(n));
+  const answerable = all.find((n) => n.voice_enabled);
+  return (answerable ?? all[0])?.e164 ?? '';
 }
 
 /**

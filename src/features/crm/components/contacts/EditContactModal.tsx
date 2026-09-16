@@ -8,6 +8,7 @@ import { useAgentDirectory } from '../../hooks/useAgentDirectory';
 import NextStepCard from '@/core/property/NextStepCard';
 import type { NextStepBrief } from '../../../../../api/lib/next-step-brief';
 import { orderedStep, type DealOrder } from '../../lib/dealOrder';
+import { normalizeContactEmail } from '../../hooks/useContactPersistence';
 
 interface Props {
   contact: Contact | null;
@@ -75,14 +76,21 @@ export default function EditContactModal({
   );
   const [followupDueLocal, setFollowupDueLocal] = useState('');
   const [savingFollowup, setSavingFollowup] = useState(false);
+  const contactId = contact?.id ?? null;
 
-  // Sync draft whenever the modal opens for a new contact (or closes)
+  // Reset the form only when THIS lead changes. Follow-up rows used to sit
+  // in this effect's deps, so the list arriving a beat after open wiped
+  // the email the agent had just typed, and Save wrote the empty original.
   useEffect(() => {
     setDraft(contact);
     setNewField({ key: '', value: '' });
     setNewTag('');
+    // contact is read on id change; same-id object churn must not wipe typing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contactId]);
+
+  useEffect(() => {
     if (nextFollowup) {
-      // Convert ISO → "yyyy-MM-ddTHH:mm" for datetime-local input.
       const d = new Date(nextFollowup.due_at);
       const pad = (n: number) => String(n).padStart(2, '0');
       const local = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
@@ -99,7 +107,7 @@ export default function EditContactModal({
       const local = `${tomorrow.getFullYear()}-${pad(tomorrow.getMonth() + 1)}-${pad(tomorrow.getDate())}T${pad(tomorrow.getHours())}:${pad(tomorrow.getMinutes())}`;
       setFollowupDueLocal(local);
     }
-  }, [contact, nextFollowup]);
+  }, [contactId, nextFollowup]);
 
   if (!contact || !draft) return null;
 
@@ -194,6 +202,9 @@ export default function EditContactModal({
             </Field>
             <Field label="Email">
               <input
+                type="email"
+                autoComplete="email"
+                aria-label="Email"
                 value={draft.email ?? ''}
                 onChange={(e) => set('email', e.target.value)}
                 className="w-full px-3 py-2 text-[13px] border border-[#E5E7EB] rounded-[10px]"
@@ -501,7 +512,8 @@ export default function EditContactModal({
           </button>
           <button
             onClick={() => {
-              onSave(draft);
+              const email = normalizeContactEmail(draft.email);
+              onSave({ ...draft, email: email ?? undefined });
               onClose();
             }}
             className="bg-[#3C5A87] text-white text-[13px] font-semibold px-4 py-2 rounded-[10px] hover:bg-[#3C5A87]/90 shadow-[0_4px_12px_rgba(30,154,128,0.35)]"

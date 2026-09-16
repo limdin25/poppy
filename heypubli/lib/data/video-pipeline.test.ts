@@ -14,7 +14,21 @@ import {
   pickColorFamily,
   postsInLocalDay,
   POSTS_PER_DAY,
-  SLOT_HOURS,
+  DEFAULT_POSTS_PER_DAY,
+  MAX_POSTS_PER_DAY,
+  DAY_WINDOW_START_MIN,
+  DAY_WINDOW_END_MIN,
+  dailySlotMinutes,
+  postsPerDayFromEnv,
+  staggerSecondsFor,
+  GEO_PACKS,
+  geoPackFor,
+  tagsFor,
+  masterIndexForCursor,
+  libraryLapsCompleted,
+  advanceToPlayable,
+  rotationSlots,
+  postsCountingForward,
   todaySlots,
   todaySlotsWithKickoff,
   STAGGER_STEP_MIN,
@@ -109,42 +123,318 @@ describe("stagger", () => {
   });
 });
 
-describe("three a day", () => {
-  // Hugo, 09 Aug 2026: "we have to post three videos per day per account."
-  it("is three slots, and the cap is read from the slot list", () => {
-    expect(SLOT_HOURS.length).toBe(3);
+describe("the ramp dial", () => {
+  // Hugo, 26 Aug 2026: "ten videos today, second day twenty, then forty, and
+  // then we go for fifty." The slots are derived from that number, so the ramp
+  // never needs a code change.
+  it("holds at three until something says otherwise", () => {
     expect(POSTS_PER_DAY).toBe(3);
+    expect(DEFAULT_POSTS_PER_DAY).toBe(3);
+    expect(dailySlotMinutes(DEFAULT_POSTS_PER_DAY).length).toBe(3);
   });
 
-  it("keeps the two hours live accounts already post at", () => {
-    // Adding a third slot must not move anybody's existing posting times.
-    expect(SLOT_HOURS).toContain(11);
-    expect(SLOT_HOURS).toContain(19);
+  it("gives every step of the ramp exactly that many slots", () => {
+    for (const n of [10, 20, 40, 50]) {
+      expect(dailySlotMinutes(n).length).toBe(n);
+    }
   });
 
-  it("spreads the hours out, never two in the same part of the day", () => {
-    const gaps = SLOT_HOURS.slice(1).map((h, i) => h - SLOT_HOURS[i]);
-    for (const g of gaps) expect(g).toBeGreaterThanOrEqual(3);
+  it("never schedules while the audience is asleep", () => {
+    for (const n of [1, 3, 10, 50]) {
+      for (const m of dailySlotMinutes(n)) {
+        expect(m).toBeGreaterThanOrEqual(DAY_WINDOW_START_MIN);
+        expect(m).toBeLessThan(DAY_WINDOW_END_MIN);
+      }
+    }
+  });
+
+  it("spreads them evenly and never puts two on the same minute", () => {
+    const m = dailySlotMinutes(50);
+    expect(new Set(m).size).toBe(50);
+    const gaps = m.slice(1).map((x, i) => x - m[i]);
+    // fifty posts across a fifteen hour window is eighteen minutes apart
+    for (const g of gaps) expect(g).toBeGreaterThanOrEqual(17);
+  });
+
+  it("refuses to go past Instagram's own ceiling, whatever it is asked for", () => {
+    // Meta allows 100 published posts per account per 24 hours. Fifty is half.
+    expect(MAX_POSTS_PER_DAY).toBe(50);
+    expect(dailySlotMinutes(500).length).toBe(MAX_POSTS_PER_DAY);
+    expect(postsPerDayFromEnv("999")).toBe(MAX_POSTS_PER_DAY);
+  });
+
+  it("a bad dial setting slows the machine down, it never stops it", () => {
+    expect(postsPerDayFromEnv(undefined)).toBe(DEFAULT_POSTS_PER_DAY);
+    expect(postsPerDayFromEnv("")).toBe(DEFAULT_POSTS_PER_DAY);
+    expect(postsPerDayFromEnv("banana")).toBe(DEFAULT_POSTS_PER_DAY);
+    expect(postsPerDayFromEnv("0")).toBe(1);
+    expect(postsPerDayFromEnv("-5")).toBe(1);
+    expect(postsPerDayFromEnv("10")).toBe(10);
+    expect(postsPerDayFromEnv("20.7")).toBe(20);
+  });
+});
+
+describe("two accounts never post at the same instant", () => {
+  // At fifty a day across 74 accounts the machine emits about two and a half
+  // posts a minute, so the old minute-only grid collided constantly.
+  it("gives 60 consecutive accounts 60 different seconds", () => {
+    const secs = Array.from({ length: 60 }, (_, i) => staggerSecondsFor(i));
+    expect(new Set(secs).size).toBe(60);
+    for (const s of secs) {
+      expect(s).toBeGreaterThanOrEqual(0);
+      expect(s).toBeLessThan(60);
+    }
+  });
+
+  it("puts the seconds on the wire, not just in the offset table", () => {
+    const at = new Date("2026-08-08T00:30:00Z");
+    const a = todaySlots(at, "Asia/Kolkata", 5, 10, staggerSecondsFor(0));
+    const b = todaySlots(at, "Asia/Kolkata", 5, 10, staggerSecondsFor(1));
+    expect(a.length).toBe(b.length);
+    for (let i = 0; i < a.length; i++) {
+      expect(a[i].at.getTime()).not.toBe(b[i].at.getTime());
+    }
   });
 });
 
 describe("todaySlots", () => {
   it("returns only slots landing on the account's current local day", () => {
-    // 06:00 UTC = 11:30 IST: the 11:00 slot is gone, 15:00 and 19:00 remain.
+    // 06:00 UTC = 11:30 IST. At three a day the slots are 08:00, 13:00, 18:00,
+    // so the first is gone and two remain.
     const slots = todaySlots(new Date("2026-08-08T06:00:00Z"), "Asia/Kolkata", 0);
-    expect(slots.map((s) => s.slot)).toEqual(["midday", "evening"]);
+    expect(slots.map((s) => s.slot)).toEqual(["s02", "s03"]);
   });
 
   it("after the last slot has passed it returns NOTHING, never tomorrow", () => {
-    // 15:00 UTC = 20:30 IST: all of today's slots are gone. The review bug:
-    // returning tomorrow's here made every run schedule more.
-    const slots = todaySlots(new Date("2026-08-08T15:00:00Z"), "Asia/Kolkata", 0);
+    // 18:00 UTC = 23:30 IST: past the end of the window.
+    const slots = todaySlots(new Date("2026-08-08T18:00:00Z"), "Asia/Kolkata", 0);
     expect(slots).toEqual([]);
   });
 
-  it("early morning returns all three of today's slots", () => {
-    const slots = todaySlots(new Date("2026-08-08T00:30:00Z"), "Asia/Kolkata", 21);
-    expect(slots.map((s) => s.slot)).toEqual(["morning", "midday", "evening"]);
+  it("early morning returns all of today's slots, at any ramp step", () => {
+    const dawn = new Date("2026-08-08T00:30:00Z"); // 06:00 IST
+    expect(todaySlots(dawn, "Asia/Kolkata", 21).length).toBe(3);
+    expect(todaySlots(dawn, "Asia/Kolkata", 21, 10).length).toBe(10);
+    expect(todaySlots(dawn, "Asia/Kolkata", 21, 50).length).toBe(50);
+  });
+
+  it("a day at fifty never puts two of one account's posts together", () => {
+    const dawn = new Date("2026-08-08T00:30:00Z");
+    const slots = todaySlots(dawn, "Asia/Kolkata", 7, 50, staggerSecondsFor(3));
+    const times = slots.map((s) => s.at.getTime());
+    expect(new Set(times).size).toBe(times.length);
+  });
+});
+
+describe("rotation fill", () => {
+  // Hugo, 26 Aug 2026: "it doesn't matter when we post, it just keep posting."
+  // The fixed grid threw away the part of the day that had already gone, so an
+  // account whose early clock slots were past could never reach the number on
+  // the dial.
+  const morning = new Date("2026-08-26T03:00:00Z"); // 08:30 IST, day ahead
+  const afternoon = new Date("2026-08-26T11:00:00Z"); // 16:30 IST, half gone
+
+  it("gives the FULL quota even when most of the day is gone", () => {
+    expect(rotationSlots(afternoon, "Asia/Kolkata", 10).length).toBe(10);
+    expect(rotationSlots(afternoon, "Asia/Kolkata", 50).length).toBe(50);
+  });
+
+  it("never schedules anything in the past", () => {
+    for (const at of [morning, afternoon]) {
+      for (const s of rotationSlots(at, "Asia/Kolkata", 20)) {
+        expect(s.at.getTime()).toBeGreaterThan(at.getTime());
+      }
+    }
+  });
+
+  it("spreads them out instead of firing them all at once", () => {
+    const slots = rotationSlots(morning, "Asia/Kolkata", 10);
+    const gaps = slots.slice(1).map((s, i) => s.at.getTime() - slots[i].at.getTime());
+    for (const g of gaps) expect(g).toBeGreaterThan(60_000);
+    expect(new Set(slots.map((s) => s.at.getTime())).size).toBe(slots.length);
+  });
+
+  it("still posts when the window has already closed, rather than nothing", () => {
+    // 23:10 IST: past the end of the posting window entirely.
+    const late = new Date("2026-08-26T17:40:00Z");
+    const slots = rotationSlots(late, "Asia/Kolkata", 5);
+    expect(slots.length).toBeGreaterThan(0);
+    for (const s of slots) expect(s.at.getTime()).toBeGreaterThan(late.getTime());
+  });
+
+  it("keeps two accounts off the same instant", () => {
+    const a = rotationSlots(afternoon, "Asia/Kolkata", 10, staggerSecondsFor(0));
+    const b = rotationSlots(afternoon, "Asia/Kolkata", 10, staggerSecondsFor(1));
+    for (let i = 0; i < a.length; i++) {
+      expect(a[i].at.getTime()).not.toBe(b[i].at.getTime());
+    }
+  });
+
+  it("asks for nothing when there is nothing left to give", () => {
+    expect(rotationSlots(afternoon, "Asia/Kolkata", 0)).toEqual([]);
+    expect(rotationSlots(afternoon, "Asia/Kolkata", -3)).toEqual([]);
+  });
+});
+
+describe("postsCountingForward", () => {
+  // 26 Aug 2026: accounts got 41, 55 and 118 posts against a quota of 10.
+  // rotationSlots can place a slot after local midnight when the evening window
+  // has closed; postsInLocalDay did not count those, so the quota never filled
+  // and a two-minute cron topped the account up all night.
+  const tz = "Asia/Kolkata";
+  const now = new Date("2026-08-26T17:00:00Z"); // 22:30 local, window closing
+
+  it("counts a slot that spilled past local midnight", () => {
+    const spilled = [new Date("2026-08-26T19:30:00Z")]; // 01:00 local NEXT day
+    expect(postsInLocalDay(now, tz, spilled)).toBe(0);
+    expect(postsCountingForward(now, tz, spilled)).toBe(1);
+  });
+
+  it("still counts everything from earlier the same local day", () => {
+    const earlier = [
+      new Date("2026-08-26T04:00:00Z"), // 09:30 local
+      new Date("2026-08-26T10:00:00Z"), // 15:30 local
+    ];
+    expect(postsCountingForward(now, tz, earlier)).toBe(2);
+  });
+
+  it("does NOT count yesterday", () => {
+    const yesterday = [new Date("2026-08-25T12:00:00Z")];
+    expect(postsCountingForward(now, tz, yesterday)).toBe(0);
+  });
+
+  it("fills the quota exactly once instead of all night", () => {
+    // ten slots from 19:00 UTC onward, which is after local midnight in Kolkata
+    const tenSpilled = Array.from(
+      { length: 10 },
+      (_, i) => new Date(Date.UTC(2026, 7, 26, 19, i * 15, 0)),
+    );
+    expect(postsCountingForward(now, tz, tenSpilled)).toBe(10);
+    // and the calendar-day counter, which is what caused the overrun, sees none
+    expect(postsInLocalDay(now, tz, tenSpilled)).toBe(0);
+  });
+});
+
+describe("the library is a ring, not a line", () => {
+  // THE 15 AUGUST FAILURE. The sequence ran 1..9 and then off the end. 94 of
+  // 108 accounts sat at seq 10 with no master 10 to play, the conductor found
+  // nothing, and the machine went silent for eleven days with no error
+  // anywhere. Not broken. Out of material, and nothing said so.
+  it("wraps instead of running off the end", () => {
+    expect(masterIndexForCursor(1, 9)).toBe(0);
+    expect(masterIndexForCursor(9, 9)).toBe(8);
+    // this is the one that used to return nothing at all
+    expect(masterIndexForCursor(10, 9)).toBe(0);
+    expect(masterIndexForCursor(11, 9)).toBe(1);
+    expect(masterIndexForCursor(19, 9)).toBe(0);
+  });
+
+  it("never returns nothing while a single master is approved", () => {
+    for (let seq = 1; seq <= 500; seq++) {
+      expect(masterIndexForCursor(seq, 1)).toBe(0);
+      const i = masterIndexForCursor(seq, 9);
+      expect(i).not.toBeNull();
+      expect(i).toBeGreaterThanOrEqual(0);
+      expect(i).toBeLessThan(9);
+    }
+  });
+
+  it("plays every master once before it plays any master twice", () => {
+    const seen = new Set<number>();
+    for (let seq = 1; seq <= 9; seq++) seen.add(masterIndexForCursor(seq, 9)!);
+    expect(seen.size).toBe(9);
+  });
+
+  it("says so when there is nothing approved, rather than guessing", () => {
+    expect(masterIndexForCursor(1, 0)).toBeNull();
+    expect(masterIndexForCursor(50, 0)).toBeNull();
+  });
+
+  it("counts the laps, which is the only figure showing how hard footage repeats", () => {
+    expect(libraryLapsCompleted(1, 9)).toBe(0);
+    expect(libraryLapsCompleted(9, 9)).toBe(0);
+    expect(libraryLapsCompleted(10, 9)).toBe(1);
+    expect(libraryLapsCompleted(28, 9)).toBe(3);
+    // at ten a day on nine masters an account laps the library every day
+    expect(libraryLapsCompleted(1 + 10 * 7, 9)).toBe(7);
+    expect(libraryLapsCompleted(5, 0)).toBe(0);
+  });
+});
+
+describe("advanceToPlayable", () => {
+  // 26 Aug 2026: 928 finished bodies on disk and not one account could post,
+  // because every cursor sat on the one master approved minutes earlier and
+  // still rendering. One unbuilt video held up the whole fleet.
+  const allReady = () => true;
+
+  it("takes the master at the cursor when it is built", () => {
+    expect(advanceToPlayable(3, 11, allReady)).toEqual({ cursor: 3, index: 2 });
+  });
+
+  it("walks past an unbuilt master instead of stopping the account", () => {
+    // index 9 is the freshly approved one, still queued
+    const ready = (i: number) => i !== 9;
+    expect(advanceToPlayable(10, 11, ready)).toEqual({ cursor: 11, index: 10 });
+  });
+
+  it("wraps round the end while it is walking", () => {
+    // only index 0 is built; the cursor starts near the end of the lap
+    const ready = (i: number) => i === 0;
+    expect(advanceToPlayable(10, 11, ready)).toEqual({ cursor: 12, index: 0 });
+  });
+
+  it("gives up after ONE lap rather than spinning forever", () => {
+    expect(advanceToPlayable(1, 11, () => false)).toBeNull();
+    expect(advanceToPlayable(999, 9, () => false)).toBeNull();
+  });
+
+  it("says nothing to play when nothing is approved", () => {
+    expect(advanceToPlayable(1, 0, allReady)).toBeNull();
+  });
+});
+
+describe("geo packs", () => {
+  // Hugo, 26 Aug 2026: one account always Manchester, another always North
+  // Carolina, so 74 accounts stop looking like one network.
+  it("every pack names a place and carries usable tags", () => {
+    expect(GEO_PACKS.length).toBeGreaterThanOrEqual(40);
+    for (const p of GEO_PACKS) {
+      expect(p.place.length).toBeGreaterThan(2);
+      expect(p.tags.length).toBe(2);
+      for (const t of p.tags) expect(t).toMatch(/^#[A-Za-z0-9]+$/);
+    }
+  });
+
+  it("no two accounts inside one wrap share a place", () => {
+    const places = GEO_PACKS.map((p) => p.place);
+    expect(new Set(places).size).toBe(places.length);
+    const tags = GEO_PACKS.flatMap((p) => p.tags);
+    expect(new Set(tags).size).toBe(tags.length);
+  });
+
+  it("an account's place NEVER changes", () => {
+    for (const idx of [0, 1, 7, 39, 40, 113]) {
+      expect(geoPackFor(idx).place).toBe(geoPackFor(idx).place);
+    }
+    // and it wraps rather than falling off the end
+    expect(geoPackFor(GEO_PACKS.length).place).toBe(GEO_PACKS[0].place);
+    expect(geoPackFor(0).place).toBe("Manchester");
+  });
+
+  it("the place tags are on EVERY post, never dropped for a general tag", () => {
+    for (let seq = 1; seq <= 12; seq++) {
+      for (let idx = 0; idx < 6; idx++) {
+        const tags = tagsFor(seq, idx);
+        for (const t of geoPackFor(idx).tags) expect(tags).toContain(t);
+        expect(tags.length).toBeLessThanOrEqual(MAX_HASHTAGS);
+        expect(new Set(tags).size).toBe(tags.length);
+      }
+    }
+  });
+
+  it("shows up in the caption the account actually posts", () => {
+    const caption = composeCaption(3, 0);
+    expect(caption).toContain("#Manchester");
   });
 });
 
@@ -163,12 +453,12 @@ describe("todaySlotsWithKickoff", () => {
     const slots = todaySlotsWithKickoff(dawn, "Asia/Kolkata", 21, true);
     expect(slots.length).toBe(POSTS_PER_DAY);
     // The kickoff REPLACES the next clock slot, so an account connecting five
-    // minutes before 11:00 does not post twice inside five minutes.
-    expect(slots.map((s) => s.slot)).toEqual(["now", "midday", "evening"]);
+    // minutes before its first slot does not post twice inside five minutes.
+    expect(slots.map((s) => s.slot)).toEqual(["now", "s02", "s03"]);
   });
 
   it("connecting after the last slot still posts tonight, not tomorrow", () => {
-    const late = new Date("2026-08-08T15:00:00Z"); // 20:30 IST, every slot gone
+    const late = new Date("2026-08-08T18:00:00Z"); // 23:30 IST, every slot gone
     const slots = todaySlotsWithKickoff(late, "Asia/Kolkata", 0, true);
     expect(slots.map((s) => s.slot)).toEqual(["now"]);
     expect(slots[0].at.getTime()).toBe(late.getTime());
@@ -183,19 +473,20 @@ describe("todaySlotsWithKickoff", () => {
 });
 
 describe("nextSlots", () => {
-  // 06:00 UTC = 11:30 in India (UTC+5:30): the morning slot is 11:00 IST,
-  // already past, so the first slot must be this afternoon.
+  // 06:00 UTC = 11:30 in India (UTC+5:30). At three a day the slots are 08:00,
+  // 13:00 and 18:00 local, so the first is already past.
   it("skips a slot already past in the creator's own day", () => {
     const after = new Date("2026-08-08T06:00:00Z");
     const slots = nextSlots(after, "Asia/Kolkata", 0, 3);
-    expect(slots[0].slot).toBe("midday");
-    // 15:00 IST = 09:30 UTC
-    expect(slots[0].at.toISOString()).toBe("2026-08-08T09:30:00.000Z");
-    expect(slots[1].slot).toBe("evening");
-    // 19:00 IST = 13:30 UTC
-    expect(slots[1].at.toISOString()).toBe("2026-08-08T13:30:00.000Z");
-    expect(slots[2].slot).toBe("morning");
-    expect(slots[2].at.toISOString()).toBe("2026-08-09T05:30:00.000Z");
+    expect(slots[0].slot).toBe("s02");
+    // 13:00 IST = 07:30 UTC
+    expect(slots[0].at.toISOString()).toBe("2026-08-08T07:30:00.000Z");
+    expect(slots[1].slot).toBe("s03");
+    // 18:00 IST = 12:30 UTC
+    expect(slots[1].at.toISOString()).toBe("2026-08-08T12:30:00.000Z");
+    // and then round to tomorrow's first, 08:00 IST = 02:30 UTC
+    expect(slots[2].slot).toBe("s01");
+    expect(slots[2].at.toISOString()).toBe("2026-08-09T02:30:00.000Z");
   });
 
   it("applies the stagger to every slot", () => {

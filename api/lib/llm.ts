@@ -121,7 +121,12 @@ const AUTO_THINKING_ALLOWANCE = 1536;
 export type LLMBlock =
   | { type: 'text'; text: string }
   | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
-  // URL form for the refurb estimator: Anthropic fetches the picture itself.
+  // The URL form, added 2026-08-25 for the refurb estimator. Anthropic fetches
+  // the picture itself, so a route showing twenty listing photographs does not
+  // have to download and base64 twenty JPEGs inside a serverless function
+  // first. Verified against the live API the same day. PUBLIC URLs ONLY: the
+  // fetch happens from Anthropic and carries none of our credentials, so a
+  // signed or private URL simply fails.
   | { type: 'image'; source: { type: 'url'; url: string } };
 
 export interface LLMMessage {

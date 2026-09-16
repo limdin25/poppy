@@ -28,12 +28,29 @@
 // A rule enforced in one place only holds until somebody finds another door.
 // So the last gate before Pedro checks it too.
 
-/** The only tiers allowed to reach a phone call. */
-export const SHIPPABLE_TIERS = Object.freeze(['gold', 'strong'])
+// ⚠️ `street` WAS MISSING FROM BOTH LISTS AND IT IS THE BEST TIER OF THE LOT.
+//
+// course_comps.py on the engine:
+//
+//     ("street", 12, 400, True),   # the subject's own road, sold inside a year
+//     COURSE_STANDARD = ("street", "gold", "strong")
+//
+// So the VPS's own standard is street/gold/strong, and this file said
+// gold/strong. The two lists drifted and nothing compared them, which is the
+// same failure this file was written to stop, running the other way: measured
+// on 2026-08-26, the gate passed 91 properties and 17 of them came through on
+// `street`, the subject's OWN ROAD sold within twelve months. Every one would
+// have been turned away here as if it were unrecorded evidence.
+//
+// Ordered best first: same road beats same 400m in six months.
+
+/** The only tiers allowed to reach a phone call. Mirrors COURSE_STANDARD in
+ *  course_comps.py on the engine. If one changes, change the other. */
+export const SHIPPABLE_TIERS = Object.freeze(['street', 'gold', 'strong'])
 
 /** Every tier the engine can produce, best first, for reporting. */
 export const ALL_TIERS = Object.freeze([
-  'gold', 'strong', 'good', 'fair', 'last_resort',
+  'street', 'gold', 'strong', 'good', 'fair', 'last_resort',
 ])
 
 /** Is this property's valuation resting on evidence we are willing to act on?
