@@ -1057,6 +1057,86 @@ export function excludeReasonLabel(
       : id);
 }
 
+// ---------------------------------------------------------------------------
+// WHAT THIS BUILDER SAID ON SOMEBODY ELSE'S HOUSE
+// ---------------------------------------------------------------------------
+//
+// Pedro, 2026-09-16: "I called this builder now and he said I've called him 4
+// times already for a different property, but there is no indication in the
+// disposition that they are not interested or charging to view... with this
+// other property it is not permanently indicated, so I still make a mistake of
+// calling them."
+//
+// The two FOREVER flags (2026-09-10) already ban a builder everywhere, and they
+// work: six builders carry one. They are not the hole. The hole is every OTHER
+// outcome. A builder card is a builder FOR ONE HOUSE, so "Not interested (this
+// house)", "Call back later" and four "No answer"s are invisible the moment
+// Pedro opens the next house, and he dials a man who has already told him no.
+//
+// So the desk now carries the builder's history across every house. It does not
+// block the call: "not interested in that one" is not "not interested ever",
+// and Hugo's rule is that the human decides. It just stops him ringing blind.
+
+/** Outcomes that mean the builder already turned something down. */
+export const NEGATIVE_OUTCOMES = new Set([
+  'not_interested', 'not_interested_any', 'charges_to_view', 'wrong_number',
+]);
+
+export function callOutcomeLabel(id: string | null | undefined): string | null {
+  const key = String(id ?? '').trim();
+  if (!key) return null;
+  return CALL_OUTCOMES.find((o) => o.id === key)?.label ?? key;
+}
+
+export interface PriorCallRow {
+  call_outcome?: string | null;
+  call_outcome_at?: string | null;
+  /** The house it was about, for the words on the chip. */
+  address?: string | null;
+}
+
+export interface BuilderHistory {
+  /** How many times somebody has rung this builder about ANOTHER house. */
+  calls: number;
+  lastOutcome: string | null;
+  lastLabel: string | null;
+  lastAt: string | null;
+  lastHouse: string | null;
+  /** He has said no, charged, or the number is wrong, on another house. */
+  saidNo: boolean;
+  /** One line for the card, or null when there is nothing to say. */
+  summary: string | null;
+}
+
+/** The builder's past calls on other houses, newest first, as one line. */
+export function summariseBuilderHistory(rows: PriorCallRow[]): BuilderHistory {
+  const calls = rows.filter((r) => String(r.call_outcome ?? '').trim());
+  const empty: BuilderHistory = {
+    calls: 0, lastOutcome: null, lastLabel: null, lastAt: null,
+    lastHouse: null, saidNo: false, summary: null,
+  };
+  if (!calls.length) return empty;
+
+  const at = (r: PriorCallRow) => Date.parse(String(r.call_outcome_at ?? '')) || 0;
+  const newest = calls.reduce((a, b) => (at(b) >= at(a) ? b : a));
+  const outcome = String(newest.call_outcome ?? '').trim();
+  const label = callOutcomeLabel(outcome);
+  const house = String(newest.address ?? '').split(',')[0].trim() || null;
+  const saidNo = calls.some((r) => NEGATIVE_OUTCOMES.has(String(r.call_outcome ?? '').trim()));
+
+  const times = calls.length === 1 ? 'Rung once before' : `Rung ${calls.length} times before`;
+  const where = house ? ` on ${house}` : '';
+  return {
+    calls: calls.length,
+    lastOutcome: outcome || null,
+    lastLabel: label,
+    lastAt: newest.call_outcome_at ?? null,
+    lastHouse: house,
+    saidNo,
+    summary: label ? `${times}. Last answer: ${label}${where}.` : `${times}${where}.`,
+  };
+}
+
 /** The cold opener as a text. Same {{1}} {{2}} {{3}} as INVITE_TEMPLATE_TEXT
  *  on purpose, so inviteVars() fills either channel and there is one place
  *  that decides what a builder is told about a house.

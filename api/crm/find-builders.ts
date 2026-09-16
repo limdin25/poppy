@@ -46,6 +46,7 @@ import {
   floorRefusalFor,
   excludeReasonLabel,
   isGloballyExcluded,
+  summariseBuilderHistory,
   type OutreachProperty,
   type OutreachSettings,
 } from '../lib/builder-outreach.js';
@@ -272,6 +273,46 @@ async function handleWeb(req: Request): Promise<Response> {
     const rows = byProperty.get(house.id) ?? [];
     const rowByBuilder = new Map(rows.map((r) => [r.builder_id, r] as const));
 
+    // WHAT THIS BUILDER SAID ON EVERY OTHER HOUSE. Pedro, 2026-09-16: a builder
+    // told him he had already been rung four times about a different property,
+    // and the card said nothing. Only the two forever flags travelled between
+    // houses; "Not interested (this house)" and four "No answer"s did not.
+    const coveringIds = covering.map((b) => b.id);
+    const historyByBuilder = new Map<string, ReturnType<typeof summariseBuilderHistory>>();
+    if (coveringIds.length) {
+      const { data: past } = await sb
+        .from('brrr_builder_outreach')
+        .select('builder_id, property_id, call_outcome, call_outcome_at')
+        .in('builder_id', coveringIds)
+        .not('call_outcome', 'is', null)
+        .neq('property_id', house.id)
+        .limit(2000);
+      const pastRows = (past ?? []) as Array<{
+        builder_id: string; property_id: string;
+        call_outcome: string | null; call_outcome_at: string | null;
+      }>;
+      const houseIds = [...new Set(pastRows.map((r) => r.property_id))];
+      const addressById = new Map<string, string>();
+      if (houseIds.length) {
+        const { data: pastHouses } = await sb
+          .from('brrr_properties').select('id, address').in('id', houseIds);
+        for (const p of (pastHouses ?? []) as Array<{ id: string; address: string | null }>) {
+          if (p.address) addressById.set(p.id, p.address);
+        }
+      }
+      const grouped = new Map<string, Array<{ call_outcome: string | null; call_outcome_at: string | null; address: string | null }>>();
+      for (const r of pastRows) {
+        const list = grouped.get(r.builder_id) ?? [];
+        list.push({
+          call_outcome: r.call_outcome,
+          call_outcome_at: r.call_outcome_at,
+          address: addressById.get(r.property_id) ?? null,
+        });
+        grouped.set(r.builder_id, list);
+      }
+      for (const [id, list] of grouped) historyByBuilder.set(id, summariseBuilderHistory(list));
+    }
+
     const vars = inviteVars(prop);
     return Response.json({
       property: {
@@ -297,10 +338,13 @@ async function handleWeb(req: Request): Promise<Response> {
         .sort((a, b) => {
           // Forever-flagged builders sink to the bottom so Pedro sees live
           // numbers first, with the reason still visible on the ones he must
-          // not ring again.
-          const ae = isGloballyExcluded(a as { exclude_reason?: string | null }) ? 1 : 0;
-          const be = isGloballyExcluded(b as { exclude_reason?: string | null }) ? 1 : 0;
-          return ae - be;
+          // not ring again. A builder who said no on ANOTHER house sinks too,
+          // but only below the fresh ones: that is a warning, not a ban.
+          const rank = (x: BuilderRow) => (
+            isGloballyExcluded(x as { exclude_reason?: string | null }) ? 2
+              : historyByBuilder.get(x.id)?.saidNo ? 1 : 0
+          );
+          return rank(a) - rank(b);
         })
         .map((b) => {
         const row = rowByBuilder.get(b.id);
@@ -326,6 +370,7 @@ async function handleWeb(req: Request): Promise<Response> {
           whatsappSentAt: row?.whatsapp_sent_at ?? null,
           callOutcome: row?.call_outcome ?? null,
           callOutcomeAt: row?.call_outcome_at ?? null,
+          history: historyByBuilder.get(b.id) ?? null,
         };
       }),
       settings: publicSettings(settings),

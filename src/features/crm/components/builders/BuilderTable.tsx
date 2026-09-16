@@ -43,6 +43,18 @@ export interface BuilderRow {
   whatsappSentAt: string | null;
   callOutcome: string | null;
   callOutcomeAt: string | null;
+  /** What this builder said about OTHER houses. Pedro, 2026-09-16: he rang a
+   *  builder who had already told him no four times on another property, and
+   *  this row said nothing, because a row is a builder for ONE house. */
+  history?: {
+    calls: number;
+    lastOutcome: string | null;
+    lastLabel: string | null;
+    lastAt: string | null;
+    lastHouse: string | null;
+    saidNo: boolean;
+    summary: string | null;
+  } | null;
 }
 
 /** Kept in step with CALL_OUTCOMES in api/lib/builder-outreach.ts, which is the
@@ -167,6 +179,23 @@ export default function BuilderTable({
                       className="mt-0.5 inline-block rounded-full border border-[#DC2626]/40 bg-[#FEF2F2] px-1.5 py-[1px] text-[9.5px] font-semibold text-[#DC2626]"
                     >
                       {b.excludeLabel}
+                    </div>
+                  ) : null}
+                  {/* Rung about another house already. Amber, not red: "not
+                      interested in that one" is not "never ring me again", and
+                      only Pedro can tell the difference on the phone. */}
+                  {b.history?.summary ? (
+                    <div
+                      data-testid="builder-history"
+                      className={cn(
+                        'mt-0.5 rounded-[6px] border px-1.5 py-[2px] text-[9.5px] font-medium',
+                        b.history.saidNo
+                          ? 'border-[#D97706]/40 bg-[#FFFBEB] text-[#B45309]'
+                          : 'border-[#E5E7EB] bg-[#F9FAFB] text-[#6B7280]',
+                      )}
+                      title="What this builder said about other houses"
+                    >
+                      {b.history.summary}
                     </div>
                   ) : null}
                   <div className="mt-0.5 flex flex-wrap gap-1">
