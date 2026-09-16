@@ -17,8 +17,12 @@ test.describe('Find builders forever flags and postcode', () => {
     await page.goto('/admin/crm/find-builders')
     await expect(page.getByTestId('find-builders-page')).toBeVisible({ timeout: 20_000 })
 
-    // Pick the first house if any are listed.
-    const first = page.locator('[data-testid="property-picker-row"]').first()
+    // Pick the first house if any are listed. The list arrives async, so wait
+    // for it: reading the count straight away returned 0 and skipped the test
+    // on a screen that had 51 houses on it.
+    await page.getByTestId('builder-property-row').first()
+      .waitFor({ state: 'visible', timeout: 25_000 }).catch(() => {})
+    const first = page.getByTestId('builder-property-row').first()
     if (await first.count() === 0) {
       test.skip(true, 'no viewing-booked house on this account right now')
       return
@@ -42,5 +46,37 @@ test.describe('Find builders forever flags and postcode', () => {
         await expect(page.getByTestId('find-builders-set-postcode')).toBeVisible()
       }
     }
+  })
+
+  // Pedro, 2026-09-16: "I called this builder now and he said I've called him 4
+  // times already for a different property but there is no indication in the
+  // disposition that they are not interested or charging to view". A builder
+  // rung about ANY other house now says so on the row he dials from.
+  test('a builder rung about another house says so on the row', async ({ authedPage: page }) => {
+    await page.goto('/admin/crm/find-builders')
+    await expect(page.getByTestId('find-builders-page')).toBeVisible({ timeout: 20_000 })
+
+    await page.getByTestId('builder-property-row').first()
+      .waitFor({ state: 'visible', timeout: 25_000 }).catch(() => {})
+    const houses = page.getByTestId('builder-property-row')
+    const count = await houses.count()
+    test.skip(count === 0, 'no viewing-booked house on this account right now')
+
+    // Data dependent by nature: the line only exists once somebody has rung a
+    // builder about a DIFFERENT house, so walk a few houses looking for one.
+    let found = false
+    for (let i = 0; i < Math.min(count, 6) && !found; i++) {
+      await houses.nth(i).click()
+      // A house with no builders yet shows neither a row nor a scrape button,
+      // so this waits rather than asserting: the next house is the answer.
+      await page.getByTestId('builder-row').first()
+        .waitFor({ state: 'visible', timeout: 12_000 }).catch(() => {})
+      found = (await page.getByTestId('builder-history').count()) > 0
+    }
+    test.skip(!found, 'no builder on these houses has been rung about another one')
+
+    const chip = page.getByTestId('builder-history').first()
+    await expect(chip).toBeVisible()
+    await expect(chip).toHaveText(/Rung (once|\d+ times) before/)
   })
 })
