@@ -1,18 +1,19 @@
-// The three offer emails Pedro sends, served at /offers (see api/offers.ts).
+// The offer emails Pedro sends, served at /offers (see api/offers.ts).
 //
 // Hand-written, not generated. Adding or changing an offer is one entry in
 // OFFERS below. Keep it to the emails: Hugo asked for the drafts and nothing
-// else on the page, so the workings stay out of here.
+// else on the page, so the workings stay out of here. Only offers still waiting
+// to go out belong here; once Pedro has sent one, take it off so it can never
+// be sent twice.
 //
 // House rules that apply to every string in this file:
 //   - no long dashes, no curly quotes, no ellipsis characters
 //   - light mode only
 //
-// Figures come from the 16 Sep 2026 quote review. Colne 70,000 carries a
-// 10,000 allowance for the unpriced tree damage. Sunderland 60,000 opens and
-// must not go through 71,000 (Hugo added 19 Vale Street to the comps on 16 Sep,
-// value 138,500). Southport 115,000 is Hugo's call on 16 Sep: it is
-// the walk price, not the opener, and it leaves about 16,000 in the deal.
+// 18 Sep 2026: 42 Sceptre Street. Skyline quote 37,800 plus VAT (45,360), value
+// 195,000 off five 2-bed terraces inside 400 m and twelve months. Opens at
+// 81,000, must not go through 96,000. The 16 Sep offers (Colne 70,000,
+// Sunderland 60,000, Southport 115,000) were sent and came off the page.
 
 interface Offer {
   id: string;
@@ -26,62 +27,20 @@ interface Offer {
 
 const OFFERS: Offer[] = [
   {
-    id: 'colne',
-    house: '86 Birtwistle Avenue',
-    place: 'Colne BB8 9RT',
+    id: 'sceptre',
+    house: '42 Sceptre Street',
+    place: 'Sherwood, Nottingham NG5 2HT',
     to: '',
-    toNote: 'Entwistle Green, Colne. No email on file, use the one from the viewing. 01282 526177',
-    subject: '86 Birtwistle Avenue, Colne BB8 9RT',
+    toNote: 'Pygott & Crone, Wollaton. No email on file, use the one from the viewing. 0115 647 0562',
+    subject: '42 Sceptre Street, Sherwood, Nottingham NG5 2HT',
     body: [
       'Hello,',
       '',
-      'Pedro here, we had our builder through 86 Birtwistle Avenue and the quote is back.',
+      'Pedro here, we had our builder through 42 Sceptre Street and the quote is back.',
       '',
-      'We would like to offer GBP70,000 for 86 Birtwistle Avenue, Colne BB8 9RT, subject to contract. Cash purchase, no chain.',
+      'We would like to offer GBP81,000 for 42 Sceptre Street, Sherwood, Nottingham NG5 2HT, subject to contract. Cash purchase, no chain.',
       '',
-      'Our builder has had to allow for the structural work at the rear because it is not priced anywhere. If you can send me the RICS report we will price it properly and come back to you.',
-      '',
-      'Please let me know',
-      '',
-      'Pedro',
-      '07462 167894',
-      'pedro@hostunico.com',
-    ].join('\n'),
-  },
-  {
-    id: 'sunderland',
-    house: '5 Hawarden Crescent',
-    place: 'High Barnes, Sunderland SR4 7NQ',
-    to: 'sarahhill@peterheron.co.uk',
-    toNote: 'Peter Heron Residential Sales and Lettings',
-    subject: '5 Hawarden Crescent, Sunderland SR4 7NQ',
-    body: [
-      'Hello Sarah,',
-      '',
-      'Pedro here, we had our builder through 5 Hawarden Crescent and the quote is back.',
-      '',
-      'We would like to offer GBP60,000 for 5 Hawarden Crescent, High Barnes, Sunderland SR4 7NQ, subject to contract. Cash purchase, no chain.',
-      '',
-      'Please let me know',
-      '',
-      'Pedro',
-      '07462 167894',
-      'pedro@hostunico.com',
-    ].join('\n'),
-  },
-  {
-    id: 'southport',
-    house: '125 Shakespeare Street',
-    place: 'Southport PR8 5AN',
-    to: 'katie@karenpotter.co.uk',
-    toNote: 'Karen Potter, Southport',
-    subject: '125 Shakespeare Street, Southport PR8 5AN',
-    body: [
-      'Hello,',
-      '',
-      'Pedro here, we had our builder through 125 Shakespeare Street and the quote is back.',
-      '',
-      'We would like to offer GBP115,000 for 125 Shakespeare Street, Southport PR8 5AN, subject to contract. Cash purchase, no chain.',
+      'The house needs a full rewire, a new boiler and heating, a new kitchen, a new bathroom and replastering, and that is what the figure reflects.',
       '',
       'Please let me know',
       '',
@@ -225,7 +184,7 @@ export const OFFERS_HTML: string = `<!doctype html>
     <header class="top">
       <span class="kicker">Unico property desk</span>
       <h1>Offers ready to send</h1>
-      <p class="sub">Three emails. Copy each one, paste it, send it. Nothing needs changing.</p>
+      <p class="sub">${OFFERS.length === 1 ? 'One email. Copy it, paste it, send it.' : `${OFFERS.length} emails. Copy each one, paste it, send it.`} Nothing needs changing.</p>
     </header>
 
     ${OFFERS.map((o, i) => card(o, i + 1)).join('\n')}
