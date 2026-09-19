@@ -123,8 +123,9 @@ describe('the coach has the property objections, and only those', () => {
     // Every wk_coach_facts row is an Elsie product fact. On a call to somebody
     // selling a house they are all wrong, and leaving them in is exactly how a
     // card ends up mentioning Google reviews to an estate agent.
+    // (An auction call replaces it too, with the auctioneer list, 2026-09-18.)
     expect(COACH).toMatch(
-      /const baseFacts: CoachFact\[\] = isPropertyCall \? PROPERTY_OBJECTIONS : wsFacts;/)
+      /const baseFacts: CoachFact\[\] = isPropertyCall \? PROPERTY_OBJECTIONS\s*: isAuctionCall \? AUCTION_OBJECTIONS\s*: wsFacts;/)
     // Campaign facts still override by key, on BOTH paths.
     expect(COACH).toMatch(/\.\.\.baseFacts\.filter\(\(f\) => !overrideKeys\.has\(f\.key\)\),/)
   })

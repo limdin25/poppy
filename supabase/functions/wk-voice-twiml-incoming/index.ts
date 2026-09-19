@@ -75,6 +75,20 @@ function phoneTail(raw: string): string {
   return digits.length >= 9 ? digits.slice(-9) : '';
 }
 
+// Mirror of api/lib/desk-route.ts (Deno cannot import api/), pinned by
+// tests/auction-inbound-routing.test.ts. Read the rule there.
+type Desk = 'houses' | 'auction';
+interface DeskRoute {
+  desk: Desk;
+  ring: boolean;
+}
+function inboundDeskRoute(contactDesk: string | null | undefined, agentDesk: string | null | undefined): DeskRoute {
+  const onDesk: Desk = agentDesk === 'auction' ? 'auction' : 'houses';
+  if (!contactDesk) return { desk: onDesk, ring: true };
+  const theirs: Desk = contactDesk === 'auction' ? 'auction' : 'houses';
+  return { desk: theirs, ring: theirs === onDesk };
+}
+
 const CALLBACK_TAG = 'called-back';
 const CALLBACK_WINDOW_DAYS = 30;
 
@@ -159,11 +173,13 @@ serve(async (req: Request) => {
     // here is a go-live step, not a code dependency.
     let contactId: string | null = null;
     let contactIsEstateAgent = false;
+    let contactIsAuctioneer = false;
+    let contactDesk: string | null = null;
     try {
       const { variants: fromVariants } = phoneVariants(from);
       let { data: contactRow } = await supabase
         .from('wk_contacts')
-        .select('id, pipeline_column_id, custom_fields')
+        .select('id, pipeline_column_id, custom_fields, desk')
         .in('phone', fromVariants)
         .limit(1)
         .maybeSingle();
@@ -176,7 +192,7 @@ serve(async (req: Request) => {
         if (tail) {
           const { data: byTail } = await supabase
             .from('wk_contacts')
-            .select('id, pipeline_column_id, custom_fields')
+            .select('id, pipeline_column_id, custom_fields, desk')
             .like('phone', `%${tail}`)
             .limit(1)
             .maybeSingle();
@@ -184,8 +200,10 @@ serve(async (req: Request) => {
         }
       }
       if (contactRow?.id) {
-        contactIsEstateAgent =
-          (contactRow.custom_fields as Record<string, unknown> | null)?.lead_type === 'estate_agent';
+        const leadType = (contactRow.custom_fields as Record<string, unknown> | null)?.lead_type;
+        contactIsEstateAgent = leadType === 'estate_agent';
+        contactIsAuctioneer = leadType === 'auctioneer';
+        contactDesk = (contactRow.desk as string | null) ?? 'houses';
         contactId = contactRow.id as string;
         const since = new Date(Date.now() - CALLBACK_WINDOW_DAYS * 86_400_000).toISOString();
         const { data: droppedCall } = await supabase
@@ -244,15 +262,28 @@ serve(async (req: Request) => {
     // voicemail TwiML.
     // Identity = profile UUID (matches what wk-voice-token grants — same
     // value the agent's Device registers under).
+    let agentDesk: string | null = null;
     if (agentId) {
       const { data: profile } = await supabase
         .from('profiles')
-        .select('id')
+        .select('id, active_desk')
         .eq('id', agentId)
         .maybeSingle();
       if (profile) {
         agentClientIdentity = profile.id;
+        agentDesk = (profile.active_desk as string | null) ?? 'houses';
       }
+    }
+
+    // THE DESK (Hugo, 2026-09-18). A known contact rings only on its own
+    // desk: an estate agent or builder ringing while Pedro is on Auction goes
+    // to voicemail and waits on the Houses strip. A caller nobody knows is
+    // filed under the desk he is on. Canonical rule and tests:
+    // api/lib/desk-route.ts, mirrored below because Deno cannot import api/.
+    const route = inboundDeskRoute(contactDesk, agentDesk);
+    if (!route.ring) {
+      console.log(`[wk-voice-twiml-incoming] ${route.desk} contact rang while the agent is on ${agentDesk}: voicemail, not ringing`);
+      agentClientIdentity = null;
     }
 
     // THE CALL RECORD. Its id now travels to the browser (see the <Client>
@@ -296,7 +327,10 @@ serve(async (req: Request) => {
         to_e164: to,
         started_at: new Date().toISOString(),
         ai_coach_enabled: aiCoachEnabled,
-        script_key: contactIsEstateAgent ? 'property_call' : null,
+        script_key: contactIsEstateAgent ? 'property_call' : contactIsAuctioneer ? 'auction_call' : null,
+        // The contact's desk wins in the database trigger when there is a
+        // contact; for a caller nobody knows, this is the desk he is on.
+        desk: route.desk,
       }).select('id').single();
       if (insErr) throw new Error(insErr.message);
       wkCallId = (inserted?.id as string | undefined) ?? null;
@@ -361,6 +395,7 @@ serve(async (req: Request) => {
         wkCallId ? `    <Parameter name="wkCallId" value="${escapeXml(wkCallId)}"/>` : '',
         contactId ? `    <Parameter name="contactId" value="${escapeXml(contactId)}"/>` : '',
         contactIsEstateAgent ? `    <Parameter name="scriptKey" value="property_call"/>` : '',
+        contactIsAuctioneer ? `    <Parameter name="scriptKey" value="auction_call"/>` : '',
         `  </Client>`,
         `</Dial>`,
       ].filter((s) => s.length > 0).join('\n');

@@ -9,6 +9,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/browser';
 import { useImpersonatedAgentId } from '../lib/ViewAsContext';
+import { useDesk, type Desk } from '../lib/DeskContext';
 import type { CallRecord } from '../types';
 
 const PAGE_SIZE = 500;
@@ -86,6 +87,7 @@ export function rowToCall(
 async function fetchCallPage(
   offset: number,
   impAgentId: string | null,
+  desk: Desk,
 ): Promise<{ rows: CallRecord[]; total: number | null; fetchedCount: number }> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let callsQ = (supabase.from('wk_calls' as any) as any)
@@ -93,6 +95,9 @@ async function fetchCallPage(
       'id, contact_id, agent_id, direction, status, started_at, duration_sec, disposition_column_id, agent_note, from_e164, to_e164',
       { count: 'exact' }
     )
+    // wk_calls carries its own desk, stamped when the call is made: an inbound
+    // leg usually has no contact_id to inherit it from.
+    .eq('desk', desk)
     .order('started_at', { ascending: false })
     .range(offset, offset + PAGE_SIZE - 1);
   // "See as: <agent>" — admin impersonating sees that agent's calls only.
@@ -156,6 +161,7 @@ export function useCalls(): UseCallsResult {
   const [hasMore, setHasMore] = useState(true);
   const offsetRef = useRef(0);
   const impId = useImpersonatedAgentId();
+  const { desk } = useDesk();
 
   useEffect(() => {
     let cancelled = false;
@@ -163,7 +169,7 @@ export function useCalls(): UseCallsResult {
     async function load() {
       setLoading(true);
       try {
-        const result = await fetchCallPage(0, impId);
+        const result = await fetchCallPage(0, impId, desk);
         if (cancelled) return;
         setCalls(result.rows);
         setTotal(result.total);
@@ -182,13 +188,13 @@ export function useCalls(): UseCallsResult {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [impId]);
+  }, [impId, desk]);
 
   const loadMore = useCallback(async () => {
     if (loadingMore || !hasMore) return;
     setLoadingMore(true);
     try {
-      const result = await fetchCallPage(offsetRef.current, impId);
+      const result = await fetchCallPage(offsetRef.current, impId, desk);
       setCalls((prev) => [...prev, ...result.rows]);
       if (result.total != null) setTotal(result.total);
       setHasMore(result.fetchedCount >= PAGE_SIZE);
@@ -198,7 +204,7 @@ export function useCalls(): UseCallsResult {
     } finally {
       setLoadingMore(false);
     }
-  }, [loadingMore, hasMore, impId]);
+  }, [loadingMore, hasMore, impId, desk]);
 
   return { calls, loading, loadingMore, error, total, hasMore, loadMore };
 }

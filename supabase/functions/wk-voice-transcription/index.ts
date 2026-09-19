@@ -996,6 +996,120 @@ const PROPERTY_OBJECTIONS: CoachFact[] = [
 
 /** One extra block on the user message so the model cannot mistake the call
  *  type even if it skims the system layers. */
+// ---------------------------------------------------------------------------
+// THE AUCTION CALL (wk_calls.script_key = 'auction_call'), Hugo 2026-09-18
+//
+// The agent is ringing an AUCTION OFFICE about a lot that went under the
+// hammer and did not sell. Same arrangement as the property block above:
+// module constants in lockstep with src/core/content/auction-call-script.html
+// (tests/auction-call-script.test.ts), every reference gated on isAuctionCall,
+// and the Elsie knowledge base REPLACED, never added to.
+// ---------------------------------------------------------------------------
+
+const AUCTION_STAGE_ORDER = [
+  'Is it still available',
+  'What will the seller take',
+  'Is it empty, and anything in the pack',
+  'How they sell it now',
+  'See it, and get the pack',
+];
+
+const AUCTION_AGENT_SCRIPT_MD = `# Ringing the auctioneer about an unsold lot
+
+The lot went under the hammer and did not sell. The auctioneer has to find a
+buyer and wants this call. FIVE things, one pass per lot, and every lot this
+office holds on our list is asked about on the same call. NO PRICE IS AGREED ON
+THE PHONE: a post-auction sale exchanges on the auction's own terms (binding,
+10% deposit, no survey), so every figure goes to the director first.
+
+## 1. Is it still available
+"Hi, it's Pedro from Unico. I'm calling about lot {{lot_number}}. It was in your sale and I can see it didn't sell. Is it still available?"
+If sold or under offer: "Has it exchanged yet? If it falls through, would you give me a call?"
+
+## 2. What will the seller take
+"What would the seller accept for it now? Have you had any offers since the sale?"
+Write the exact figure down. Never say a number of ours.
+
+## 3. Is it empty, and anything in the pack
+"Is it vacant, or is somebody living there?"
+"Anything in the legal pack or the condition I should know about? Roof, damp, anything structural?"
+
+## 4. How they sell it now
+"If the director's happy, how does it work from here? Is it the auction contract, 10% on exchange, and what's the completion date and the buyer's fee?"
+
+## 5. See it, and get the pack
+"Can we get in to see it? And could you email me the legal pack?"
+"Great. I'll take it to my director Hugo and come back to you today."
+`;
+
+const AUCTION_SCRIPT_PROMPT = [
+  'This call is an agent ringing an AUCTION OFFICE about a lot that went under the hammer and DID NOT SELL. The person on the phone works for the auctioneer. We are the buyer. They are not a sales lead.',
+  '',
+  'THE FIVE BEATS, forward-only order, one pass per lot:',
+  '1. Is it still available',
+  '2. What will the seller take (and any offers since the sale)',
+  '3. Is it empty, and anything in the legal pack or the condition',
+  '4. How they sell it now (auction contract, deposit, completion date, buyer\'s fee, best bids deadline)',
+  '5. See it, and get the legal pack emailed',
+  '',
+  'THE ONE HARD RULE. The agent NEVER agrees a price and never says "we\'ll take it" or "that works". A post-auction sale exchanges on the auction\'s own terms: binding, 10% deposit, no survey, no backing out. Any hint of agreeing, fire a card with: "I\'ll put that to my director today and come straight back to you."',
+  'The agent says NO NUMBER OF OURS. Not the guide, not a round figure, not "around". If they ask for our offer, coach: "I\'m not the one who sets the figure, that\'s my director. What would the seller need to get it done?"',
+  '',
+  'WHEN THE AUCTIONEER NAMES A FIGURE, bank it: coach him to repeat it back, write it in the Lots tab, and agree to come back today. Never let him end the call on a number without saying the director will ring back.',
+  'MORE THAN ONE LOT: when one lot is finished, coach "and while I have you, lot N as well" for the next lot in the Lots tab.',
+  'TENANTED is usually a no for us: coach a polite thanks and move to the next lot.',
+  'A LEAK OR DAMP is never a reason to walk: it is the reason the price comes down.',
+  '',
+  'NEVER MENTION: Google reviews, ratings, websites, video, subscriptions, or anything about the Elsie product. If a card would, emit STAY_ON_SCRIPT.',
+  'NEVER INVENT a fact about the lot, the director or the money. If it is not in THIS LEAD, coach him to ask.',
+].join('\n');
+
+const AUCTION_CALL_CONTEXT = [
+  '=== THIS CALL IS ABOUT BUYING AN UNSOLD AUCTION LOT ===',
+  'The person on the phone works for the AUCTIONEER. We are the buyer. No price is agreed on this call and no number of ours is said.',
+  'Five beats: still available, the seller\'s figure, vacant and the pack, how they sell it now, viewing and the legal pack.',
+  'The KNOWLEDGE BASE on this call is the auctioneer objection list. Answer with the approved line from it, never a new argument.',
+].join('\n');
+
+const AUCTION_OBJECTIONS: CoachFact[] = [
+  {
+    key: 'auc_whats_your_offer',
+    label: 'They ask what we will offer',
+    value: 'Say: "I\'m not the one who sets the figure, that\'s my director. What would the seller need to get it done? I\'ll put it to him today." Never say a number of ours.',
+    keywords: ['your offer', 'what would you offer', 'what are you offering', 'make an offer', 'what figure', 'best offer'],
+  },
+  {
+    key: 'auc_reserve_confidential',
+    label: 'The reserve is confidential',
+    value: 'Say: "Understood. Roughly where would an offer need to be for you to take it to the seller?" Most give a range. Bank it.',
+    keywords: ['reserve', 'confidential', 'can\'t tell you', 'cannot say'],
+  },
+  {
+    key: 'auc_best_bids',
+    label: 'Best and final bids by a date',
+    value: 'Say: "No problem. What\'s the deadline, and how do bids go in, by email?" Write the date and the email down for the director.',
+    keywords: ['best and final', 'best bids', 'sealed bids', 'deadline', 'by friday', 'by monday'],
+  },
+  {
+    key: 'auc_other_interest',
+    label: 'Someone else is interested',
+    value: 'Say: "Fair enough. Has anyone actually put a figure in? I\'ll get it to my director today so you have ours as well." Never raise anything on the spot.',
+    keywords: ['other interest', 'someone else', 'another buyer', 'already had interest', 'lot of interest'],
+  },
+  {
+    key: 'auc_proof_of_funds',
+    label: 'They ask for proof of funds or ID',
+    value: 'Say: "No problem, the director will send that over with the offer." Never promise a date or a figure.',
+    keywords: ['proof of funds', 'register', 'id check', 'identification', 'aml', 'money laundering'],
+  },
+  {
+    key: 'auc_who_is_calling',
+    label: 'They ask who is calling',
+    value: 'Say: "It\'s Pedro. I work with Hugo, our director, at Unico. We buy residential property." ONLY if pressed: "Full name\'s Ulinc Unico Group Limited, company number 11197856, registered office 483 Green Lanes, London, N13 4BS."',
+    keywords: ['who\'s calling', 'who is calling', 'what company', 'who do you work for', 'who is this'],
+  },
+];
+
 const PROPERTY_CALL_CONTEXT = [
   '=== THIS CALL IS ABOUT BUYING A HOUSE ===',
   'The person on the phone is an ESTATE AGENT. We are the buyer. There is no product being sold to them, no reviews, no website, no subscription.',
@@ -1019,7 +1133,7 @@ interface CoachLayers {
   // → contact's first name, `{{agent_first_name}}` → agent's first
   // name. Empty string when no script is found at all.
   agentScriptBody: string;
-  agentScriptSource: 'own' | 'column' | 'campaign' | 'default' | 'vsl_close' | 'property_call' | 'none';
+  agentScriptSource: 'own' | 'column' | 'campaign' | 'default' | 'vsl_close' | 'property_call' | 'auction_call' | 'none';
 }
 
 interface CoachOptions {
@@ -1043,7 +1157,7 @@ interface CoachOptions {
    *  Undefined on every normal dial, which renders the original literal. */
   stageOrder?: string[];
   /** 'vsl_close' adds one block to the user message. Undefined = cold call. */
-  callKind?: 'vsl_close' | 'property_call';
+  callKind?: 'vsl_close' | 'property_call' | 'auction_call';
   onChunk: (accumulated: string, isFirst: boolean) => void;
   isAborted: () => boolean;
 }
@@ -1369,6 +1483,7 @@ async function generateCoachSuggestion(
   // byte-identical to what it has always been.
   const closeCallBlock = callKind === 'vsl_close' ? [CLOSE_CALL_CONTEXT, '']
     : callKind === 'property_call' ? [PROPERTY_CALL_CONTEXT, '']
+    : callKind === 'auction_call' ? [AUCTION_CALL_CONTEXT, '']
     : [];
 
   const userMsg = [
@@ -2004,6 +2119,8 @@ serve(async (req: Request) => {
           // Ringing an estate agency about a house. Mutually exclusive with
           // isCloseCall by construction: script_key holds one value.
           const isPropertyCall = (call.script_key as string | null) === 'property_call';
+          // Ringing an auction office about an unsold lot (Auction desk).
+          const isAuctionCall = (call.script_key as string | null) === 'auction_call';
           const [
             recentRes,
             priorCardsRes,
@@ -2256,12 +2373,16 @@ serve(async (req: Request) => {
           const propertyPrompt = isPropertyCall && stepOverlay
             ? `${PROPERTY_SCRIPT_PROMPT}\n\n${'='.repeat(60)}\n${STEP_HEADER}\n${stepOverlay}`
             : isPropertyCall ? PROPERTY_SCRIPT_PROMPT : '';
-          const closeScript = isCloseCall ? CLOSE_SCRIPT_PROMPT : propertyPrompt;
+          const closeScript = isCloseCall ? CLOSE_SCRIPT_PROMPT
+            : isAuctionCall ? AUCTION_SCRIPT_PROMPT
+            : propertyPrompt;
           const closeScriptRow = isCloseCall
             ? { name: 'VSL close', body_md: CLOSE_AGENT_SCRIPT_MD }
             : isPropertyCall
               ? { name: 'Property call', body_md: PROPERTY_AGENT_SCRIPT_MD }
-              : undefined;
+              : isAuctionCall
+                ? { name: 'Auction call', body_md: AUCTION_AGENT_SCRIPT_MD }
+                : undefined;
           let columnScriptRow:
             | { name: string; body_md: string }
             | undefined;
@@ -2391,8 +2512,8 @@ serve(async (req: Request) => {
           // script, and a close call is not a variant of one.
           const resolvedAgentScript =
             closeScriptRow ?? ownScriptRow ?? columnScriptRow ?? campaignScriptRow ?? defaultScriptRow ?? null;
-          const agentScriptSource: 'own' | 'column' | 'campaign' | 'default' | 'vsl_close' | 'property_call' | 'none' = closeScriptRow
-            ? (isPropertyCall ? 'property_call' : 'vsl_close')
+          const agentScriptSource: 'own' | 'column' | 'campaign' | 'default' | 'vsl_close' | 'property_call' | 'auction_call' | 'none' = closeScriptRow
+            ? (isPropertyCall ? 'property_call' : isAuctionCall ? 'auction_call' : 'vsl_close')
             : ownScriptRow
             ? 'own'
             : columnScriptRow
@@ -2420,7 +2541,15 @@ serve(async (req: Request) => {
           const contactFirstName =
             ownerName.split(/\s+/)[0] || contactName.split(/\s+/)[0] || 'the caller';
           const leadFactLines: string[] = [];
-          if (cf.lead_type === 'estate_agent') {
+          if (cf.lead_type === 'auctioneer') {
+            // AN AUCTION OFFICE. The lots are on the Lots tab, per lot, and the
+            // coach cannot see which one is selected, so it gets the office and
+            // coaches the five beats; the lot facts come from the agent.
+            const f = (k: string) => (cf[k] ?? '').trim();
+            leadFactLines.push(`Auction office you are calling: ${contactName}`);
+            if (f('auction_house')) leadFactLines.push(`Auction house: ${f('auction_house')}`);
+            leadFactLines.push('The lots are unsold lots from a recent sale, listed on the agent\'s Lots tab. Never quote our value or the guide back at them.');
+          } else if (cf.lead_type === 'estate_agent') {
             // A PROPERTY CALL. Every fact in the plumber branch below is either
             // empty or actively wrong here: an estate agency has no review count
             // we care about, no local rank we are selling against, and no
@@ -2510,7 +2639,9 @@ serve(async (req: Request) => {
           // what is included, how reviews work) and all of them are wrong when
           // the person on the phone is selling a house. Campaign facts still
           // override by key on both paths, so nothing about a cold dial moves.
-          const baseFacts: CoachFact[] = isPropertyCall ? PROPERTY_OBJECTIONS : wsFacts;
+          const baseFacts: CoachFact[] = isPropertyCall ? PROPERTY_OBJECTIONS
+            : isAuctionCall ? AUCTION_OBJECTIONS
+            : wsFacts;
           const overrideKeys = new Set(campFacts.map((f) => f.key));
           const mergedFacts: CoachFact[] = [
             ...baseFacts.filter((f) => !overrideKeys.has(f.key)),
@@ -2557,9 +2688,11 @@ serve(async (req: Request) => {
             // Both undefined on a cold dial.
             stageOrder: isCloseCall ? CLOSE_STAGE_ORDER
               : isPropertyCall ? PROPERTY_STAGE_ORDER
+              : isAuctionCall ? AUCTION_STAGE_ORDER
               : undefined,
             callKind: isCloseCall ? 'vsl_close'
               : isPropertyCall ? 'property_call'
+              : isAuctionCall ? 'auction_call'
               : undefined,
             onChunk: (accumulated) => {
               if (firstToken) {

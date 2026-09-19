@@ -10,6 +10,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/browser';
+import { useDesk } from '../lib/DeskContext';
 
 export type FollowupStatus = 'pending' | 'done' | 'dismissed' | 'snoozed';
 
@@ -71,6 +72,7 @@ export interface CreateFollowupInput {
 const ACTIVE_STATUSES: FollowupStatus[] = ['pending', 'snoozed'];
 
 export function useFollowups() {
+  const { desk } = useDesk();
   const [items, setItems] = useState<Followup[]>([]);
   const [agentId, setAgentId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -82,12 +84,15 @@ export function useFollowups() {
       const { data: raw, error: e } = await client
         .from('wk_contact_followups')
         .select(
-          'id, contact_id, agent_id, column_id, call_id, due_at, note, status, created_at, updated_at, wk_contacts(name, phone)'
+          'id, contact_id, agent_id, column_id, call_id, due_at, note, status, created_at, updated_at, wk_contacts(name, phone, desk)'
         )
         .eq('agent_id', uid)
         .in('status', ACTIVE_STATUSES)
         .order('due_at', { ascending: true });
-      const data = (raw as any[] | null)?.map((r: any) => ({
+      // Only this desk's timers: a Houses callback must not pop up on Auction.
+      const data = (raw as any[] | null)?.filter((r: any) =>
+        (r.wk_contacts?.desk ?? 'houses') === desk,
+      ).map((r: any) => ({
         ...r,
         contact_name: r.wk_contacts?.name ?? null,
         contact_phone: r.wk_contacts?.phone ?? null,
@@ -103,7 +108,7 @@ export function useFollowups() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [desk]);
 
   useEffect(() => {
     let cancelled = false;

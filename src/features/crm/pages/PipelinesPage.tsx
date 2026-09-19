@@ -33,6 +33,7 @@ import TodayPanel from '../components/deals/TodayPanel';
 import BallparkModal from '../components/deals/BallparkModal';
 import DealFactsBlock from '../components/deals/DealFactsBlock';
 import { callModeForStep } from '../lib/nextStep';
+import { useDesk } from '../lib/DeskContext';
 
 const PIPELINE_LS_KEY = 'crm_pipelines_selected_id';
 
@@ -52,6 +53,7 @@ export default function PipelinesPage() {
   // ran its own one-shot supabase fetch with no retry / cache, which
   // sometimes failed silently after tab navigation and never recovered.
   const { pipelines } = usePipelines();
+  const { desk } = useDesk();
   const [activePipelineId, setActivePipelineId] = useState<string | null>(null);
 
   // Resolve the active id once pipelines arrive (or fall back if the
@@ -160,6 +162,7 @@ export default function PipelinesPage() {
       const [contactsRes, tagsRes] = await Promise.all([
         (supabase.from('wk_contacts' as any) as any)
           .select(CONTACT_COLUMNS)
+          .eq('desk', desk)
           .not('pipeline_column_id', 'is', null),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (supabase.from('wk_contact_tags' as any) as any).select('contact_id, tag'),

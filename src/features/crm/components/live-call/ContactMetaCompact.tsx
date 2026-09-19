@@ -72,7 +72,8 @@ export default function ContactMetaCompact({ contact }: Props) {
   // texts a subscribe-and-pay link, one queues a render of a personalised "you
   // are buried on Google" video, one builds them a website. Every one of them
   // is wrong, and embarrassing, on a property call.
-  const isEstateAgent = cf.lead_type === 'estate_agent';
+  // An auction office (Auction desk) is the same: we are buying, not selling.
+  const isEstateAgent = cf.lead_type === 'estate_agent' || cf.lead_type === 'auctioneer';
 
   return (
     <div className="space-y-1.5">

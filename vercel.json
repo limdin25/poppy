@@ -115,7 +115,7 @@
   "functions": {
     "api/cron/daily-agent-reports.ts": {
       "maxDuration": 300,
-      "includeFiles": "src/core/content/property-call-script.html"
+      "includeFiles": "src/core/content/*-call-script.html"
     },
     "api/cron/review-requests.ts": {
       "maxDuration": 60

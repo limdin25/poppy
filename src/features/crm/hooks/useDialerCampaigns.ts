@@ -8,6 +8,7 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/browser';
+import { useDesk } from '../lib/DeskContext';
 import type { Campaign } from '../types';
 
 interface WkCampaignRow {
@@ -108,6 +109,7 @@ export function useDialerCampaigns(
   opts: UseDialerCampaignsOpts = {},
 ): UseDialerCampaignsResult {
   const { includeInactive = false, scopedToAgentId = null } = opts;
+  const { desk } = useDesk();
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -146,6 +148,10 @@ export function useDialerCampaigns(
         .select(
           'id, name, pipeline_id, parallel_lines, auto_advance_seconds, ai_coach_enabled, ai_coach_prompt_id, script_md, created_by, is_active, voicemail_recording_url, voicemail_drop_enabled'
         )
+        // Houses campaigns on the Houses desk, "Auction - Pedro" on Auction.
+        // Without this the dialer auto-picks the first name alphabetically,
+        // and "Auction" sorts before "Houses".
+        .eq('desk', desk)
         .order('name', { ascending: true });
       if (!includeInactive) {
         campaignsQuery = campaignsQuery.eq('is_active', true);
@@ -252,7 +258,7 @@ export function useDialerCampaigns(
       try { void supabase.removeChannel(queueChan); } catch { /* ignore */ }
       try { void supabase.removeChannel(campaignsChan); } catch { /* ignore */ }
     };
-  }, [seq, includeInactive, scopedToAgentId]);
+  }, [seq, includeInactive, scopedToAgentId, desk]);
 
   return {
     campaigns,

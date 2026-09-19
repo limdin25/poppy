@@ -7,6 +7,7 @@ import { useSmsV2 } from '../../store/SmsV2Store';
 import { useAgentsToday } from '../../hooks/useAgentsToday';
 import { useDialerCampaigns } from '../../hooks/useDialerCampaigns';
 import { usePipelines } from '../../hooks/usePipelines';
+import { useDesk } from '../../lib/DeskContext';
 
 const PIPELINE_LS_KEY = 'crm_bulk_import_pipeline_id';
 
@@ -125,6 +126,7 @@ export default function BulkUploadModal({
   // docs/PLUMBER_LEADS_PIPELINE.md.
   const [plumberDetected, setPlumberDetected] = useState(false);
   const { columns, pushToast } = useSmsV2();
+  const { desk } = useDesk();
   const { agents } = useAgentsToday();
   const { campaigns } = useDialerCampaigns({ includeInactive: true });
 
@@ -329,6 +331,7 @@ export default function BulkUploadModal({
         pipeline_column_id: stageId || null,
         custom_fields: row.customFields,
         is_hot: false,
+        desk,
       };
     });
 
@@ -400,11 +403,16 @@ export default function BulkUploadModal({
     if (campaignId && allPhones.length > 0) {
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        // Only this desk's contacts. A phone that already belongs to the
+        // other desk was skipped by the upsert above and must not be queued
+        // here either, or an Auction upload would drag Houses branches into
+        // the Auction dialer.
         const { data: idRows, error: idErr } = await (
           supabase.from('wk_contacts' as any) as any
         )
           .select('id, phone')
-          .in('phone', allPhones);
+          .in('phone', allPhones)
+          .eq('desk', desk);
         if (idErr) {
           errors.push(`queue lookup: ${idErr.message}`);
         } else {

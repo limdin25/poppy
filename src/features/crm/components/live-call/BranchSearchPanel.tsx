@@ -22,6 +22,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Search, Loader2, Home } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/browser';
 import { useSmsV2 } from '../../store/SmsV2Store';
+import { useDesk } from '../../lib/DeskContext';
 import { usePropertyLinks, phoneTail } from '../../hooks/usePropertyLinks';
 import type { Contact } from '../../types';
 
@@ -57,6 +58,7 @@ const SELECT =
 
 export default function BranchSearchPanel({ callerPhone, onPick }: Props) {
   const { contacts } = useSmsV2();
+  const { desk } = useDesk();
   const [term, setTerm] = useState('');
   const [remote, setRemote] = useState<Contact[]>([]);
   const [searching, setSearching] = useState(false);
@@ -87,6 +89,7 @@ export default function BranchSearchPanel({ callerPhone, onPick }: Props) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { data } = await (supabase.from('wk_contacts' as any) as any)
           .select(SELECT)
+          .eq('desk', desk)
           .or(`name.ilike.${like},phone.ilike.${like}`)
           .limit(8);
         if (cancelled) return;
@@ -95,7 +98,7 @@ export default function BranchSearchPanel({ callerPhone, onPick }: Props) {
       })();
     }, 250);
     return () => { cancelled = true; window.clearTimeout(t); };
-  }, [q]);
+  }, [q, desk]);
 
   const results = useMemo(() => {
     const seen = new Set<string>();

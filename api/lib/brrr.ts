@@ -113,7 +113,7 @@ export interface Qualification {
   // ringing again. Both are warm tracking states he watches on the board, not
   // deals for the director, so neither is a PIPELINE_OUTCOME. The retired AI
   // extractor never emits any of these.
-  outcome?: 'qualified' | 'figure_obtained' | 'deciding' | 'follow_up' | 'not_qualified' | 'callback' | 'no_answer';
+  outcome?: 'qualified' | 'figure_obtained' | 'deciding' | 'follow_up' | 'offer_declined' | 'not_qualified' | 'callback' | 'no_answer';
   next_step?: 'book_viewing' | 'make_offer' | 'monitor_backup' | 'call_back' | 'awaiting_director' | 'none' | null;
   still_available?: boolean | null;
   occupancy?: string | null;            // vacant / tenanted (+ tenancy details)

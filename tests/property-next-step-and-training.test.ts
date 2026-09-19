@@ -46,8 +46,9 @@ const BANK = read('api/lib/training-questions.ts');
 
 describe('the property call pane', () => {
   it('drops the two buttons that sell the plumber product', () => {
-    expect(TABS).toMatch(/!isPropertyCall && <VideoLinkButton/);
-    expect(TABS).toMatch(/!isPropertyCall && <SendSiteButton/);
+    // And on an auction call (Auction desk, 2026-09-18).
+    expect(TABS).toMatch(/!isPropertyCall && !auctionCall && <VideoLinkButton/);
+    expect(TABS).toMatch(/!isPropertyCall && !auctionCall && <SendSiteButton/);
   });
 
   it('keeps both of them on a plumber call', () => {

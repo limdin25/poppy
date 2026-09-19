@@ -40,14 +40,19 @@ import { FileText, Pencil, Printer, Save, X } from 'lucide-react';
 import scriptHtml from '@/core/content/one-call-script.html?raw';
 import vslCloseHtml from '@/core/content/vsl-close-script.html?raw';
 import propertyCallHtml from '@/core/content/property-call-script.html?raw';
+import auctionCallHtml from '@/core/content/auction-call-script.html?raw';
 import { useAuth } from '@/features/crm/lib/useCrmAuth';
 import { useSalesScript } from '../../hooks/useSalesScript';
 import { useVslCloseScript } from '../../hooks/useVslCloseScript';
 import { usePropertyCallScript } from '../../hooks/usePropertyCallScript';
+import { useAuctionCallScript } from '../../hooks/useAuctionCallScript';
 import { interpolateScript, highlightTokens, stripHighlights } from '../../lib/interpolateScript';
 import type { Contact } from '../../types';
 
-export type ScriptKey = 'cold_call' | 'vsl_close' | 'property_call';
+// 'auction_call' (2026-09-18): auction-call-script.html / wk_auction_call_script,
+// the Auction desk, ringing an auctioneer about an unsold lot. Its lot tokens
+// come from the lot selected in the Lots tab via `extraTokens`.
+export type ScriptKey = 'cold_call' | 'vsl_close' | 'property_call' | 'auction_call';
 
 // Reuse the script's own print rules (hide topbar/rails/controls, page full
 // width) but apply them always, so the dialer shows only the centre column.
@@ -62,12 +67,14 @@ const LEAN_HTML: Record<ScriptKey, string> = {
   cold_call: scriptHtml.replace('</head>', `${LEAN_STYLE}</head>`),
   vsl_close: vslCloseHtml.replace('</head>', `${LEAN_STYLE}</head>`),
   property_call: propertyCallHtml.replace('</head>', `${LEAN_STYLE}</head>`),
+  auction_call: auctionCallHtml.replace('</head>', `${LEAN_STYLE}</head>`),
 };
 
 const PANE_TITLE: Record<ScriptKey, string> = {
   cold_call: 'Sales script',
   vsl_close: 'Close script · they watched the video',
   property_call: 'Property call · estate agent',
+  auction_call: 'Auction call · unsold lot',
 };
 
 interface Props {
@@ -99,10 +106,12 @@ export default function DialerScriptPane({ contact, scriptKey = 'cold_call', ext
   const cold = useSalesScript();
   const vslClose = useVslCloseScript();
   const propertyCall = usePropertyCallScript();
+  const auctionCall = useAuctionCallScript();
   const byKey: Record<ScriptKey, typeof cold> = {
     cold_call: cold,
     vsl_close: vslClose,
     property_call: propertyCall,
+    auction_call: auctionCall,
   };
   const { savedHtml, loading, saving, error, save } = byKey[scriptKey] ?? cold;
   const iframeRef = useRef<HTMLIFrameElement>(null);

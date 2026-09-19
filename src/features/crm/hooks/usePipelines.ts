@@ -21,6 +21,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/browser';
+import { useDesk, type Desk } from '../lib/DeskContext';
 
 export interface PipelineRow {
   id: string;
@@ -29,20 +30,23 @@ export interface PipelineRow {
 
 const STALE_MS = 5 * 60_000; // 5 min — pipelines barely change
 
-async function fetchPipelines(): Promise<PipelineRow[]> {
+async function fetchPipelines(desk: Desk): Promise<PipelineRow[]> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await (supabase.from('wk_pipelines' as any) as any)
     .select('id, name')
     .eq('is_active', true)
+    .eq('desk', desk)
     .order('created_at', { ascending: true });
   if (error) throw new Error(error.message);
   return (data ?? []) as PipelineRow[];
 }
 
 export function usePipelines() {
+  // Houses boards on the Houses desk, the Auction board on the Auction desk.
+  const { desk } = useDesk();
   const q = useQuery<PipelineRow[]>({
-    queryKey: ['wk_pipelines', 'active'],
-    queryFn: fetchPipelines,
+    queryKey: ['wk_pipelines', 'active', desk],
+    queryFn: () => fetchPipelines(desk),
     staleTime: STALE_MS,
     // Explicit override of the app-wide refetchOnWindowFocus:false
     // default so the picker auto-recovers when the agent comes back

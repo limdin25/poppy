@@ -4,6 +4,7 @@ import { Phone, PhoneOutgoing, Play, FileText, X, Pencil } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/browser';
 import AgentChip from '../../components/shared/AgentChip';
 import { useImpersonatedAgentId } from '@/features/crm/lib/ViewAsContext';
+import { useDesk, type Desk } from '@/features/crm/lib/DeskContext';
 import { signCallRecording } from '@/features/crm/hooks/useCalls';
 import CallTranscriptModal from '@/features/crm/components/calls/CallTranscriptModal';
 
@@ -32,10 +33,11 @@ interface CallRow {
   agentNote: string | null;
 }
 
-async function fetchPage(pageParam: number, impAgentId: string | null): Promise<CallRow[]> {
+async function fetchPage(pageParam: number, impAgentId: string | null, desk: Desk): Promise<CallRow[]> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let callsQ = (supabase.from('wk_calls' as any) as any)
     .select('id, contact_id, direction, status, started_at, duration_sec, agent_note')
+    .eq('desk', desk)
     .order('started_at', { ascending: false })
     .range(pageParam * PAGE_SIZE, (pageParam + 1) * PAGE_SIZE - 1);
   // "See as: <agent>" — admin impersonating sees that agent's call history.
@@ -98,6 +100,7 @@ export default function CallHistoryPro({ onCountChange, onEditContact, onRedial 
   const sentinelRef = useRef<HTMLDivElement>(null);
 
   const impId = useImpersonatedAgentId();
+  const { desk } = useDesk();
   const {
     data,
     isLoading,
@@ -105,8 +108,8 @@ export default function CallHistoryPro({ onCountChange, onEditContact, onRedial 
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteQuery({
-    queryKey: ['dialer-pro-call-history', impId ?? 'self'],
-    queryFn: ({ pageParam }) => fetchPage(pageParam, impId),
+    queryKey: ['dialer-pro-call-history', impId ?? 'self', desk],
+    queryFn: ({ pageParam }) => fetchPage(pageParam, impId, desk),
     initialPageParam: 0,
     getNextPageParam: (lastPage, _allPages, lastPageParam) =>
       lastPage.length === PAGE_SIZE ? lastPageParam + 1 : undefined,

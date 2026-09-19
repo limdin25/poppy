@@ -101,7 +101,7 @@ describe('a bare /dialer-pro opens the room the AGENT belongs in', () => {
   // Houses, still gets cold_call byte-identically.
   it('an explicit ?script= in the URL still wins, allowlisted, captured once', () => {
     expect(DIALER).toMatch(/const q = searchParams\.get\('script'\);/)
-    expect(DIALER).toMatch(/return q === 'vsl_close' \|\| q === 'property_call' \? q : null;/)
+    expect(DIALER).toMatch(/return q === 'vsl_close' \|\| q === 'property_call' \|\| q === 'auction_call' \? q : null;/)
     // Captured in a useState initialiser so clearing the query string
     // mid-call cannot swap the script under the agent.
     expect(DIALER).toMatch(/const \[urlScript\] = useState/)

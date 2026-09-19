@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/browser';
 import type { Callback, CallbackKind } from '../lib/callbackList';
+import { useDesk } from '../lib/DeskContext';
 
 interface RpcRow {
   contact_id: string;
@@ -42,12 +43,14 @@ export function useCallbacks(enabled = true): {
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const uid = useRef<string | null>(null);
+  // A builder who rings back while Pedro is on Auction waits on the Houses strip.
+  const { desk } = useDesk();
 
   const load = useCallback(async () => {
     if (!enabled) return;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error: err } = await (supabase as any)
-      .rpc('wk_callbacks_open', { p_hours: WINDOW_HOURS });
+      .rpc('wk_callbacks_open', { p_hours: WINDOW_HOURS, p_desk: desk });
     setReady(true);
     if (err) { setError(err.message); return; }
     setError(null);
@@ -61,7 +64,7 @@ export function useCallbacks(enabled = true): {
       missed: Boolean(r.missed),
       preview: String(r.preview ?? ''),
     })));
-  }, [enabled]);
+  }, [enabled, desk]);
 
   // The first fetch. The rule below cannot see that every setState in `load`
   // happens after an await, so it reads this as a synchronous cascade. Same

@@ -727,8 +727,9 @@ describe('property days are graded against the property business', () => {
     const fns = (JSON.parse(read('vercel.json')) as {
       functions: Record<string, { includeFiles?: string }>
     }).functions
+    // Both scripts ship: property and auction (the Auction desk, 2026-09-18).
     expect(fns['api/cron/daily-agent-reports.ts']?.includeFiles)
-      .toBe('src/core/content/property-call-script.html')
+      .toBe('src/core/content/*-call-script.html')
   })
 
   it('htmlToText keeps the words and drops the markup', async () => {

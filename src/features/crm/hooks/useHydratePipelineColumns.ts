@@ -11,6 +11,7 @@
 import { useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/browser';
 import { useSmsV2 } from '../store/SmsV2Store';
+import { useDesk } from '../lib/DeskContext';
 import type { PipelineColumn } from '../types';
 
 interface WkColumnRow {
@@ -72,6 +73,7 @@ export function rowToPipelineColumn(
 
 export function useHydratePipelineColumns(): void {
   const { setColumns } = useSmsV2();
+  const { desk } = useDesk();
 
   // SmsV2Store builds its api inside useMemo([state, ...]), so `setColumns`
   // gets a fresh reference every dispatch. Putting it in the effect deps
@@ -87,12 +89,24 @@ export function useHydratePipelineColumns(): void {
     let cancelled = false;
 
     async function load() {
+      // Only this desk's boards. The post-call panel offers EVERY column in
+      // the store as an outcome, so Houses columns in the Auction store would
+      // put "Ballpark agreed" under an auction call.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: deskPipes } = await (supabase.from('wk_pipelines' as any) as any)
+        .select('id')
+        .eq('desk', desk);
+      if (cancelled) return;
+      const pipelineIds = ((deskPipes ?? []) as Array<{ id: string }>).map((p) => p.id);
+      if (pipelineIds.length === 0) return;
+
       const [colsRes, autoRes] = await Promise.all([
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (supabase.from('wk_pipeline_columns' as any) as any)
           .select(
             'id, pipeline_id, name, colour, icon, position, is_default_on_timeout, requires_followup, call_script_id, coach_profile_id'
           )
+          .in('pipeline_id', pipelineIds)
           // Archived columns are hidden from the board AND from every stage
           // picker. The eight video-funnel columns were archived on 2026-07-27
           // — the funnel has its own board and no longer overwrites the call
@@ -158,5 +172,7 @@ export function useHydratePipelineColumns(): void {
       try { void supabase.removeChannel(colsCh); } catch { /* ignore */ }
       try { void supabase.removeChannel(autoCh); } catch { /* ignore */ }
     };
-  }, []);
+    // desk is a stable string for the life of this store (the store is keyed
+    // on it), so this never loops.
+  }, [desk]);
 }

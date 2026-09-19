@@ -12,6 +12,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/browser';
+import { useDesk } from '../lib/DeskContext';
 
 export type ChannelKind = 'sms' | 'whatsapp' | 'email';
 
@@ -36,6 +37,7 @@ interface MessageRow {
 interface ContactRow {
   id: string;
   name: string | null;
+  desk: string | null;
 }
 
 const RECENT_LIMIT = 20;
@@ -45,6 +47,7 @@ export function useInboxNotifications(): {
   recent: InboxNotification[];
   markAllRead: () => void;
 } {
+  const { desk } = useDesk();
   const [recent, setRecent] = useState<InboxNotification[]>([]);
   const [unread, setUnread] = useState(0);
   // Cutoff = the time the user first mounted this hook. Anything older
@@ -71,13 +74,17 @@ export function useInboxNotifications(): {
         const ids = Array.from(new Set(msgs.map((m) => m.contact_id)));
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const contactsRes = await (supabase.from('wk_contacts' as any) as any)
-          .select('id, name')
+          .select('id, name, desk')
           .in('id', ids);
         const nameById = new Map<string, string>();
+        const inDesk = new Set<string>();
         for (const c of (contactsRes.data ?? []) as ContactRow[]) {
           nameById.set(c.id, c.name ?? 'Unknown');
+          if ((c.desk ?? 'houses') === desk) inDesk.add(c.id);
         }
-        const next: InboxNotification[] = msgs.map((m) => ({
+        // Hugo, 2026-09-18: on Auction "no communication comes" from the old
+        // work. A Houses message still lands, in Houses, just not as a ping here.
+        const next: InboxNotification[] = msgs.filter((m) => inDesk.has(m.contact_id)).map((m) => ({
           id: m.id,
           contactId: m.contact_id,
           contactName: nameById.get(m.contact_id) ?? 'Unknown',
@@ -98,7 +105,7 @@ export function useInboxNotifications(): {
         /* RLS / table missing — bell stays at 0, doesn't crash. */
       }
     },
-    []
+    [desk]
   );
 
   useEffect(() => {

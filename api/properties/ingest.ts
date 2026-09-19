@@ -129,6 +129,18 @@ export default async function handler(req: Request): Promise<Response> {
       floorplan_urls: Array.isArray(body.floorplans) ? body.floorplans : [],
       comps: Array.isArray(body.comps) ? body.comps : [],
       deal,
+      // THE AUCTION LANE (2026-09-18). An unsold lot from the VPS auction
+      // scraper is a property like any house, filed on the Auction desk so the
+      // Houses assign script can never deal it to the Houses queue. Its
+      // auction facts and photos travel in their own columns. A Rightmove
+      // house sends none of these and keeps exactly what it had.
+      ...(body.desk === 'auction' ? {
+        desk: 'auction',
+        auction: body.auction && typeof body.auction === 'object' ? body.auction : null,
+        photo_urls: Array.isArray(body.photo_urls)
+          ? (body.photo_urls as unknown[]).filter((u): u is string => typeof u === 'string').slice(0, 20)
+          : [],
+      } : {}),
       ...(killedStatus ? { status: killedStatus } : {}),
       updated_at: new Date().toISOString(),
     };

@@ -8,6 +8,7 @@ import { useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/browser';
 import { useSmsV2 } from '../store/SmsV2Store';
 import { useImpersonatedAgentId } from '../lib/ViewAsContext';
+import { useDesk } from '../lib/DeskContext';
 import type { Contact } from '../types';
 
 interface WkContactRow {
@@ -68,6 +69,8 @@ export function useHydrateContacts(): void {
   // feeds the pipeline board, contacts page and contact enrichment everywhere)
   // holds only that agent's leads. Null = whole workspace / RLS-scoped.
   const impId = useImpersonatedAgentId();
+  // Houses or Auction. The store only ever holds one desk's contacts.
+  const { desk } = useDesk();
 
   // CRITICAL (Hugo 2026-07-22): SmsV2Store builds its api inside useMemo([state,
   // …]), so these actions get a FRESH reference on every dispatch. Depending on
@@ -105,7 +108,8 @@ export function useHydrateContacts(): void {
       // 1. HEAD count
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let headQ = (supabase.from('wk_contacts' as any) as any)
-        .select('id', { count: 'exact', head: true });
+        .select('id', { count: 'exact', head: true })
+        .eq('desk', desk);
       if (impId) headQ = headQ.eq('owner_agent_id', impId);
       const { count: totalCount } = await headQ;
       if (cancelled) return;
@@ -125,6 +129,7 @@ export function useHydrateContacts(): void {
           .select(
             CONTACT_COLUMNS
           )
+          .eq('desk', desk)
           .order('created_at', { ascending: false })
           .range(from, to);
         if (impId) pageQ = pageQ.eq('owner_agent_id', impId);
@@ -176,8 +181,14 @@ export function useHydrateContacts(): void {
             removeContactRef.current(payload.old.id as string);
             return;
           }
-          const row = payload.new as WkContactRow | undefined;
+          const row = payload.new as (WkContactRow & { desk?: string }) | undefined;
           if (!row) return;
+          // A contact from the other desk never enters this store. One that
+          // has just been moved to the other desk leaves it.
+          if ((row.desk ?? 'houses') !== desk) {
+            removeContactRef.current(row.id);
+            return;
+          }
           // While impersonating, ignore realtime rows outside the agent's leads.
           if (impId && (row.owner_agent_id ?? null) !== impId) return;
           upsertContactRef.current(rowToContact(row, []));
@@ -189,9 +200,9 @@ export function useHydrateContacts(): void {
       cancelled = true;
       void supabase.removeChannel(channel);
     };
-    // Re-run only when the impersonation target changes (impId is a stable
-    // primitive — it does NOT churn per render, so no re-fetch loop). Store
-    // actions stay in refs above. See the block comment.
+    // Re-run only when the impersonation target or the desk changes (both
+    // stable primitives, they do NOT churn per render, so no re-fetch loop).
+    // Store actions stay in refs above. See the block comment.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [impId]);
+  }, [impId, desk]);
 }

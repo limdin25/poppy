@@ -23,6 +23,8 @@ import ContactMetaCompact from './ContactMetaCompact';
 import CallTimeline from './CallTimeline';
 import PostCallPanel from './PostCallPanel';
 import PropertyCallRoom from './PropertyCallRoom';
+import AuctionCallRoom from './AuctionCallRoom';
+import { useDesk } from '../../lib/DeskContext';
 import BranchSearchPanel from './BranchSearchPanel';
 import DtmfKeypad from '../../dialer-pro/controls/DtmfKeypad';
 import EditContactModal from '../contacts/EditContactModal';
@@ -121,10 +123,16 @@ export default function LiveCallScreen() {
   // front of Pedro even when he has to search for the branch.
   const { listings } = usePropertyListings(contact?.phone ?? call?.phone);
   const agentDefaultScript = useAgentDefaultScript();
-  const isPropertyCall =
+  // An auction office ringing back, or anyone ringing while he is on the
+  // Auction desk (a caller we do not know is filed on the desk he is on).
+  const { desk } = useDesk();
+  const isAuctionCall =
+    contact?.customFields?.lead_type === 'auctioneer'
+    || (desk === 'auction' && !contact);
+  const isPropertyCall = !isAuctionCall && (
     listings.length > 0
     || contact?.customFields?.lead_type === 'estate_agent'
-    || (agentDefaultScript === 'property_call' && !contact);
+    || (agentDefaultScript === 'property_call' && !contact));
 
   // File the call against the branch he picked, so the outcome he presses
   // afterwards lands on the deal instead of nowhere.
@@ -137,12 +145,15 @@ export default function LiveCallScreen() {
     setPickedContact(picked);
     const callId = call?.callId;
     if (!callId) return;
-    const isProperty = hasHouses || picked.customFields?.lead_type === 'estate_agent';
+    const isAuction = picked.customFields?.lead_type === 'auctioneer';
+    const isProperty = !isAuction && (hasHouses || picked.customFields?.lead_type === 'estate_agent');
     void supabase
       .from('wk_calls')
-      .update(isProperty
-        ? { contact_id: picked.id, script_key: 'property_call' }
-        : { contact_id: picked.id })
+      .update(isAuction
+        ? { contact_id: picked.id, script_key: 'auction_call' }
+        : isProperty
+          ? { contact_id: picked.id, script_key: 'property_call' }
+          : { contact_id: picked.id })
       .eq('id', callId);
   }, [call?.callId]);
 
@@ -194,7 +205,7 @@ export default function LiveCallScreen() {
 
   if (!fullScreen) return null;
 
-  if (!contact && !isPropertyCall) {
+  if (!contact && !isPropertyCall && !isAuctionCall) {
     return (
       <div className="fixed inset-0 z-[200] bg-[#F3F3EE] flex flex-col">
         <header className="h-14 flex items-center px-5 gap-3 flex-shrink-0 bg-white border-b border-[#E5E7EB]">
@@ -448,7 +459,29 @@ export default function LiveCallScreen() {
           coach. Pedro: "the transition of hey elsie from dialer to when I
           answer an incoming call is very different and its difficult to find
           information." Everything else keeps the four columns below. */}
-      {isPropertyCall ? (
+      {isAuctionCall ? (
+        <div
+          className="flex-1 overflow-hidden"
+          style={{ paddingTop: 'calc(var(--followup-banner-h, 0px) + var(--callback-banner-h, 0px))' }}
+          data-testid="inbound-auction-room"
+        >
+          <AuctionCallRoom
+            contact={contact}
+            contactHeader={contactCard}
+            emptyState={
+              <BranchSearchPanel callerPhone={call?.phone ?? ''} onPick={pickBranch} />
+            }
+            currentCallId={call?.callId ?? null}
+            callConnected={phase === 'in_call'}
+            liveDurationSec={durationSec}
+            agentFirstName={myFirstName ?? ''}
+            campaignId={call?.campaignId ?? null}
+            pipelineId={callPipelineId}
+            direction="inbound"
+            autoSaveId="livecall-auction-layout-v1"
+          />
+        </div>
+      ) : isPropertyCall ? (
         <div
           className="flex-1 overflow-hidden"
           style={{ paddingTop: 'calc(var(--followup-banner-h, 0px) + var(--callback-banner-h, 0px))' }}

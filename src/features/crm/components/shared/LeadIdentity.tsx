@@ -66,7 +66,9 @@ export function isPropertyLead(
   customFields?: Record<string, string> | null,
   hasDeal?: boolean,
 ): boolean {
-  return Boolean(hasDeal) || customFields?.lead_type === 'estate_agent';
+  return Boolean(hasDeal) || customFields?.lead_type === 'estate_agent'
+    // An auction office on the Auction desk: property, not an Elsie lead.
+    || customFields?.lead_type === 'auctioneer';
 }
 
 /** The person to ask for, from either place it can be recorded. */

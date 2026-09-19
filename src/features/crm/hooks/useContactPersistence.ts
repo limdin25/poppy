@@ -11,6 +11,7 @@
 
 import { useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/browser';
+import { useDesk } from '../lib/DeskContext';
 
 export const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -97,6 +98,7 @@ export interface ContactPersistAPI {
 }
 
 export function useContactPersistence(): ContactPersistAPI {
+  const { desk } = useDesk();
   const moveToColumn = useCallback(async (contactId: string, columnId: string) => {
     if (!isRealContactId(contactId)) return true;
     // Mock column ID (e.g. "col-interested" from MOCK_PIPELINES) — no-op.
@@ -211,6 +213,8 @@ export function useContactPersistence(): ContactPersistAPI {
         pipeline_column_id: pipelineColumnId,
         custom_fields: input.customFields ?? {},
         is_hot: false,
+        // A contact made on the Auction desk belongs to Auction.
+        desk,
       })
       .select('id')
       .single();
@@ -232,7 +236,7 @@ export function useContactPersistence(): ContactPersistAPI {
     }
     const newId = (data as { id: string } | null)?.id ?? null;
     return newId ? { id: newId, existed: false } : null;
-  }, []);
+  }, [desk]);
 
   return { moveToColumn, patchContact, replaceTags, createContact };
 }

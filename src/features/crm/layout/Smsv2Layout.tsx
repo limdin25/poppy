@@ -20,6 +20,8 @@ import FollowupBanner from '../components/followups/FollowupBanner';
 import CallbackBanner from '../components/followups/CallbackBanner';
 import { DialerProModalProvider } from './DialerProModalContext';
 import DialerProModal from './DialerProModal';
+import DeskToggle from './DeskToggle';
+import { DeskProvider, useDesk } from '../lib/DeskContext';
 
 // Side-effect-only component: pumps real wk_contacts and wk_pipeline_columns
 // into the store so every /smsv2 page reads live data with real UUIDs
@@ -47,6 +49,32 @@ function ViewAsBanner() {
 }
 
 export default function Smsv2Layout() {
+  return (
+    <CrmGuard>
+      <DeskProvider>
+        <DeskScopedCrm />
+      </DeskProvider>
+    </CrmGuard>
+  );
+}
+
+// THE WHOLE CRM IS KEYED ON THE DESK. Switching Houses <-> Auction unmounts the
+// store and everything under it and builds it again from the database, so no
+// list can be left holding the other desk's rows. Nothing renders until the
+// desk is known, so Pedro on Auction never sees a flash of Houses first.
+function DeskScopedCrm() {
+  const { desk, resolved } = useDesk();
+  if (!resolved) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#F3F3EE]">
+        <div className="w-8 h-8 border-2 border-[#3C5A87] border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+  return <CrmShell key={desk} />;
+}
+
+function CrmShell() {
   // Start collapsed the first time, then remember the user's choice across
   // loads (localStorage). Default collapsed keeps the dialer clean out of the box.
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -74,7 +102,6 @@ export default function Smsv2Layout() {
   }, [onDialer]);
 
   return (
-    <CrmGuard>
       <SmsV2Provider>
       <ViewAsProvider>
         <StoreHydrator />
@@ -105,6 +132,8 @@ export default function Smsv2Layout() {
                   Elsie
                 </Link>
                 <span className="text-sm font-medium text-[#9CA3AF]">CRM</span>
+
+                <DeskToggle />
 
                 <div className="ml-auto flex items-center gap-3">
                   <ViewAsSelector />
@@ -165,6 +194,5 @@ export default function Smsv2Layout() {
         </ActiveCallProvider>
       </ViewAsProvider>
       </SmsV2Provider>
-    </CrmGuard>
   );
 }

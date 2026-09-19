@@ -100,8 +100,9 @@ describe('ONE room, dialled or answered', () => {
     // set and his script pane must not move.
     expect(PAGE).toMatch(/autoSaveId="dialer-pro-call-layout-v4"/)
     expect(PAGE).toMatch(/<CallTimeline callId=\{state\.currentCallId\} \/>/)
-    // The property room can only be reached through the houses gate.
-    expect(PAGE).toMatch(/\{isHousesCall \? \(/)
+    // The property room can only be reached through the houses gate (after
+    // the Auction desk's own gate, 2026-09-18).
+    expect(PAGE).toMatch(/isHousesCall \? \(\s*\/\*[\s\S]*?\*\/\s*<PropertyCallRoom/)
   })
 
   it('the script is the property script, in whichever of the two calls the deal is on', () => {
@@ -222,8 +223,10 @@ describe('the inbound call is a real call', () => {
   })
 
   it('files it as a property call when the caller is an estate agent', () => {
-    expect(TWIML).toMatch(/script_key: contactIsEstateAgent \? 'property_call' : null/)
-    expect(TWIML).toMatch(/lead_type\W+=== 'estate_agent'/)
+    // An auction office files as an auction call (Auction desk, 2026-09-18).
+    expect(TWIML).toMatch(/script_key: contactIsEstateAgent \? 'property_call' : contactIsAuctioneer \? 'auction_call' : null/)
+    expect(TWIML).toMatch(/contactIsEstateAgent = leadType === 'estate_agent'/)
+    expect(TWIML).toMatch(/const leadType = \(contactRow\.custom_fields as Record<string, unknown> \| null\)\?\.lead_type/)
   })
 
   it('hands the id and the contact to the browser on the TwiML', () => {
@@ -303,7 +306,9 @@ describe('an unknown number still gets the script, and a way to find them', () =
 
   it('picking a branch files the call against it, and tells the coach', () => {
     expect(SCREEN).toMatch(/contact_id: picked\.id, script_key: 'property_call'/)
-    expect(SCREEN).toMatch(/const isProperty = hasHouses \|\| picked\.customFields\?\.lead_type === 'estate_agent'/)
+    // An auction office picked from the search files as an auction call.
+    expect(SCREEN).toMatch(/contact_id: picked\.id, script_key: 'auction_call'/)
+    expect(SCREEN).toMatch(/const isProperty = !isAuction && \(hasHouses \|\| picked\.customFields\?\.lead_type === 'estate_agent'\)/)
   })
 
   it('and the room with no contact still cannot show a figure', () => {

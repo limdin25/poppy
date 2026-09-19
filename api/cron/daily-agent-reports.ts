@@ -316,6 +316,87 @@ export function isPropertyDay(calls: CallRow[]): boolean {
   return calls.some((c) => c.script_key === 'property_call');
 }
 
+/** The Auction desk (2026-09-18). A day is graded as an auction day when most
+ *  of it was auction calls; the auction calls are never graded against the
+ *  estate-agent or the plumber script, whichever way the day goes. */
+export function isAuctionCall(c: CallRow): boolean {
+  return c.script_key === 'auction_call';
+}
+export function isAuctionDay(calls: CallRow[]): boolean {
+  const auction = calls.filter(isAuctionCall).length;
+  return auction > 0 && auction >= calls.length - auction;
+}
+
+/** The bundled auction script, read the same way as the property one. */
+async function loadAuctionScript(): Promise<string> {
+  const { data } = await supabase
+    .from('wk_auction_call_script')
+    .select('html')
+    .eq('id', 1)
+    .maybeSingle();
+  let html = (data?.html as string | null) ?? '';
+  if (!html) {
+    try {
+      html = readFileSync(
+        join(process.cwd(), 'src', 'core', 'content', 'auction-call-script.html'),
+        'utf8',
+      );
+    } catch {
+      html = '';
+    }
+  }
+  return htmlToText(html);
+}
+
+const AUCTION_SYSTEM = `You write the end-of-day coaching report for a UK property caller working the AUCTION desk. They ring auction houses about lots that went under the hammer and did NOT sell, on behalf of a cash buyer: the company is Unico, the director is Hugo.
+
+THE CALL IS FIVE QUESTIONS, ONE PASS PER LOT, and every lot an office holds on our list is asked about on the same call: is it still available, what would the seller accept (and any offers since the sale), is it vacant and is there anything in the legal pack or the condition, how do they sell it now (auction contract, 10% deposit, completion date, buyer's fee, any best-bids deadline), and can we view it and have the legal pack emailed. The score of the day is the SELLER'S FIGURE written down and sent to the director. A pleasant call that ends without the seller's figure has missed its point.
+
+THE ONE HARD RULE: the caller NEVER agrees a price and never says "we'll take it". A post-auction sale exchanges on the auction's own terms (binding, 10% deposit, no survey), so every figure goes to the director first. They also never say a number of our own, not the guide, not a round figure. Report either plainly, with the quote.
+
+The agent reads this report themselves. Be direct and complete, and give the fix, not a telling-off. Quote their own words and name the auction office so they can find the call. The statistics are given to you and are correct; never recompute them. The transcripts come from speech recognition and mangle names ("Hugo" as "Ugo", "Unico" as "Unio"); never coach anyone off a mangled name.
+
+Write in British English, plain language, second person. Never write a long dash (em or en dash) or curly quotes. Markdown, no title heading, roughly 250-400 words, in this order:
+**Today**: two or three sentences on how the day went, including pace.
+**What worked**: up to three specific things, each with a quote or an office name.
+**The five questions**: for each, how often it was asked, and where it was missed, the words used instead.
+**Fix tomorrow**: every genuine problem, most important first, each with the words to use instead.
+**Tomorrow's one thing**: one sentence.
+
+After the report, and only if the caller agreed a price, said a number of ours, swore, was rude, or invented a fact, append this exact delimiter on its own line:
+
+---FLAGS---
+
+followed by a JSON array, one object per item, and nothing else:
+[{"type":"swearing|rudeness|pressure|formal_offer|invented_fact|first_call_figure","quote":"their exact words","company":"office name","call_id":"the call_id","why":"one sentence on why it matters"}]
+
+Emit the delimiter only when there is at least one item.`;
+
+async function writeAuctionReport(
+  agentName: string,
+  dateKey: string,
+  stats: ReturnType<typeof computeStats>,
+  transcripts: string,
+  script: string,
+  dispositions: Record<string, number>,
+  otherCalls: number,
+): Promise<string> {
+  const prompt = `Agent: ${agentName}
+Date: ${dateKey}
+Business: unsold auction lots, ringing the auction house for a cash buyer.${otherCalls ? `
+They also made ${otherCalls} call(s) on the Houses desk today; those are not graded here.` : ''}
+
+STATISTICS (authoritative, do not recompute):
+${JSON.stringify({ ...stats, dispositions }, null, 2)}
+
+THE SCRIPT:
+${script || '(script text unavailable, grade against the five questions above)'}
+
+TRANSCRIPTS OF TODAY'S LIVE AUCTION CONVERSATIONS (voicemails excluded):
+${transcripts || '(no live conversations today)'}`;
+  return callClaude(AUCTION_SYSTEM, prompt);
+}
+
 /** Rough text of an HTML script, good enough for a model to read as THE
  *  SCRIPT. Headings kept, styles/notes markup dropped. */
 export function htmlToText(html: string): string {
@@ -1055,8 +1136,17 @@ export default async function handler(
       };
     flags: ConductFlag[];
   }> = [];
+  // Auction-desk days (2026-09-18), their own list because the stats differ.
+  const writtenAuction: Array<{
+    name: string;
+    body: string;
+    stats: ReturnType<typeof computeStats> & ReturnType<typeof paceStats>
+      & { kind: 'auction'; dispositions: Record<string, number> };
+    flags: ConductFlag[];
+  }> = [];
   // Loaded once, and only on a day that actually has a property agent.
   let propertyScript: Promise<string> | null = null;
+  let auctionScript: Promise<string> | null = null;
 
   for (const agent of roster) {
     const name = (agent.name || agent.email || 'Agent') as string;
@@ -1097,6 +1187,37 @@ export default async function handler(
       script_key: (c as { script_key?: string | null }).script_key ?? null,
       lines: byCall.get(c.id) ?? [],
     }));
+
+    // An auction day is graded against the auction script (2026-09-18).
+    if (isAuctionDay(rows)) {
+      const auctionRows = rows.filter(isAuctionCall);
+      const script = await (auctionScript ?? (auctionScript = loadAuctionScript()));
+      const dispositions = dispositionCounts(auctionRows);
+      const stats = { kind: 'auction' as const, ...computeStats(auctionRows), ...paceStats(auctionRows), dispositions };
+      let raw: string;
+      try {
+        raw = await writeAuctionReport(
+          name, dateKey, computeStats(auctionRows), transcriptBlock(auctionRows),
+          script, dispositions, rows.length - auctionRows.length,
+        );
+      } catch (e) {
+        console.error(`[daily-report] ${name} (auction) failed:`, e);
+        continue;
+      }
+      if (!raw) continue;
+      const { body, flags } = splitReport(raw);
+      if (!body) continue;
+      const { error } = await supabase.from('wk_agent_daily_reports').upsert(
+        { agent_id: agent.id, report_date: dateKey, stats, body_md: body, flags, model: MODEL, updated_at: new Date().toISOString() },
+        { onConflict: 'agent_id,report_date' },
+      );
+      if (error) console.error(`[daily-report] upsert failed for ${name}:`, error.message);
+      else writtenAuction.push({ name, body, stats, flags });
+      continue;
+    }
+    // Auction calls on a mostly-Houses day are left out of the Houses grade:
+    // they were never meant to follow the estate-agent script.
+    if (rows.some(isAuctionCall)) rows.splice(0, rows.length, ...rows.filter((r) => !isAuctionCall(r)));
 
     // A property day is graded against the property business, full stop.
     // Grading Pedro's estate-agent calls against the dead Google-reviews
@@ -1191,11 +1312,12 @@ export default async function handler(
 
   // Email Hugo the lot.
   const to = process.env.DAILY_REPORT_EMAIL || 'hugodesouzax@gmail.com';
-  if (written.length + writtenProperty.length > 0) {
+  if (written.length + writtenProperty.length + writtenAuction.length > 0) {
     const esc = (s: string) =>
       String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const appUrl = process.env.APP_URL || 'https://app.heyelsie.com';
     const flagged: Array<{ name: string; flags: ConductFlag[] }> = [
+      ...writtenAuction.map((w) => ({ name: w.name, flags: w.flags })),
       ...writtenProperty.map((w) => ({ name: w.name, flags: w.flags })),
       ...written.map((w) => ({ name: w.name, flags: w.flags })),
     ].filter((w) => w.flags.length > 0);
@@ -1229,6 +1351,17 @@ export default async function handler(
       <h2 style="margin:0 0 4px">Daily agent reports — ${dateKey}</h2>
       <p style="color:#6B7280;margin:0 0 20px;font-size:14px">Each agent sees only their own on the leaderboard. You see all of them.</p>
       ${alerts}
+      ${writtenAuction
+        .map(
+          (r) => `<div style="border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin-bottom:16px">
+            <h3 style="margin:0 0 8px">${esc(r.name)} <span style="color:#6B7280;font-weight:400;font-size:13px">· auction</span></h3>
+            <p style="color:#6B7280;font-size:13px;margin:0 0 12px">
+              ${r.stats.conversations} conversations from ${r.stats.dials} dials · ${r.stats.talk_minutes} min talking · ${r.stats.idle_minutes} min idle
+            </p>
+            <div style="font-size:14px;line-height:1.55;white-space:pre-wrap">${esc(r.body)}</div>
+          </div>`,
+        )
+        .join('')}
       ${writtenProperty
         .map(
           (r) => `<div style="border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin-bottom:16px">
@@ -1323,7 +1456,7 @@ export default async function handler(
         ok: false,
         date: dateKey,
         error: `reports saved but the email failed: ${String(e).slice(0, 160)}`,
-        reports: [...writtenProperty.map((w) => `${w.name} (property)`), ...written.map((w) => w.name)],
+        reports: [...writtenAuction.map((w) => `${w.name} (auction)`), ...writtenProperty.map((w) => `${w.name} (property)`), ...written.map((w) => w.name)],
       });
       return;
     }
@@ -1332,6 +1465,6 @@ export default async function handler(
   res.status(200).json({
     ok: true,
     date: dateKey,
-    reports: [...writtenProperty.map((w) => `${w.name} (property)`), ...written.map((w) => w.name)],
+    reports: [...writtenAuction.map((w) => `${w.name} (auction)`), ...writtenProperty.map((w) => `${w.name} (property)`), ...written.map((w) => w.name)],
   });
 }

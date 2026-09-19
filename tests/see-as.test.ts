@@ -31,8 +31,8 @@ describe('See-as: admin impersonation', () => {
     // the RPC is asked for scopeId, not hard-wired to uid
     expect(hook).toMatch(/wk_inbox_thread_previews/)
     expect(hook).toMatch(/p_agent_id: scopeId/)
-    // re-loads when the impersonation target changes
-    expect(hook).toMatch(/\}, \[isAdmin, viewAsId\]\)/)
+    // re-loads when the impersonation target (or the desk) changes
+    expect(hook).toMatch(/\}, \[isAdmin, viewAsId, desk\]\)/)
   })
 
   it('a visible banner warns while impersonating', () => {

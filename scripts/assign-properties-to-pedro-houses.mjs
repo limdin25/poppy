@@ -270,6 +270,10 @@ async function loadProperties() {
     // by hand. Nobody noticed because it was hand-run all week.
     if (!REFRESH) q = q.eq('call_channel', 'ai')
     const { data, error } = await q
+      // Houses only. An unsold auction lot is a brrr_properties row too, and
+      // it belongs to the Auction desk and its own assign script
+      // (assign-auction-lots-to-pedro.mjs), never to the estate-agent queue.
+      .eq('desk', 'houses')
       .not('agent_phone', 'is', null)
       .in('status', STATUSES)
       .order('created_at', { ascending: false })

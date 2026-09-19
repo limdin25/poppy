@@ -15,6 +15,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/browser';
 import { useAuth } from '@/features/crm/lib/useCrmAuth';
 import { useViewAs } from '@/features/crm/lib/ViewAsContext';
+import { useDesk } from '@/features/crm/lib/DeskContext';
 import { attachmentSearchToken, inboxListPreview } from '@/features/crm/lib/inboxPreview';
 
 export type ChannelKind = 'sms' | 'whatsapp' | 'email';
@@ -102,6 +103,7 @@ export function useInboxThreads(): { threads: InboxThread[]; loading: boolean; r
   // "See as: <agent>" — when an admin impersonates an agent, scope the inbox to
   // that agent's participation instead of the whole workspace.
   const { viewAsId } = useViewAs();
+  const { desk } = useDesk();
   // Stale-load guard (2026-08-02). Loads overlap freely here: realtime events,
   // the 30s poll, focus, and the isAdmin flip all call load(), and a SLOW
   // pre-admin load (scoped to the user's own 2 leads) can resolve AFTER the
@@ -127,9 +129,10 @@ export function useInboxThreads(): { threads: InboxThread[]; loading: boolean; r
     const scopeId: string | null = isAdmin ? viewAsId : uid;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // p_desk: Houses threads on the Houses desk, Auction threads on Auction.
     const { data: previewData, error: previewErr } = await (supabase.rpc as any)(
       'wk_inbox_thread_previews',
-      { p_agent_id: scopeId },
+      { p_agent_id: scopeId, p_desk: desk },
     );
     if (previewErr) {
       console.error('[useInboxThreads] wk_inbox_thread_previews', previewErr.message);
@@ -224,7 +227,7 @@ export function useInboxThreads(): { threads: InboxThread[]; loading: boolean; r
     if (seq !== loadSeqRef.current) return; // superseded by a newer load
     setThreads(out);
     setLoading(false);
-  }, [isAdmin, viewAsId]);
+  }, [isAdmin, viewAsId, desk]);
 
   useEffect(() => {
     void load();

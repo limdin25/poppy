@@ -15,6 +15,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/browser';
+import { useDesk } from '../lib/DeskContext';
 
 export interface FunnelNotification {
   id: string;
@@ -47,6 +48,7 @@ export function useNotifications(): {
   /** Newest unread row since mount — what the desktop pop-up should announce. */
   latest: FunnelNotification | null;
 } {
+  const { desk } = useDesk();
   const [items, setItems] = useState<FunnelNotification[]>([]);
   const [unread, setUnread] = useState(0);
   const [latest, setLatest] = useState<FunnelNotification | null>(null);
@@ -61,6 +63,9 @@ export function useNotifications(): {
       /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
       const res = await (supabase.from('wk_notifications' as any) as any)
         .select('id, kind, title, body, link, contact_id, created_at, read_at')
+        // Stamped from the contact when the row is written (migration
+        // 20260918000002), so the bell on Auction never rings for Houses.
+        .eq('desk', desk)
         .order('created_at', { ascending: false })
         .limit(RECENT_LIMIT);
       const rows = (res.data ?? []) as Row[];
@@ -80,6 +85,7 @@ export function useNotifications(): {
       /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
       const countRes = await (supabase.from('wk_notifications' as any) as any)
         .select('id', { count: 'exact', head: true })
+        .eq('desk', desk)
         .is('read_at', null);
       setUnread(countRes.count ?? 0);
 
@@ -98,7 +104,7 @@ export function useNotifications(): {
     } catch {
       /* RLS / table missing — the bell stays quiet rather than crashing. */
     }
-  }, []);
+  }, [desk]);
 
   useEffect(() => {
     void load();
@@ -147,12 +153,13 @@ export function useNotifications(): {
         /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
         await (supabase.from('wk_notifications' as any) as any)
           .update({ read_at: new Date().toISOString() })
+          .eq('desk', desk)
           .is('read_at', null);
       } catch {
         /* ignore — the badge is already cleared locally */
       }
     })();
-  }, [unread]);
+  }, [unread, desk]);
 
   return useMemo(
     () => ({ items, unread, markAllRead, latest }),

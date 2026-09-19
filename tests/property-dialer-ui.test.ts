@@ -47,14 +47,15 @@ describe('the tab set swaps, it does not just grow', () => {
     // Not cosmetic: the Calculator works out a plumber's return on a website
     // and the Objections answer plumber objections. Both are actively
     // misleading with an estate agent on the line.
-    expect(TABS).toMatch(/\{!showHouses && \(/)
-    const hidden = TABS.slice(TABS.indexOf('{!showHouses && ('), TABS.indexOf('</>', TABS.indexOf('{!showHouses && (')))
+    // Hidden on an auction call too (Auction desk, 2026-09-18).
+    expect(TABS).toMatch(/\{!showHouses && !auctionCall && \(/)
+    const hidden = TABS.slice(TABS.indexOf('{!showHouses && !auctionCall && ('), TABS.indexOf('</>', TABS.indexOf('{!showHouses && !auctionCall && (')))
     expect(hidden).toMatch(/label="Calculator"/)
     expect(hidden).toMatch(/label="Objections"/)
   })
 
   it('defaults to Coach in houses mode, Calculator otherwise', () => {
-    expect(TABS).toMatch(/useState<Tab>\(showHouses \? 'coach' : 'calculator'\)/)
+    expect(TABS).toMatch(/useState<Tab>\(showHouses \|\| auctionCall \? 'coach' : 'calculator'\)/)
   })
 
   it('Messages is still reachable on a property call', () => {
@@ -77,7 +78,7 @@ describe('the house sits in the left column, under the next step', () => {
     expect(ROOM).toMatch(/<PropertiesPane/)
     // The gate is the component boundary now: the page mounts the property room
     // only on a houses call, and the plumber branch cannot reach it.
-    expect(PAGE).toMatch(/\{isHousesCall \? \(/)
+    expect(PAGE).toMatch(/isHousesCall \? \(\s*\/\*[\s\S]*?\*\/\s*<PropertyCallRoom/)
     expect(PAGE).toMatch(/<PropertyCallRoom/)
     // And the plumber room keeps the plain timeline it has always had.
     expect(PAGE).toMatch(/<CallTimeline callId=\{state\.currentCallId\} \/>/)
@@ -140,7 +141,7 @@ describe('the offer band is pinned above the script', () => {
     // The room only ever renders on a property call, so the gate is the mount
     // itself; inside it, a branch with no house still gets no property tokens.
     expect(ROOM).toMatch(/extraTokens=\{selectedListing/)
-    expect(PAGE).toMatch(/\{isHousesCall \? \(/)
+    expect(PAGE).toMatch(/isHousesCall \? \(\s*\/\*[\s\S]*?\*\/\s*<PropertyCallRoom/)
   })
 
   it('a discovery branch fills the script from the contact, not a house', () => {

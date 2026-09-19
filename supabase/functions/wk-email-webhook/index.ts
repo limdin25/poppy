@@ -855,9 +855,23 @@ async function findOrCreateContact(
     console.warn(`[wk-email-webhook] no agent owns the mailbox ${toEmail} — contact will be admin-only`);
   }
 
+  // A sender nobody knows is filed under the desk the mailbox owner is on
+  // right now (Houses or Auction, Hugo 2026-09-18). Every match above found a
+  // KNOWN contact, and a known contact keeps its own desk.
+  let newDesk = 'houses';
+  if (ownerAgentId) {
+    const { data: owner } = await supa
+      .from('profiles')
+      .select('active_desk')
+      .eq('id', ownerAgentId)
+      .maybeSingle();
+    if ((owner as { active_desk?: string } | null)?.active_desk === 'auction') newDesk = 'auction';
+  }
+
   const { data: inserted, error: insErr } = await supa
     .from('wk_contacts')
     .insert({
+      desk: newDesk,
       name: contactName || email,
       email,
       phone: `email:${email}`, // wk_contacts.phone is UNIQUE NOT NULL — synthesise a non-conflicting placeholder

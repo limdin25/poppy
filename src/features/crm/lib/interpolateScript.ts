@@ -52,6 +52,9 @@ export const SCRIPT_TEXT_TOKENS = [
   // Both arrive via `extra` only, computed in PropertyCallRoom from wk_calls
   // and the listing checklist, and are NEVER persisted to custom_fields.
   'branch_contact_name', 'spoke_when',
+  // Auction call (the Auction desk, 2026-09-18). From the lot selected in the
+  // Lots tab, via `extra`, never persisted to custom_fields.
+  'lot_number', 'lot_address', 'auction_house', 'auction_date', 'guide_price',
 ] as const;
 
 const PH_OPEN = '<span class="ph">';

@@ -25,6 +25,7 @@ import { useIsMobile } from '@/core/hooks/useMediaQuery';
 import { cn } from '@/core/lib/cn';
 import { supabase } from '@/integrations/supabase/browser';
 import { useAuth } from '@/features/crm/lib/useCrmAuth';
+import { useDesk } from '@/features/crm/lib/DeskContext';
 
 interface Smsv2SidebarProps {
   collapsed: boolean;
@@ -86,6 +87,16 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Settings', path: '/admin/crm/settings', icon: Settings, adminOnly: true },
 ];
 
+// Pages that only mean anything on the Houses desk: estate-agent deals and the
+// builders who view them. On the Auction desk they are hidden, not deleted.
+const HOUSES_ONLY = new Set([
+  '/admin/crm/cockpit',
+  '/admin/crm/find-builders',
+  '/admin/crm/estimator',
+  '/admin/crm/raw-leads',
+  '/admin/crm/deal-process',
+]);
+
 const MOBILE_TAB_ITEMS = NAV_ITEMS.filter(({ label }) =>
   ['Cockpit', 'Dialer', 'Inbox', 'Pipelines', 'Contacts'].includes(label)
 );
@@ -98,6 +109,7 @@ export default function Smsv2Sidebar({ collapsed, onCollapse }: Smsv2SidebarProp
   // CrmGuard would block. Resolve workspace_role from profiles + the
   // admin_users allow-list that useCrmAuth's isAdmin resolves from.
   const { user, loading: authLoading, isAdmin } = useAuth();
+  const { desk } = useDesk();
   const [workspaceRole, setWorkspaceRole] = useState<string | null | undefined>(undefined);
 
   useEffect(() => {
@@ -129,7 +141,7 @@ export default function Smsv2Sidebar({ collapsed, onCollapse }: Smsv2SidebarProp
   if (isMobile) {
     return (
       <nav className="fixed bottom-0 left-0 right-0 z-[100] bg-white border-t border-[#E5E7EB] flex items-center justify-around px-1 py-1.5">
-        {MOBILE_TAB_ITEMS.map(({ label, path, icon: Icon }) => (
+        {MOBILE_TAB_ITEMS.filter(({ path }) => desk === 'houses' || !HOUSES_ONLY.has(path)).map(({ label, path, icon: Icon }) => (
           <Link
             key={path}
             to={path}
@@ -170,6 +182,7 @@ export default function Smsv2Sidebar({ collapsed, onCollapse }: Smsv2SidebarProp
         {NAV_ITEMS
           // PR 62: hide admin-only items from agents entirely.
           .filter(({ adminOnly }) => !adminOnly || isAdminOrWorkspaceAdmin)
+          .filter(({ path }) => desk === 'houses' || !HOUSES_ONLY.has(path))
           .map(({ label, path, icon: Icon, adminOnly }) => (
           <Link
             key={path}

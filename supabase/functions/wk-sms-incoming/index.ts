@@ -298,9 +298,31 @@ serve(async (req: Request) => {
     const preExisting = Boolean(wkContactRow?.id);
 
     if (!contactId) {
+      // A brand-new sender is filed under the desk the line's agent is on
+      // right now (Houses or Auction, Hugo 2026-09-18). A known contact keeps
+      // its own desk, which is what the lookup above already guarantees.
+      let newDesk = 'houses';
+      try {
+        const { data: line } = await supa
+          .from('wk_numbers')
+          .select('assigned_agent_id')
+          .eq('e164', toE164)
+          .maybeSingle();
+        if (line?.assigned_agent_id) {
+          const { data: agent } = await supa
+            .from('profiles')
+            .select('active_desk')
+            .eq('id', line.assigned_agent_id)
+            .maybeSingle();
+          if (agent?.active_desk === 'auction') newDesk = 'auction';
+        }
+      } catch (e) {
+        console.warn('[wk-sms-incoming] desk lookup failed (filing under houses):', e);
+      }
       const { data: inserted, error: insErr } = await supa
         .from('wk_contacts')
         .insert({
+          desk: newDesk,
           // The lead's own name when the form carried one, the number
           // otherwise. Naming a contact after its phone number is what made
           // the whole inbox unreadable.

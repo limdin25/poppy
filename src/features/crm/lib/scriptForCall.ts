@@ -80,7 +80,18 @@ export function scriptFromLandingPath(landingPath: string | null | undefined): S
 export function scriptForContactFields(
   fields: Record<string, unknown> | null | undefined,
 ): ScriptKey | null {
-  return fields?.lead_type === 'estate_agent' ? 'property_call' : null;
+  if (fields?.lead_type === 'estate_agent') return 'property_call';
+  // An auction office (Auction desk, 2026-09-18), stamped by
+  // scripts/assign-auction-lots-to-pedro.mjs.
+  if (fields?.lead_type === 'auctioneer') return 'auction_call';
+  return null;
+}
+
+/** The script a whole DESK defaults to. The Auction desk has one kind of call
+ *  and one script; the Houses desk keeps whatever it had (landing_path, the
+ *  URL, the contact). */
+export function scriptForDesk(desk: string | null | undefined): ScriptKey | null {
+  return desk === 'auction' ? 'auction_call' : null;
 }
 
 export function scriptForCall({
@@ -93,6 +104,8 @@ export function scriptForCall({
   // no "the next lead is a stranger" problem to guard against: Next call pulls
   // another estate agency and the same script is still the right one.
   if (openedWith === 'property_call') return 'property_call';
+  // Same for the auction call: every lead in the Auction queue is an office.
+  if (openedWith === 'auction_call') return 'auction_call';
 
   // A room opened normally is always the cold script, whoever is on the phone.
   if (openedWith !== 'vsl_close') return 'cold_call';

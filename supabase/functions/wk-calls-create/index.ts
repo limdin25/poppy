@@ -80,6 +80,7 @@ serve(async (req: Request) => {
     // (or a future key it invented) into it. Unknown = cold call.
     const scriptKey = body.script_key === 'vsl_close' ? 'vsl_close'
       : body.script_key === 'property_call' ? 'property_call'
+      : body.script_key === 'auction_call' ? 'auction_call'
       : null;
     if (!phone) {
       return jsonResponse(400, { error: 'to_phone required' });
@@ -237,10 +238,24 @@ serve(async (req: Request) => {
       aiCoachEnabled = false;
     }
 
+    // THE DESK. The database trigger stamps it from the contact whenever
+    // there is one; a free dial with no contact takes the campaign's desk, and
+    // an auction script can only ever be an Auction call.
+    let desk = scriptKey === 'auction_call' ? 'auction' : 'houses';
+    if (campaignId && desk === 'houses') {
+      const { data: camp } = await supa
+        .from('wk_dialer_campaigns')
+        .select('desk')
+        .eq('id', campaignId)
+        .maybeSingle();
+      if (camp?.desk === 'auction') desk = 'auction';
+    }
+
     // INSERT the wk_calls row with status='queued' and our minted UUID.
     const { data: inserted, error: insErr } = await supa
       .from('wk_calls')
       .insert({
+        desk,
         agent_id: agentId,
         contact_id: resolvedContactId,
         campaign_id: campaignId,

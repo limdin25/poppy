@@ -73,6 +73,10 @@ interface Props {
   /** Who Pedro is speaking to at the branch, off the Houses checklist, so the
    *  email opens with a name instead of "Hi". */
   agentPersonName?: string | null;
+  /** Auction desk (2026-09-18): the person on the phone is an auctioneer.
+   *  Coach and Messages only, and none of the plumber buttons. There is no
+   *  Email tab: that one writes to estate agents about houses. */
+  auctionCall?: boolean;
 }
 
 export default function DialerRightTabs({
@@ -94,11 +98,12 @@ export default function DialerRightTabs({
   callMode,
   propertyOpener,
   agentPersonName,
+  auctionCall,
 }: Props) {
   // A property call opens on the Coach and stays there, because the houses
   // panel it used to open on now lives in the left column and is always on
   // screen beside it. A plumber call is untouched: Calculator, as ever.
-  const [tab, setTab] = useState<Tab>(showHouses ? 'coach' : 'calculator');
+  const [tab, setTab] = useState<Tab>(showHouses || auctionCall ? 'coach' : 'calculator');
   const { messages } = useContactMessages(contactId ?? '');
 
   // Auto-open the Coach tab the instant the call connects, so the read-aloud
@@ -114,7 +119,7 @@ export default function DialerRightTabs({
     <div className="flex flex-col h-full bg-white">
       <div className="flex border-b border-[#E5E7EB]">
         <TabButton active={tab === 'coach'} icon={<Sparkles className="w-3.5 h-3.5" />} label="Coach" onClick={() => setTab('coach')} />
-        {!showHouses && (
+        {!showHouses && !auctionCall && (
           <>
             <TabButton active={tab === 'calculator'} icon={<Calculator className="w-3.5 h-3.5" />} label="Calculator" onClick={() => setTab('calculator')} />
             <TabButton active={tab === 'objections'} icon={<ShieldAlert className="w-3.5 h-3.5" />} label="Objections" onClick={() => setTab('objections')} />
@@ -171,6 +176,7 @@ export default function DialerRightTabs({
             pipelineId={pipelineId}
             messages={messages}
             showHouses={showHouses}
+            auctionCall={auctionCall}
             currentCallId={currentCallId}
             offerHouse={offerHouse}
             callMode={callMode}
@@ -183,7 +189,7 @@ export default function DialerRightTabs({
 
 function MessagesTab({
   contactId, contactName, contactPhone, contactEmail, ownerName, agentFirstName, campaignId, pipelineId, messages,
-  showHouses, currentCallId, offerHouse, callMode,
+  showHouses, auctionCall, currentCallId, offerHouse, callMode,
 }: Props & { messages: CrmMessage[] }) {
   // Hugo 2026-07-27: "under message put option to send video there as well."
   // Same component as the contact pane — its send guards are module-scoped, so
@@ -210,8 +216,8 @@ function MessagesTab({
     <div className="flex flex-col h-full overflow-y-auto">
       {/* Send box on top, with the video as its own one-tap option above it. */}
       <div className="px-3 py-3 border-b border-[#E5E7EB] space-y-2">
-        {contact && !isPropertyCall && <VideoLinkButton contact={contact} compact />}
-        {contact && !isPropertyCall && <SendSiteButton contact={contact} compact />}
+        {contact && !isPropertyCall && !auctionCall && <VideoLinkButton contact={contact} compact />}
+        {contact && !isPropertyCall && !auctionCall && <SendSiteButton contact={contact} compact />}
         <MidCallSmsSender
           contactId={contactId}
           contactName={contactName}
