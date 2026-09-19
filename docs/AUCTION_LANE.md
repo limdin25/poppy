@@ -61,6 +61,15 @@ value, send, assign, then emails Hugo "Auction lots overnight". Separate from
 the Houses `property-overnight` run on purpose. Logs:
 `/root/scraper/logs/auction_overnight_<date>.log`.
 
+## First load, 2026-09-19
+
+Nine auction houses: Auction House, BTG Eddisons (SDL), Allsop, Clive Emson,
+Under The Hammer, Pattinson (read with a headless browser, it sits behind
+Cloudflare), Town and Country, Sutton Kersh, Bond Wolfe. 896 lots considered,
+375 still for sale after a sale in the last 31 days, **17 passed**, filed as
+**11 auction offices** in Pedro's queue. Most refusals are honest: sold since
+(521), flats (104), land and commercial (82), tenanted (71).
+
 ## Window
 
 New lots must have gone under the hammer in the **last 31 days** (Hugo's
