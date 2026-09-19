@@ -340,6 +340,14 @@ clause and no way to pass it to an investor. The course does allow securing
 a property **before or after** an auction by private treaty, which is a
 different thing.
 
+**The one exception, Hugo 2026-09-18: UNSOLD lots, after the sale.** Pedro
+rings the auctioneer about lots that went under the hammer and did not sell,
+on the separate Auction desk (see [AUCTION_LANE.md](AUCTION_LANE.md)). The
+same comparables rules apply, and the rule above still holds in its own way:
+a post-auction sale exchanges on the auction's terms, so **no price is ever
+agreed on the phone**; every figure goes to Hugo first. The Houses lane still
+excludes auction listings.
+
 **No conversions in the offer.** The add-a-bedroom strategy was measured on
 2026-08-11 and retired: 2,069 properties, 27 passed on paper, **2 survived a
 look**. One extra bedroom adds a median of 5.1%, and on 37% of properties

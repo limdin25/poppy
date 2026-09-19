@@ -204,6 +204,29 @@ re-derive "who ranks above this lead" anywhere else, that is the bug.
 
 ---
 
+## THE AUCTION DESK: a second, clean CRM (Hugo, 2026-09-18)
+
+Pedro now rings auctioneers about **unsold** auction lots. Full write-up:
+[docs/AUCTION_LANE.md](docs/AUCTION_LANE.md). The rules that bite:
+
+- **Everything in the CRM is scoped by `desk`** ('houses' | 'auction') on
+  `wk_contacts`, `wk_calls`, `wk_dialer_campaigns`, `wk_pipelines`,
+  `brrr_properties`, `wk_notifications`. Default 'houses', so nothing old moved.
+  A new list or query in the CRM MUST filter by `useDesk().desk`, or Houses data
+  leaks into Auction. `tests/auction-desk-isolation.test.ts` pins every surface.
+- **An old Houses contact calling while Pedro is on Auction does NOT ring**
+  (Hugo's choice). Rule in `api/lib/desk-route.ts`, mirrored in the TwiML
+  function. His desk is `profiles.active_desk`: never flip Pedro's in a test.
+- **Two copies of the Houses assign script exist.** The one in
+  `/root/elsie-assign` on the VPS was stale; it got only the `desk='houses'`
+  filter on 2026-09-19. Re-copy from the repo if you change it.
+- The VPS auction code (`/root/scraper/auction/`) values lots with the Houses
+  engine and the Houses box. Never a second idea of value.
+- **No price is agreed on an auction call.** Post-auction sales exchange on
+  auction terms.
+
+---
+
 ## Test loop (run before every commit)
 
 ```bash
