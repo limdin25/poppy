@@ -66,6 +66,25 @@ test.describe('the Auction desk', () => {
       await expect(page.getByText(/2-Minute Audit/i)).toHaveCount(0)
       await expect(page.getByText('Property call · estate agent')).toHaveCount(0)
 
+      // With an office in the queue, the Lots tab shows a real lot: the facts,
+      // the value with the sold houses behind it, and the outcome buttons.
+      // The empty state draws first while the queue loads, so wait for the
+      // lots themselves and only accept "empty" if they never come.
+      const lots = page.getByTestId('auction-lots-pane')
+      const hasLots = await lots.waitFor({ state: 'visible', timeout: 30_000 }).then(() => true, () => false)
+      if (!hasLots) {
+        await expect(page.getByText('No auction office on the line')).toBeVisible()
+      } else {
+        await expect(page.getByTestId('auction-lot-pick').first()).toBeVisible({ timeout: 30_000 })
+        await expect(page.getByTestId('auction-lot-detail')).toBeVisible()
+        await expect(page.getByTestId('auction-lot-value')).toContainText('worth about')
+        await expect(page.getByTestId('auction-lot-comps').locator('li').first()).toBeVisible()
+        await expect(page.getByTestId('auction-outcome-figure_given')).toBeVisible()
+        // The script is filled from the lot, not left as raw brackets.
+        const script = page.frameLocator('iframe').first()
+        await expect(script.getByText(/calling about lot/i).first()).toBeVisible({ timeout: 20_000 })
+      }
+
       // The inbox shows no Houses conversation on Auction: every thread row,
       // if any, must belong to an Auction contact. With no auction threads yet
       // the list is simply empty.
