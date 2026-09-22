@@ -10,10 +10,10 @@
 //   - no long dashes, no curly quotes, no ellipsis characters
 //   - light mode only
 //
-// 18 Sep 2026: 42 Sceptre Street. Skyline quote 37,800 plus VAT (45,360), value
-// 195,000 off five 2-bed terraces inside 400 m and twelve months. Opens at
-// 81,000, must not go through 96,000. The 16 Sep offers (Colne 70,000,
-// Sunderland 60,000, Southport 115,000) were sent and came off the page.
+// 22 Sep 2026: 67 Helmdon. FM Constructions quote 9,430 plus VAT (11,316), value
+// 175,000 off three 3-bed semis inside 400 m and 24 months, two of them on
+// Helmdon itself. Opens at 101,000, must not go through 115,000. 42 Sceptre
+// Street (81,000) was sent on 18 Sep and came off the page.
 
 interface Offer {
   id: string;
@@ -27,20 +27,20 @@ interface Offer {
 
 const OFFERS: Offer[] = [
   {
-    id: 'sceptre',
-    house: '42 Sceptre Street',
-    place: 'Sherwood, Nottingham NG5 2HT',
-    to: '',
-    toNote: 'Pygott & Crone, Wollaton. No email on file, use the one from the viewing. 0115 647 0562',
-    subject: '42 Sceptre Street, Sherwood, Nottingham NG5 2HT',
+    id: 'helmdon',
+    house: '67 Helmdon',
+    place: 'Sulgrave, Washington NE37 3AP',
+    to: 'atlanta.manson@your-move.co.uk',
+    toNote: 'Atlanta Manson, YOUR MOVE Chris Stonock, Washington. She emailed on 19 Sep asking for feedback on the viewing.',
+    subject: '67 Helmdon, Washington NE37 3AP',
     body: [
-      'Hello,',
+      'Hello Atlanta,',
       '',
-      'Pedro here, we had our builder through 42 Sceptre Street and the quote is back.',
+      'Pedro here, we had our builder through 67 Helmdon and the quote is back.',
       '',
-      'We would like to offer GBP81,000 for 42 Sceptre Street, Sherwood, Nottingham NG5 2HT, subject to contract. Cash purchase, no chain.',
+      'We would like to offer GBP101,000 for 67 Helmdon, Sulgrave, Washington NE37 3AP, subject to contract. Cash purchase, no chain.',
       '',
-      'The house needs a full rewire, a new boiler and heating, a new kitchen, a new bathroom and replastering, and that is what the figure reflects.',
+      'Our builder found water damage and damp in the kitchen from a leak, the conservatory floor needs replacing, and the house needs redecorating throughout, and that is what the figure reflects.',
       '',
       'Please let me know',
       '',
