@@ -19,7 +19,7 @@ interface UseDialerMachineOpts {
    *  the live coach (which is driven by Twilio and cannot see the browser)
    *  coaches the same script the agent has on screen. Omitted everywhere else,
    *  so every other dial path is unchanged. */
-  scriptKeyForLead?: (contactId: string) => 'cold_call' | 'vsl_close' | 'property_call' | 'auction_call';
+  scriptKeyForLead?: (contactId: string) => 'cold_call' | 'vsl_close' | 'property_call' | 'auction_call' | 'sa_call';
   onToast: (msg: string, type: 'success' | 'error' | 'info') => void;
 }
 
@@ -236,7 +236,7 @@ export function useDialerMachine({ userId, campaignId, pipelineId: _pipelineId, 
       // call the agent is reading.
       const leadScriptKey = scriptKeyForLead?.(lead.contactId);
       const scriptKeyBody = leadScriptKey === 'vsl_close' || leadScriptKey === 'property_call'
-        || leadScriptKey === 'auction_call'
+        || leadScriptKey === 'auction_call' || leadScriptKey === 'sa_call'
         ? { script_key: leadScriptKey }
         : {};
 

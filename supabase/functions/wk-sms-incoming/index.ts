@@ -314,7 +314,7 @@ serve(async (req: Request) => {
             .select('active_desk')
             .eq('id', line.assigned_agent_id)
             .maybeSingle();
-          if (agent?.active_desk === 'auction') newDesk = 'auction';
+          if (agent?.active_desk === 'auction' || agent?.active_desk === 'sa') newDesk = agent.active_desk;
         }
       } catch (e) {
         console.warn('[wk-sms-incoming] desk lookup failed (filing under houses):', e);

@@ -10,6 +10,9 @@
 // rings on that desk; a caller nobody knows belongs to whichever desk the
 // agent is on, and rings.
 //
+// The Serviced Accommodation desk (2026-09-23) follows the same rule: a
+// letting agent ringing back rings only while Pedro is on SA.
+//
 // It is symmetric on purpose. An auctioneer ringing back while Pedro is on
 // Houses would open on a screen that cannot show the lot, so it waits on the
 // Auction strip the same way.
@@ -18,7 +21,7 @@
 // because Deno cannot import from api/. tests/auction-inbound-routing.test.ts
 // fails if the two drift.
 
-export type Desk = 'houses' | 'auction';
+export type Desk = 'houses' | 'auction' | 'sa';
 
 export interface DeskRoute {
   /** The desk the call is filed under. */
@@ -28,8 +31,9 @@ export interface DeskRoute {
 }
 
 export function inboundDeskRoute(contactDesk: string | null | undefined, agentDesk: string | null | undefined): DeskRoute {
-  const onDesk: Desk = agentDesk === 'auction' ? 'auction' : 'houses';
+  const asDesk = (v: string | null | undefined): Desk => (v === 'auction' || v === 'sa' ? v : 'houses');
+  const onDesk: Desk = asDesk(agentDesk);
   if (!contactDesk) return { desk: onDesk, ring: true };
-  const theirs: Desk = contactDesk === 'auction' ? 'auction' : 'houses';
+  const theirs: Desk = asDesk(contactDesk);
   return { desk: theirs, ring: theirs === onDesk };
 }

@@ -327,6 +327,89 @@ export function isAuctionDay(calls: CallRow[]): boolean {
   return auction > 0 && auction >= calls.length - auction;
 }
 
+/** The Serviced Accommodation desk (2026-09-23), same rule as Auction: a day
+ *  that is mostly SA calls is graded against the SA script, and SA calls are
+ *  never graded against any other script. */
+export function isSaCall(c: CallRow): boolean {
+  return c.script_key === 'sa_call';
+}
+export function isSaDay(calls: CallRow[]): boolean {
+  const sa = calls.filter(isSaCall).length;
+  return sa > 0 && sa >= calls.length - sa;
+}
+
+/** The SA script: the DB copy when an admin saved one, else the bundled file. */
+async function loadSaScript(): Promise<string> {
+  const { data } = await supabase
+    .from('wk_sa_call_script')
+    .select('html')
+    .eq('id', 1)
+    .maybeSingle();
+  let html = (data?.html as string | null) ?? '';
+  if (!html) {
+    try {
+      html = readFileSync(
+        join(process.cwd(), 'src', 'core', 'content', 'sa-call-script.html'),
+        'utf8',
+      );
+    } catch {
+      html = '';
+    }
+  }
+  return htmlToText(html);
+}
+
+const SA_SYSTEM = `You write the end-of-day coaching report for a UK caller working the SERVICED ACCOMMODATION desk. They ring letting agents about city-centre flats advertised to rent. The company is Unico, the director is Hugo.
+
+WE ARE THE MIDDLEMAN. The caller never takes the flat. We work with serviced accommodation companies who rent city-centre flats on a company let of 3 to 5 years. The call wants ONE thing: a YES IN PRINCIPLE, from the agent or the landlord, that the flat could be let to one of those companies. Hugo then introduces the company.
+
+THE CALL IS FIVE BEATS: is it still available, who we are (full asking rent every month, booked or not, furnished and cleaned, no empty months), would you or the landlord be open to it in principle, is anything stopping it (lease, building rules, mortgage), and the email and next step. The score of the day is YES IN PRINCIPLE answers, with a name and an email. Next best is a landlord being asked, with a day to ring back. A pleasant call that ends without asking the yes-in-principle question has missed its point.
+
+THE HARD RULES: no negotiation (the company pays the asking rent, never haggle up or down); never say "we'll take it", never agree a start date, a contract or a viewing time; never name an operator company. Report any break plainly, with the quote.
+
+The agent reads this report themselves. Be direct and complete, and give the fix, not a telling-off. Quote their own words and name the agency so they can find the call. The statistics are given to you and are correct; never recompute them. The transcripts come from speech recognition and mangle names ("Hugo" as "Ugo", "Unico" as "Unio"); never coach anyone off a mangled name.
+
+Write in British English, plain language, second person. Never write a long dash (em or en dash) or curly quotes. Markdown, no title heading, roughly 250-400 words, in this order:
+**Today**: two or three sentences on how the day went, including pace.
+**What worked**: up to three specific things, each with a quote or an agency name.
+**The five beats**: for each, how often it was done, and where it was missed, the words used instead.
+**Fix tomorrow**: every genuine problem, most important first, each with the words to use instead.
+**Tomorrow's one thing**: one sentence.
+
+After the report, and only if the caller negotiated the rent, agreed terms or a date, named an operator, swore, was rude, or invented a fact, append this exact delimiter on its own line:
+
+---FLAGS---
+
+followed by a JSON array, one object per item, and nothing else:
+[{"type":"swearing|rudeness|pressure|formal_offer|invented_fact|first_call_figure","quote":"their exact words","company":"agency name","call_id":"the call_id","why":"one sentence on why it matters"}]
+
+Emit the delimiter only when there is at least one item.`;
+
+async function writeSaReport(
+  agentName: string,
+  dateKey: string,
+  stats: ReturnType<typeof computeStats>,
+  transcripts: string,
+  script: string,
+  dispositions: Record<string, number>,
+  otherCalls: number,
+): Promise<string> {
+  const prompt = `Agent: ${agentName}
+Date: ${dateKey}
+Business: serviced accommodation, ringing letting agents for a yes in principle to a company let.${otherCalls ? `
+They also made ${otherCalls} call(s) on another desk today; those are not graded here.` : ''}
+
+STATISTICS (authoritative, do not recompute):
+${JSON.stringify({ ...stats, dispositions }, null, 2)}
+
+THE SCRIPT:
+${script || '(script text unavailable, grade against the five beats above)'}
+
+TRANSCRIPTS OF TODAY'S LIVE CONVERSATIONS WITH LETTING AGENTS (voicemails excluded):
+${transcripts || '(no live conversations today)'}`;
+  return callClaude(SA_SYSTEM, prompt);
+}
+
 /** The bundled auction script, read the same way as the property one. */
 async function loadAuctionScript(): Promise<string> {
   const { data } = await supabase
@@ -1136,17 +1219,20 @@ export default async function handler(
       };
     flags: ConductFlag[];
   }> = [];
-  // Auction-desk days (2026-09-18), their own list because the stats differ.
+  // Auction-desk days (2026-09-18) and Serviced Accommodation days
+  // (2026-09-23), their own list because the stats differ from Houses.
   const writtenAuction: Array<{
     name: string;
     body: string;
+    label: 'auction' | 'serviced accommodation';
     stats: ReturnType<typeof computeStats> & ReturnType<typeof paceStats>
-      & { kind: 'auction'; dispositions: Record<string, number> };
+      & { kind: 'auction' | 'sa'; dispositions: Record<string, number> };
     flags: ConductFlag[];
   }> = [];
   // Loaded once, and only on a day that actually has a property agent.
   let propertyScript: Promise<string> | null = null;
   let auctionScript: Promise<string> | null = null;
+  let saScript: Promise<string> | null = null;
 
   for (const agent of roster) {
     const name = (agent.name || agent.email || 'Agent') as string;
@@ -1188,6 +1274,36 @@ export default async function handler(
       lines: byCall.get(c.id) ?? [],
     }));
 
+    // A Serviced Accommodation day is graded against the SA script (2026-09-23).
+    if (isSaDay(rows)) {
+      const saRows = rows.filter(isSaCall);
+      const script = await (saScript ?? (saScript = loadSaScript()));
+      const dispositions = dispositionCounts(saRows);
+      const stats = { kind: 'sa' as const, ...computeStats(saRows), ...paceStats(saRows), dispositions };
+      let raw: string;
+      try {
+        raw = await writeSaReport(
+          name, dateKey, computeStats(saRows), transcriptBlock(saRows),
+          script, dispositions, rows.length - saRows.length,
+        );
+      } catch (e) {
+        console.error(`[daily-report] ${name} (serviced accommodation) failed:`, e);
+        continue;
+      }
+      if (!raw) continue;
+      const { body, flags } = splitReport(raw);
+      if (!body) continue;
+      const { error } = await supabase.from('wk_agent_daily_reports').upsert(
+        { agent_id: agent.id, report_date: dateKey, stats, body_md: body, flags, model: MODEL, updated_at: new Date().toISOString() },
+        { onConflict: 'agent_id,report_date' },
+      );
+      if (error) console.error(`[daily-report] upsert failed for ${name}:`, error.message);
+      else writtenAuction.push({ name, body, label: 'serviced accommodation', stats, flags });
+      continue;
+    }
+    // SA calls on a day mostly spent elsewhere are left out of that grade.
+    if (rows.some(isSaCall)) rows.splice(0, rows.length, ...rows.filter((r) => !isSaCall(r)));
+
     // An auction day is graded against the auction script (2026-09-18).
     if (isAuctionDay(rows)) {
       const auctionRows = rows.filter(isAuctionCall);
@@ -1212,7 +1328,7 @@ export default async function handler(
         { onConflict: 'agent_id,report_date' },
       );
       if (error) console.error(`[daily-report] upsert failed for ${name}:`, error.message);
-      else writtenAuction.push({ name, body, stats, flags });
+      else writtenAuction.push({ name, body, label: 'auction', stats, flags });
       continue;
     }
     // Auction calls on a mostly-Houses day are left out of the Houses grade:
@@ -1354,7 +1470,7 @@ export default async function handler(
       ${writtenAuction
         .map(
           (r) => `<div style="border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin-bottom:16px">
-            <h3 style="margin:0 0 8px">${esc(r.name)} <span style="color:#6B7280;font-weight:400;font-size:13px">· auction</span></h3>
+            <h3 style="margin:0 0 8px">${esc(r.name)} <span style="color:#6B7280;font-weight:400;font-size:13px">· ${r.label}</span></h3>
             <p style="color:#6B7280;font-size:13px;margin:0 0 12px">
               ${r.stats.conversations} conversations from ${r.stats.dials} dials · ${r.stats.talk_minutes} min talking · ${r.stats.idle_minutes} min idle
             </p>
@@ -1456,7 +1572,7 @@ export default async function handler(
         ok: false,
         date: dateKey,
         error: `reports saved but the email failed: ${String(e).slice(0, 160)}`,
-        reports: [...writtenAuction.map((w) => `${w.name} (auction)`), ...writtenProperty.map((w) => `${w.name} (property)`), ...written.map((w) => w.name)],
+        reports: [...writtenAuction.map((w) => `${w.name} (${w.label})`), ...writtenProperty.map((w) => `${w.name} (property)`), ...written.map((w) => w.name)],
       });
       return;
     }
@@ -1465,6 +1581,6 @@ export default async function handler(
   res.status(200).json({
     ok: true,
     date: dateKey,
-    reports: [...writtenAuction.map((w) => `${w.name} (auction)`), ...writtenProperty.map((w) => `${w.name} (property)`), ...written.map((w) => w.name)],
+    reports: [...writtenAuction.map((w) => `${w.name} (${w.label})`), ...writtenProperty.map((w) => `${w.name} (property)`), ...written.map((w) => w.name)],
   });
 }

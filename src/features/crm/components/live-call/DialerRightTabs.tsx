@@ -21,6 +21,8 @@ import ObjectionsPane from './ObjectionsPane';
 import MidCallSmsSender from './MidCallSmsSender';
 import LiveTranscriptPane from './LiveTranscriptPane';
 import PropertyEmailPane from './PropertyEmailPane';
+import SaEmailPane from './SaEmailPane';
+import type { SaListing } from '../../hooks/useSaListings';
 import { useContactMessages, type CrmMessage } from '../../hooks/useContactMessages';
 import { useSmsV2 } from '../../store/SmsV2Store';
 import SendSiteButton from './SendSiteButton';
@@ -77,6 +79,12 @@ interface Props {
    *  Coach and Messages only, and none of the plumber buttons. There is no
    *  Email tab: that one writes to estate agents about houses. */
   auctionCall?: boolean;
+  /** Serviced Accommodation desk (2026-09-23): the person on the phone is a
+   *  letting agent. Coach, its own Email tab (the company-let email) and
+   *  Messages, none of the plumber buttons. */
+  saCall?: boolean;
+  /** The flat on the SA call, for the SA email. */
+  saListing?: SaListing | null;
 }
 
 export default function DialerRightTabs({
@@ -99,11 +107,13 @@ export default function DialerRightTabs({
   propertyOpener,
   agentPersonName,
   auctionCall,
+  saCall,
+  saListing,
 }: Props) {
   // A property call opens on the Coach and stays there, because the houses
   // panel it used to open on now lives in the left column and is always on
   // screen beside it. A plumber call is untouched: Calculator, as ever.
-  const [tab, setTab] = useState<Tab>(showHouses || auctionCall ? 'coach' : 'calculator');
+  const [tab, setTab] = useState<Tab>(showHouses || auctionCall || saCall ? 'coach' : 'calculator');
   const { messages } = useContactMessages(contactId ?? '');
 
   // Auto-open the Coach tab the instant the call connects, so the read-aloud
@@ -119,7 +129,7 @@ export default function DialerRightTabs({
     <div className="flex flex-col h-full bg-white">
       <div className="flex border-b border-[#E5E7EB]">
         <TabButton active={tab === 'coach'} icon={<Sparkles className="w-3.5 h-3.5" />} label="Coach" onClick={() => setTab('coach')} />
-        {!showHouses && !auctionCall && (
+        {!showHouses && !auctionCall && !saCall && (
           <>
             <TabButton active={tab === 'calculator'} icon={<Calculator className="w-3.5 h-3.5" />} label="Calculator" onClick={() => setTab('calculator')} />
             <TabButton active={tab === 'objections'} icon={<ShieldAlert className="w-3.5 h-3.5" />} label="Objections" onClick={() => setTab('objections')} />
@@ -127,7 +137,7 @@ export default function DialerRightTabs({
         )}
         {/* Hugo 2026-08-14: the email is asked for and SENT on the call, so it
             cannot live behind the Messages tab's channel and stage pickers. */}
-        {showHouses && (
+        {(showHouses || saCall) && (
           <TabButton active={tab === 'email'} icon={<Mail className="w-3.5 h-3.5" />} label="Email" onClick={() => setTab('email')} />
         )}
         <TabButton active={tab === 'messages'} icon={<MessageSquare className="w-3.5 h-3.5" />} label="Messages" count={messages.length} onClick={() => setTab('messages')} />
@@ -162,6 +172,14 @@ export default function DialerRightTabs({
             callMode={callMode}
           />
         )}
+        {tab === 'email' && saCall && !showHouses && (
+          <SaEmailPane
+            contactId={contactId}
+            contactEmail={contactEmail}
+            agentFirstName={agentFirstName}
+            listing={saListing ?? null}
+          />
+        )}
         {tab === 'calculator' && <SalesCalculatorPane />}
         {tab === 'objections' && <ObjectionsPane />}
         {tab === 'messages' && (
@@ -176,7 +194,7 @@ export default function DialerRightTabs({
             pipelineId={pipelineId}
             messages={messages}
             showHouses={showHouses}
-            auctionCall={auctionCall}
+            auctionCall={auctionCall || saCall}
             currentCallId={currentCallId}
             offerHouse={offerHouse}
             callMode={callMode}

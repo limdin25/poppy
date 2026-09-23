@@ -77,15 +77,16 @@ function phoneTail(raw: string): string {
 
 // Mirror of api/lib/desk-route.ts (Deno cannot import api/), pinned by
 // tests/auction-inbound-routing.test.ts. Read the rule there.
-type Desk = 'houses' | 'auction';
+type Desk = 'houses' | 'auction' | 'sa';
 interface DeskRoute {
   desk: Desk;
   ring: boolean;
 }
 function inboundDeskRoute(contactDesk: string | null | undefined, agentDesk: string | null | undefined): DeskRoute {
-  const onDesk: Desk = agentDesk === 'auction' ? 'auction' : 'houses';
+  const asDesk = (v: string | null | undefined): Desk => (v === 'auction' || v === 'sa' ? v : 'houses');
+  const onDesk: Desk = asDesk(agentDesk);
   if (!contactDesk) return { desk: onDesk, ring: true };
-  const theirs: Desk = contactDesk === 'auction' ? 'auction' : 'houses';
+  const theirs: Desk = asDesk(contactDesk);
   return { desk: theirs, ring: theirs === onDesk };
 }
 

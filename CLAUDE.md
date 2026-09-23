@@ -227,6 +227,29 @@ Pedro now rings auctioneers about **unsold** auction lots. Full write-up:
 
 ---
 
+## THE SERVICED ACCOMMODATION DESK: a third, clean CRM (Hugo, 2026-09-23)
+
+Pedro rings letting agents about city-centre flats to rent. Full write-up:
+[docs/SA_LANE.md](docs/SA_LANE.md). The rules that bite:
+
+- **We are the middleman. We never take the flat.** The call wants a yes in
+  principle, from the agent OR the landlord, to a company let to a serviced
+  accommodation company. Hugo then brings the company. **No negotiation**: the
+  company pays the asking rent. Script, coach, email and daily report all say
+  so, pinned by `tests/sa-desk.test.ts`.
+- **The desk picker is a drop down** (Houses, Auction, Serviced Accommodation),
+  desk value `'sa'`, script key `'sa_call'`, board and campaign "SA - Pedro".
+  The same desk rules as Auction apply, including the inbound silence rule.
+- **Rentals live in `sa_listings`, never in `brrr_properties`.**
+- **One flat per agency (its phone), then the agency rests 14 days.** "Never do
+  company lets" retires an agency for good. `scripts/lib/sa-listings.mjs`.
+- **06:30 UK `sa-overnight.timer` on the VPS** tops the queue up to 100 from a
+  COPY in `/root/elsie-assign`. Re-copy both files when they change.
+- **The dialer has TWO campaign hooks.** `caller-pad/hooks/useDialerCampaigns.ts`
+  is the one the dialer room uses; it had no desk filter until 2026-09-23.
+
+---
+
 ## Test loop (run before every commit)
 
 ```bash

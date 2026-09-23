@@ -30,6 +30,7 @@ import ContactMetaCompact from '@/features/crm/components/live-call/ContactMetaC
 import CallTimeline from '@/features/crm/components/live-call/CallTimeline';
 import PropertyCallRoom from '@/features/crm/components/live-call/PropertyCallRoom';
 import AuctionCallRoom from '@/features/crm/components/live-call/AuctionCallRoom';
+import SaCallRoom from '@/features/crm/components/live-call/SaCallRoom';
 import KnowledgeCheckpoint from '@/features/crm/components/live-call/KnowledgeCheckpoint';
 import CallReviewCard from '@/features/crm/components/live-call/CallReviewCard';
 
@@ -72,7 +73,7 @@ export default function DialerProPage() {
     const q = searchParams.get('script');
     // Allowlist, never the raw query value: this decides which words an agent
     // reads down a live phone line.
-    return q === 'vsl_close' || q === 'property_call' || q === 'auction_call' ? q : null;
+    return q === 'vsl_close' || q === 'property_call' || q === 'auction_call' || q === 'sa_call' ? q : null;
   });
   // The Auction desk has one kind of call and one script, whatever the URL or
   // landing_path says (Pedro's landing_path still names the property room).
@@ -439,6 +440,8 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
   const isHousesCall = paneScriptKey === 'property_call';
   // The Auction desk's room (2026-09-18): an auction office and its lots.
   const isAuctionCall = paneScriptKey === 'auction_call';
+  // The Serviced Accommodation desk's room (2026-09-23): a letting agent and the flat.
+  const isSaCall = paneScriptKey === 'sa_call';
 
   // ── The knowledge checkpoint ───────────────────────────────────────────────
   // Hugo 2026-08-12: "bake in an agent knowledge checkpoint every dial, locking
@@ -886,7 +889,19 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
 
       {/* ─── BACKGROUND: the call room (always mounted, sticky) ─── */}
       <div className="flex-1 overflow-hidden">
-        {isAuctionCall ? (
+        {isSaCall ? (
+          <SaCallRoom
+            contact={contact}
+            contactHeader={contactHeader}
+            currentCallId={state.currentCallId}
+            callConnected={state.phase === 'connected'}
+            liveDurationSec={liveDuration}
+            agentFirstName={agentFirstName}
+            campaignId={camp?.id ?? null}
+            pipelineId={camp?.pipelineId ?? null}
+            direction="outbound"
+          />
+        ) : isAuctionCall ? (
           <AuctionCallRoom
             contact={contact}
             contactHeader={contactHeader}

@@ -308,7 +308,7 @@ describe('an unknown number still gets the script, and a way to find them', () =
     expect(SCREEN).toMatch(/contact_id: picked\.id, script_key: 'property_call'/)
     // An auction office picked from the search files as an auction call.
     expect(SCREEN).toMatch(/contact_id: picked\.id, script_key: 'auction_call'/)
-    expect(SCREEN).toMatch(/const isProperty = !isAuction && \(hasHouses \|\| picked\.customFields\?\.lead_type === 'estate_agent'\)/)
+    expect(SCREEN).toMatch(/const isProperty = !isAuction && !isSa && \(hasHouses \|\| picked\.customFields\?\.lead_type === 'estate_agent'\)/)
   })
 
   it('and the room with no contact still cannot show a figure', () => {

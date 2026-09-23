@@ -73,7 +73,8 @@ export default function ContactMetaCompact({ contact }: Props) {
   // are buried on Google" video, one builds them a website. Every one of them
   // is wrong, and embarrassing, on a property call.
   // An auction office (Auction desk) is the same: we are buying, not selling.
-  const isEstateAgent = cf.lead_type === 'estate_agent' || cf.lead_type === 'auctioneer';
+  // So is a letting agent on the Serviced Accommodation desk.
+  const isEstateAgent = cf.lead_type === 'estate_agent' || cf.lead_type === 'auctioneer' || cf.lead_type === 'sa_agency';
 
   return (
     <div className="space-y-1.5">

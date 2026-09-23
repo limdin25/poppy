@@ -42,6 +42,9 @@ describe('every list in the CRM is scoped by desk', () => {
     ['src/features/crm/hooks/useCalls.ts', /\.eq\('desk', desk\)/],
     ['src/features/crm/dialer-pro/history/CallHistoryPro.tsx', /\.eq\('desk', desk\)/],
     ['src/features/crm/hooks/useDialerCampaigns.ts', /\.eq\('desk', desk\)/],
+    // The dialer room's own campaign list (2026-09-23): without it every desk
+    // opened on "Auction - Pedro", the first campaign by name.
+    ['src/features/crm/caller-pad/hooks/useDialerCampaigns.ts', /\.eq\('desk', desk\)/],
     ['src/features/crm/hooks/useNotifications.ts', /\.eq\('desk', desk\)/],
     ['src/features/crm/hooks/useInboxNotifications.ts', /\(c\.desk \?\? 'houses'\) === desk/],
     ['src/features/crm/hooks/useFollowups.ts', /\(r\.wk_contacts\?\.desk \?\? 'houses'\) === desk/],

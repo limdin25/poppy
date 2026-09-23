@@ -225,7 +225,8 @@ describe('sending it', () => {
 describe('the tab, and who can see it', () => {
   it('is a tab of its own on a property call, not buried in Messages', () => {
     expect(TABS).toMatch(/label="Email"/)
-    expect(TABS).toMatch(/\{showHouses && \(\s*\n?\s*<TabButton active=\{tab === 'email'\}/)
+    // The SA desk (2026-09-23) has an Email tab of its own too, with its own pane.
+    expect(TABS).toMatch(/\{\(showHouses \|\| saCall\) && \(\s*\n?\s*<TabButton active=\{tab === 'email'\}/)
   })
 
   it('does not exist on a plumber dial', () => {

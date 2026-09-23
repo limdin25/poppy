@@ -48,14 +48,14 @@ describe('the tab set swaps, it does not just grow', () => {
     // and the Objections answer plumber objections. Both are actively
     // misleading with an estate agent on the line.
     // Hidden on an auction call too (Auction desk, 2026-09-18).
-    expect(TABS).toMatch(/\{!showHouses && !auctionCall && \(/)
-    const hidden = TABS.slice(TABS.indexOf('{!showHouses && !auctionCall && ('), TABS.indexOf('</>', TABS.indexOf('{!showHouses && !auctionCall && (')))
+    expect(TABS).toMatch(/\{!showHouses && !auctionCall && !saCall && \(/)
+    const hidden = TABS.slice(TABS.indexOf('{!showHouses && !auctionCall && !saCall && ('), TABS.indexOf('</>', TABS.indexOf('{!showHouses && !auctionCall && !saCall && (')))
     expect(hidden).toMatch(/label="Calculator"/)
     expect(hidden).toMatch(/label="Objections"/)
   })
 
   it('defaults to Coach in houses mode, Calculator otherwise', () => {
-    expect(TABS).toMatch(/useState<Tab>\(showHouses \|\| auctionCall \? 'coach' : 'calculator'\)/)
+    expect(TABS).toMatch(/useState<Tab>\(showHouses \|\| auctionCall \|\| saCall \? 'coach' : 'calculator'\)/)
   })
 
   it('Messages is still reachable on a property call', () => {

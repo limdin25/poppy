@@ -865,7 +865,8 @@ async function findOrCreateContact(
       .select('active_desk')
       .eq('id', ownerAgentId)
       .maybeSingle();
-    if ((owner as { active_desk?: string } | null)?.active_desk === 'auction') newDesk = 'auction';
+    const ownerDesk = (owner as { active_desk?: string } | null)?.active_desk;
+    if (ownerDesk === 'auction' || ownerDesk === 'sa') newDesk = ownerDesk;
   }
 
   const { data: inserted, error: insErr } = await supa

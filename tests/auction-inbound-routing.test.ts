@@ -23,6 +23,13 @@ describe('inboundDeskRoute', () => {
     expect(inboundDeskRoute('auction', 'auction')).toEqual({ desk: 'auction', ring: true })
     expect(inboundDeskRoute('houses', 'houses')).toEqual({ desk: 'houses', ring: true })
   })
+  it('the Serviced Accommodation desk follows the same rule (2026-09-23)', () => {
+    expect(inboundDeskRoute('sa', 'sa')).toEqual({ desk: 'sa', ring: true })
+    expect(inboundDeskRoute('sa', 'houses')).toEqual({ desk: 'sa', ring: false })
+    expect(inboundDeskRoute('houses', 'sa')).toEqual({ desk: 'houses', ring: false })
+    expect(inboundDeskRoute('auction', 'sa')).toEqual({ desk: 'auction', ring: false })
+    expect(inboundDeskRoute(null, 'sa')).toEqual({ desk: 'sa', ring: true })
+  })
   it('a caller nobody knows rings, filed under the desk he is on', () => {
     expect(inboundDeskRoute(null, 'auction')).toEqual({ desk: 'auction', ring: true })
     expect(inboundDeskRoute(null, 'houses')).toEqual({ desk: 'houses', ring: true })
@@ -50,12 +57,12 @@ describe('the TwiML function uses the same rule', () => {
 describe('new senders by text and email land on the desk the agent is on', () => {
   it('SMS', () => {
     const sms = read('supabase/functions/wk-sms-incoming/index.ts')
-    expect(sms).toMatch(/if \(agent\?\.active_desk === 'auction'\) newDesk = 'auction';/)
+    expect(sms).toMatch(/if \(agent\?\.active_desk === 'auction' \|\| agent\?\.active_desk === 'sa'\) newDesk = agent\.active_desk;/)
     expect(sms).toMatch(/desk: newDesk,/)
   })
   it('email', () => {
     const mail = read('supabase/functions/wk-email-webhook/index.ts')
-    expect(mail).toMatch(/active_desk === 'auction'\) newDesk = 'auction';/)
+    expect(mail).toMatch(/if \(ownerDesk === 'auction' \|\| ownerDesk === 'sa'\) newDesk = ownerDesk;/)
     expect(mail).toMatch(/desk: newDesk,/)
   })
 })

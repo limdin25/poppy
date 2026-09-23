@@ -1,8 +1,9 @@
 import { test, expect, type Page } from '@playwright/test'
 
-// The Auction desk (Hugo, 2026-09-18): a Houses | Auction switch at the top of
-// the CRM. On Auction the Houses board, pages and campaign are gone, the
-// dialer opens the auction script, and switching back restores Houses.
+// The Auction desk (Hugo, 2026-09-18): a desk drop down at the top of the CRM
+// (a Houses | Auction switch until 2026-09-23). On Auction the Houses board,
+// pages and campaign are gone, the dialer opens the auction script, and
+// switching back restores Houses.
 //
 // Runs as an ADMIN demo login, never as Pedro: switching desks writes
 // profiles.active_desk, and on Pedro's real account that decides whether an
@@ -27,13 +28,14 @@ async function signIn(page: Page) {
 }
 
 async function pickDesk(page: Page, desk: 'houses' | 'auction') {
-  const tab = page.getByTestId(`desk-${desk}`)
-  await expect(tab).toBeVisible({ timeout: 30_000 })
-  if ((await tab.getAttribute('aria-selected')) !== 'true') {
-    await tab.click()
+  // A drop down since 2026-09-23 (Houses, Auction, Serviced Accommodation).
+  const select = page.getByTestId('desk-select')
+  await expect(select).toBeVisible({ timeout: 30_000 })
+  if ((await select.inputValue()) !== desk) {
+    await select.selectOption(desk)
   }
   // The whole CRM rebuilds on a switch; wait for the new one to settle.
-  await expect(page.getByTestId(`desk-${desk}`)).toHaveAttribute('aria-selected', 'true', { timeout: 30_000 })
+  await expect(page.getByTestId('desk-select')).toHaveValue(desk, { timeout: 30_000 })
 }
 
 test.describe('the Auction desk', () => {
@@ -61,7 +63,7 @@ test.describe('the Auction desk', () => {
 
       // The dialer on Auction opens the auction script, whatever the URL says.
       await page.goto('/admin/crm/dialer-pro?script=property_call')
-      await expect(page.getByTestId('desk-auction')).toHaveAttribute('aria-selected', 'true', { timeout: 30_000 })
+      await expect(page.getByTestId('desk-select')).toHaveValue('auction', { timeout: 30_000 })
       await expect(page.getByText('Auction call · unsold lot').first()).toBeVisible({ timeout: 30_000 })
       await expect(page.getByText(/2-Minute Audit/i)).toHaveCount(0)
       await expect(page.getByText('Property call · estate agent')).toHaveCount(0)
@@ -89,7 +91,7 @@ test.describe('the Auction desk', () => {
       // if any, must belong to an Auction contact. With no auction threads yet
       // the list is simply empty.
       await page.goto('/admin/crm/inbox')
-      await expect(page.getByTestId('desk-auction')).toHaveAttribute('aria-selected', 'true', { timeout: 30_000 })
+      await expect(page.getByTestId('desk-select')).toHaveValue('auction', { timeout: 30_000 })
       await expect(page.getByText(/JL Brickwork/i)).toHaveCount(0)
     } finally {
       // ALWAYS back to Houses, so the account is left as it was found.

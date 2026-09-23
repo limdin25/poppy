@@ -84,14 +84,19 @@ export function scriptForContactFields(
   // An auction office (Auction desk, 2026-09-18), stamped by
   // scripts/assign-auction-lots-to-pedro.mjs.
   if (fields?.lead_type === 'auctioneer') return 'auction_call';
+  // A letting agency on the Serviced Accommodation desk (2026-09-23), stamped
+  // by scripts/sa-scrape-and-assign.mjs.
+  if (fields?.lead_type === 'sa_agency') return 'sa_call';
   return null;
 }
 
-/** The script a whole DESK defaults to. The Auction desk has one kind of call
- *  and one script; the Houses desk keeps whatever it had (landing_path, the
- *  URL, the contact). */
+/** The script a whole DESK defaults to. The Auction and Serviced
+ *  Accommodation desks each have one kind of call and one script; the Houses
+ *  desk keeps whatever it had (landing_path, the URL, the contact). */
 export function scriptForDesk(desk: string | null | undefined): ScriptKey | null {
-  return desk === 'auction' ? 'auction_call' : null;
+  if (desk === 'auction') return 'auction_call';
+  if (desk === 'sa') return 'sa_call';
+  return null;
 }
 
 export function scriptForCall({
@@ -106,6 +111,8 @@ export function scriptForCall({
   if (openedWith === 'property_call') return 'property_call';
   // Same for the auction call: every lead in the Auction queue is an office.
   if (openedWith === 'auction_call') return 'auction_call';
+  // And the SA call: every lead in the SA queue is a letting agency.
+  if (openedWith === 'sa_call') return 'sa_call';
 
   // A room opened normally is always the cold script, whoever is on the phone.
   if (openedWith !== 'vsl_close') return 'cold_call';

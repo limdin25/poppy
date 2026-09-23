@@ -125,7 +125,7 @@ describe('the coach has the property objections, and only those', () => {
     // card ends up mentioning Google reviews to an estate agent.
     // (An auction call replaces it too, with the auctioneer list, 2026-09-18.)
     expect(COACH).toMatch(
-      /const baseFacts: CoachFact\[\] = isPropertyCall \? PROPERTY_OBJECTIONS\s*: isAuctionCall \? AUCTION_OBJECTIONS\s*: wsFacts;/)
+      /const baseFacts: CoachFact\[\] = isPropertyCall \? PROPERTY_OBJECTIONS\s*: isAuctionCall \? AUCTION_OBJECTIONS\s*: isSaCall \? SA_OBJECTIONS\s*: wsFacts;/)
     // Campaign facts still override by key, on BOTH paths.
     expect(COACH).toMatch(/\.\.\.baseFacts\.filter\(\(f\) => !overrideKeys\.has\(f\.key\)\),/)
   })

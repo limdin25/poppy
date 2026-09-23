@@ -81,6 +81,7 @@ serve(async (req: Request) => {
     const scriptKey = body.script_key === 'vsl_close' ? 'vsl_close'
       : body.script_key === 'property_call' ? 'property_call'
       : body.script_key === 'auction_call' ? 'auction_call'
+      : body.script_key === 'sa_call' ? 'sa_call'
       : null;
     if (!phone) {
       return jsonResponse(400, { error: 'to_phone required' });
@@ -240,15 +241,16 @@ serve(async (req: Request) => {
 
     // THE DESK. The database trigger stamps it from the contact whenever
     // there is one; a free dial with no contact takes the campaign's desk, and
-    // an auction script can only ever be an Auction call.
-    let desk = scriptKey === 'auction_call' ? 'auction' : 'houses';
+    // an auction script can only ever be an Auction call, and an SA script
+    // (Serviced Accommodation, 2026-09-23) only ever an SA call.
+    let desk = scriptKey === 'auction_call' ? 'auction' : scriptKey === 'sa_call' ? 'sa' : 'houses';
     if (campaignId && desk === 'houses') {
       const { data: camp } = await supa
         .from('wk_dialer_campaigns')
         .select('desk')
         .eq('id', campaignId)
         .maybeSingle();
-      if (camp?.desk === 'auction') desk = 'auction';
+      if (camp?.desk === 'auction' || camp?.desk === 'sa') desk = camp.desk;
     }
 
     // INSERT the wk_calls row with status='queued' and our minted UUID.

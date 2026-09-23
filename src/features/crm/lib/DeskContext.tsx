@@ -18,9 +18,16 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { supabase } from '@/integrations/supabase/browser';
 import { useAuth } from './useCrmAuth';
 
-export type Desk = 'houses' | 'auction';
-export const DESKS: readonly Desk[] = ['houses', 'auction'];
-export const DESK_LABEL: Record<Desk, string> = { houses: 'Houses', auction: 'Auction' };
+// 'sa' (2026-09-23): Serviced Accommodation, a third clean CRM. Pedro rings
+// letting agents about city-centre rentals for a company let to a serviced
+// accommodation operator. Same rules as Auction: none of the other desks' data.
+export type Desk = 'houses' | 'auction' | 'sa';
+export const DESKS: readonly Desk[] = ['houses', 'auction', 'sa'];
+export const DESK_LABEL: Record<Desk, string> = {
+  houses: 'Houses',
+  auction: 'Auction',
+  sa: 'Serviced Accommodation',
+};
 
 interface DeskValue {
   desk: Desk;
@@ -39,8 +46,8 @@ const DeskContext = createContext<DeskValue>({
   setDesk: async () => null,
 });
 
-function asDesk(v: unknown): Desk {
-  return v === 'auction' ? 'auction' : 'houses';
+export function asDesk(v: unknown): Desk {
+  return v === 'auction' || v === 'sa' ? v : 'houses';
 }
 
 export function DeskProvider({ children }: { children: React.ReactNode }) {
