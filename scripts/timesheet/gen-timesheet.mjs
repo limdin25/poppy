@@ -31,9 +31,111 @@ const RATE = 2.5; // 40 hours for $100
 // ---------------------------------------------------------------------------
 const WEEKS = [
   {
+    id: 'sep21',
+    tab: '21 to 26 September',
+    tabSub: 'This week',
+    sub: 'Monday 21 September to Saturday 26 September 2026',
+    range: ['2026-09-21', '2026-09-26'],
+    prevRange: ['2026-09-14', '2026-09-19'],
+    prevLabel: '14 to 19 Sep',
+    thisLabel: '21 to 26 Sep',
+    daysLabel: 'Monday to Saturday, Saturday included',
+    extraBreakH: 0,
+    cutoff: '18:29',
+    preparedOn: 'Saturday 26 September 2026',
+    // Hugo, 2026-09-26: $30 was advanced the week before, and Pedro asked for it
+    // to come back as $15 this week and $15 next week. The hours are paid in full,
+    // the repayment is shown under them so the page matches what Wise sends.
+    advance: { total: 30, deductNow: 15, deductLater: 15 },
+    unique: { last: { dialled: 265, spoken: 157 }, this: { dialled: 273, spoken: 127 } },
+    notes: { '2026-09-14': 0, '2026-09-15': 1, '2026-09-16': 0, '2026-09-17': 0, '2026-09-18': 7, '2026-09-19': 0,
+             '2026-09-21': 1, '2026-09-22': 0, '2026-09-23': 0, '2026-09-24': 0, '2026-09-25': 0, '2026-09-26': 0 },
+    texts: { '2026-09-14': 8, '2026-09-15': 12, '2026-09-16': 12, '2026-09-17': 7, '2026-09-18': 7, '2026-09-19': 0,
+             '2026-09-21': 5, '2026-09-22': 12, '2026-09-23': 4, '2026-09-24': 11, '2026-09-25': 14, '2026-09-26': 16 },
+    statuses: [
+      ['Calls you dialled that connected', 450, 'out', true],
+      ['Calls you dialled that failed to connect', 31, 'out', false],
+      ['Calls you dialled that rang out, nobody answered', 37, 'out', false],
+      ['Calls you dialled that hit a busy line', 8, 'out', false],
+      ['Calls you dialled saved with no length recorded', 2, 'out', false],
+      ['Calls that came in to you and connected', 41, 'in', true],
+      ['Calls in to you saved with no length recorded', 21, 'in', false],
+      ['Calls in to you that rang out or failed', 21, 'in', false],
+      ['Calls in to you still marked as ringing, nobody picked up', 2, 'in', false],
+    ],
+    voicemailSec: 1026,
+    noOutcome: 584,
+    // Who the calls went to, matched on the contact (or its phone when the call
+    // row has no contact). Builder calls get their outcome on the builder list
+    // (brrr_builder_outreach.call_outcome), never on the call, so without these
+    // rows a builder week reads as a week of nothing.
+    mix: { last: { builder: 279, agent: 231 }, this: { builder: 437, agent: 76 } },
+    builderOutcomes: [
+      ['Builders coming to the viewing', 6, 11, false],
+      ['Builders who want the details by text', 2, 3, false],
+      ['Builders to call back later', 0, 6, false],
+      ['Builders who charge to view', 11, 18, false],
+      ['Builders not interested', 31, 47, true],
+      ['Builders who did not answer', 104, 146, false],
+      ['Builders, wrong number', 1, 0, true],
+    ],
+    // Builders coming, wanting the details, or asking for a call back, per day.
+    forwardExtra: { '2026-09-21': 2, '2026-09-22': 5, '2026-09-23': 1, '2026-09-24': 3, '2026-09-25': 2, '2026-09-26': 7 },
+    prevPaidNote: null,
+    rulesExtra: [
+      'This week is Monday to Saturday, because you worked the Saturday. Saturday is paid on exactly the same rules as Monday.',
+    ],
+    dayNotes: {
+      '2026-09-21': [
+        { fair: false, text: 'A late start. Calls came in to you at 09:02 and 09:53, then a 136 minute stop until 12:09, and the first call you dialled yourself was at 13:19. Everything before that was call backs.' },
+        { fair: true, text: 'Once you started, the afternoon was steady. From 13:19 to your last dial at 17:47 there were only two stops over 10 minutes, and you booked a viewing with an estate agent.' },
+      ],
+      '2026-09-22': [
+        { fair: true, text: 'Your best day for hours: 5h 17m of working time and 2h 40m of talk. After your first dial at 11:00, no stop was longer than 40 minutes until you finished dialling at 17:31. 12 texts and emails went out.' },
+        { fair: false, text: 'The morning again. Calls came in at 08:43, 08:59 and 09:01, then nothing for 119 minutes until 11:00.' },
+      ],
+      '2026-09-23': [
+        { fair: true, text: 'The tightest day of the week. Dialling from 09:20, and six stops before your last dial at 15:54, none of them longer than 22 minutes. 2h 41m of talk, the most of any day.' },
+        { fair: false, text: 'It finished early. Your last dial was at 15:54, and the only call after it was somebody ringing you back at 17:08.' },
+      ],
+      '2026-09-24': [
+        { fair: false, text: 'The weak day of the week. Calls came in at 09:30, 09:55 and 10:22, but the first call you dialled was at 11:11. Then 54 minutes from 13:50 to 14:44 and 82 minutes from 15:07 to 16:29.' },
+        { fair: false, text: '3h 43m of working time, the least of any day this week, and 1h 19m of talk across 80 calls.' },
+        { fair: true, text: 'The 144 minute stop at the end is not held against you. Your last dial was at 17:35 and somebody rang at 20:09 when you had finished. It makes the day look longer, but that gap is counted as a stop, so Thursday pays exactly what it would without it.' },
+      ],
+      '2026-09-25': [
+        { fair: true, text: 'The earliest start of the week, dialling from 09:16, and you kept going until 18:21. 14 texts and emails went out.' },
+        { fair: false, text: 'Fourteen stops over 10 minutes, the most of any day, 4h 43m in total. Most were short, but stops of 41, 45 and 38 minutes before 12:45 took most of the morning.' },
+      ],
+      '2026-09-26': [
+        { fair: true, text: 'A full Saturday this time, 121 calls from 10:16, and 6 builders said they are coming to a viewing, the most of any day. 16 texts sent, also the most of the week.' },
+        { fair: false, text: 'Ten stops, 3h 27m in total, the longest 45 minutes from 14:56 to 15:41. The calls were short, none longer than 4 minutes, because most builders did not pick up.' },
+        { fair: true, text: 'Counted up to 18:29 today. Anything you dial later goes on next week\'s page, it is not lost.' },
+      ],
+    },
+    outcomeNote: (m) => `<p class="note"><strong>Builder calls are recorded in a different place.</strong> The top rows are the outcome buttons on the call itself, which is how estate agent calls are recorded. The builder rows come from the outcome you pick on the builder list, counted by the day it was last set. ${m.cfg.noOutcome} of your ${m.B.calls} calls have no button pressed on the call itself, and most of those are builder calls, which get their outcome on the builder list instead. You pressed ${m.cfg.builderOutcomes.reduce((t, r) => t + r[2], 0)} there this week. The Moved forward figure on each day below now includes builders who are coming, want the details, or asked for a call back. None of this changes your pay.</p>`,
+    verdict: [
+      (m) => `<p><strong>This was a builder week.</strong> ${m.cfg.mix.this.builder} of your ${m.B.calls} calls went to builders, against ${m.cfg.mix.last.builder} of ${m.A.calls} the week before, and only ${m.cfg.mix.this.agent} went to estate agents, against ${m.cfg.mix.last.agent}. So viewings booked with estate agents went from ${m.A.dispo['Viewing booked'] || 0} to ${m.B.dispo['Viewing booked'] || 0}, and that is the work changing, not you. On the builder side, ${m.cfg.builderOutcomes[0][2]} builders said they are coming to a viewing, against ${m.cfg.builderOutcomes[0][1]} the week before.</p>`,
+      (m) => {
+        const monFri = (sel) => sel.slice(0, 5).reduce((t, d) => t + d.worked + Math.min(3600, d.idle), 0) / 3600;
+        return `<p>Hours went up, ${m.paidHours.toFixed(2)} paid against ${m.prevPaidH.toFixed(2)}, on the same Monday to Saturday basis. Most of the rise is Saturday: last Saturday was two call backs and no dialling, this Saturday was a full day of ${m.week[5].calls} calls. Monday to Friday on its own went from ${monFri(m.prev).toFixed(2)} to ${monFri(m.week).toFixed(2)} hours.</p>`;
+      },
+      (m) => `<p>The honest other side. Talk time was about the same, ${m.hm(m.A.talk)} against ${m.hm(m.B.talk)}, but fewer calls were answered, ${m.A.connected} against ${m.B.connected}, so real conversations went from ${m.A.conversations} to ${m.B.conversations}. Idle went down as a share of the shift, from ${Math.round((100 * m.A.idle) / m.A.span)} percent to ${Math.round((100 * m.B.idle) / m.B.span)} percent, but there were more separate stops, ${m.weekGaps} against ${m.prevGaps}. The mornings are still where the time goes: the first call you dialled was at 13:19 on Monday, 11:00 on Tuesday and 11:11 on Thursday. Wednesday and Friday, dialling from 09:20 and 09:16, show it can be done.</p>`,
+    ],
+    fairness: [
+      (m) => `<div class="note fair"><strong>Numbers nobody answers are not your fault.</strong> ${m.cfg.builderOutcomes[5][2]} builders did not answer, ${m.B.dispo['Voicemail'] || 0} estate agent calls went to voicemail and ${m.B.dispo['No pickup'] || 0} nobody picked up. Every one still counts as a call made and as time worked. Only the gaps between calls were counted, never the outcome of a call.</div>`,
+      () => `<div class="note fair"><strong>Short pauses are free.</strong> Anything under 10 minutes, writing a note, getting a drink, finishing a text, is all paid as working time. Most of your gaps are under 30 seconds and none of those are even looked at.</div>`,
+      () => `<div class="note fair"><strong>A call that comes in after you have finished costs you nothing.</strong> On Monday, Tuesday, Wednesday and Thursday somebody rang you after your last dial, the latest at 20:09 on Thursday. It makes those days look longer on this page, but the time in between is counted as a stop, and each of those days already had more than its free hour of stops, so your pay is exactly what it would be without those calls.</div>`,
+      () => `<div class="note fair"><strong>Running out of leads is not idle you caused.</strong> If the list ran dry and you were waiting on us for more builders or offices to ring, that is our problem and not a reason to dock you. Tell us the times it happened and those stops get paid.</div>`,
+      (m) => `<div class="note fair"><strong>Not pressing the outcome buttons costs you nothing here.</strong> ${m.cfg.noOutcome} calls this week have no outcome on the call itself. Your pay is worked out from the calls themselves, not from the buttons.</div>`,
+      (m) => `<div class="note fair"><strong>The advance is separate from your hours.</strong> Every hour on this page is paid in full. The $${m.cfg.advance.deductNow}.00 taken off is half of the $${m.cfg.advance.total}.00 you were advanced last week, taken back the way you asked.</div>`,
+      (m) => `<div class="note fair"><strong>You are not judged on results here.</strong> This page is about hours. The ${m.cfg.builderOutcomes[0][2]} builders coming to viewings and the viewing you booked this week are yours regardless of the pay figure.</div>`,
+    ],
+  },
+  {
     id: 'sep14',
     tab: '14 to 19 September',
-    tabSub: 'This week',
+    tabSub: 'Paid',
     sub: 'Monday 14 September to Saturday 19 September 2026',
     range: ['2026-09-14', '2026-09-19'],
     prevRange: ['2026-09-07', '2026-09-12'],
@@ -358,13 +460,16 @@ function renderWeek(cfg) {
     cmpRow('Hours paid', `${prevPaidH.toFixed(2)}h`, `${paidHours.toFixed(2)}h`, delta(prevPaidH, paidHours)),
   ].join('\n            ');
 
-  const OUTCOMES = ['Viewing booked', 'Ready for call 2', 'Discovery done, evaluating', 'Ballpark agreed', 'Follow up', 'Offer sent', 'Not interested', 'Voicemail', 'No pickup'];
+  const OUTCOMES = ['Viewing booked', 'Ready for call 2', 'Discovery done, evaluating', 'Ballpark agreed', 'Follow up', 'Offer sent', 'Not interested', 'Voicemail', 'No pickup', 'Lot: sold elsewhere'];
   const outRows = OUTCOMES.map((k) => {
     const a = A.dispo[k] || 0, b = B.dispo[k] || 0;
     if (!a && !b) return '';
     const d = delta(a, b, k === 'Not interested');
     return `<tr><td>${k}</td><td>${a}</td><td>${b}</td><td class="${d.cls}">${d.txt}</td></tr>`;
-  }).filter(Boolean).join('\n            ');
+  }).filter(Boolean).concat((cfg.builderOutcomes || []).map(([k, a, b, invert]) => {
+    const d = delta(a, b, invert);
+    return `<tr><td>${k}</td><td>${a}</td><td>${b}</td><td class="${d.cls}">${d.txt}</td></tr>`;
+  })).join('\n            ');
 
   const sumRows = rows.map((r) => `<tr><td>${r.label.replace(/ (Aug|Sept?)$/, '')}</td><td>${r.first}</td><td>${r.last}</td><td>${hm(r.span)}</td><td>${hm(r.idle)}</td><td>${hm(r.credit)}</td><td class="cut">${hm(r.deducted)}</td><td class="paid">${hm(r.paid)}</td></tr>`).join('\n            ');
   const totalRow = `<tr class="total"><td>Week</td><td></td><td></td><td>${hm(sum(rows, 'span'))}</td><td>${hm(sum(rows, 'idle'))}</td><td>${hm(rows.reduce((t, r) => t + r.credit, 0))}</td><td class="cut">${hm(rows.reduce((t, r) => t + r.deducted, 0))}</td><td class="paid">${hm(paidBeforeExtra)}</td></tr>`;
@@ -392,7 +497,8 @@ function renderWeek(cfg) {
     }).join('');
     const ticks = Array.from({ length: 12 }, (_, i) => `<span class="tick" style="left:${((i / 11) * 100).toFixed(3)}%">${String(9 + i).padStart(2, '0')}</span>`).join('');
     const gapRows = r.gaps.map((g) => `<div class="gaprow${g.mins >= 30 ? ' big' : ''}"><span class="when">${g.from} to ${g.to}</span><span class="len">${g.mins >= 60 ? hm(g.mins * 60) : g.mins + ' min'}</span></div>`).join('');
-    const good = (r.dispo['Discovery done, evaluating'] || 0) + (r.dispo['Ready for call 2'] || 0) + (r.dispo['Ballpark agreed'] || 0) + (r.dispo['Viewing booked'] || 0);
+    const good = (r.dispo['Discovery done, evaluating'] || 0) + (r.dispo['Ready for call 2'] || 0) + (r.dispo['Ballpark agreed'] || 0) + (r.dispo['Viewing booked'] || 0)
+      + ((cfg.forwardExtra || {})[r.date] || 0);
     const cells = [
       [r.calls, 'Calls made'], [r.connected, 'Answered'], [hm(r.talk), 'Talk time'],
       [r.conversations, 'Real conversations'], [good, 'Moved forward'],
@@ -427,6 +533,10 @@ function renderWeek(cfg) {
       </article>`;
   }).join('\n');
 
+  // An advance being paid back comes off AFTER the hours are priced, so the hours
+  // and the rounding stay exactly as the rules make them.
+  const adv = cfg.advance || null;
+  const toPay = adv ? due - adv.deductNow : due;
   const m = { cfg, A, B, week, prev, rows, paidHours, prevPaidH, weekGaps, prevGaps, hm, sum, due };
   const verdict = cfg.verdict.map((f) => f(m)).join('\n      ');
   const fairness = cfg.fairness.map((f) => f(m)).join('\n      ');
@@ -452,7 +562,7 @@ function renderWeek(cfg) {
       <div class="hstat"><div class="eyebrow">Hours paid</div><div class="val">${hm(paidTotal)}</div><div class="foot">Includes 1 hour of break on every day</div></div>
       <div class="hstat"><div class="eyebrow">Days worked</div><div class="val">${daysWorked} days</div><div class="foot">${cfg.daysLabel}</div></div>
       <div class="hstat"><div class="eyebrow">Calls made</div><div class="val">${B.calls}</div><div class="foot">${hm(B.talk)} of talk time</div></div>
-      <div class="hstat pay"><div class="eyebrow">Pay due</div><div class="val">$${due}.00</div><div class="foot">${paidHours.toFixed(2)} hours at $${RATE.toFixed(2)}</div></div>
+      <div class="hstat pay"><div class="eyebrow">${adv ? 'To pay you' : 'Pay due'}</div><div class="val">$${toPay}.00</div><div class="foot">${adv ? `$${due}.00 earned, less $${adv.deductNow}.00 of your advance` : `${paidHours.toFixed(2)} hours at $${RATE.toFixed(2)}`}</div></div>
     </div>
   </header>
 
@@ -532,7 +642,7 @@ function renderWeek(cfg) {
           </tbody>
         </table>
       </div>
-      <p class="note"><strong>This table is incomplete and that is not a maths error.</strong> ${cfg.noOutcome} of your ${B.calls} calls this week have no outcome button pressed on them at all, so they appear nowhere in this table. It changes nothing about your pay, every one of those calls is counted and paid. What it does mean is that the board cannot tell what happened on most of your calls.</p>
+      ${cfg.outcomeNote ? cfg.outcomeNote(m) : `<p class="note"><strong>This table is incomplete and that is not a maths error.</strong> ${cfg.noOutcome} of your ${B.calls} calls this week have no outcome button pressed on them at all, so they appear nowhere in this table. It changes nothing about your pay, every one of those calls is counted and paid. What it does mean is that the board cannot tell what happened on most of your calls.</p>`}
     </div>
     <div class="panel flat">
       <h3>Put simply</h3>
@@ -562,9 +672,12 @@ ${dayCards}
         ${cfg.extraBreakH ? `<div class="mrow"><span class="lbl">Breaks we asked you to take, paid in full</span><span>+${cfg.extraBreakH}h 00m</span></div>` : ''}
         <div class="mrow"><span class="lbl">Hours paid</span><span>${hm(paidTotal)}</span></div>
         <div class="mrow"><span class="lbl">Hourly rate</span><span>$${RATE.toFixed(2)}</span></div>
-        <div class="mrow final"><span class="lbl">Total due this week</span><span>$${due}.00</span></div>
+        ${adv ? `<div class="mrow"><span class="lbl">Earned this week</span><span>$${due}.00</span></div>
+        <div class="mrow"><span class="lbl">Advance paid back, $${adv.deductNow}.00 of the $${adv.total}.00</span><span>-$${adv.deductNow}.00</span></div>
+        <div class="mrow final"><span class="lbl">To pay you this week</span><span>$${toPay}.00</span></div>` : `<div class="mrow final"><span class="lbl">Total due this week</span><span>$${due}.00</span></div>`}
       </div>
       <p class="note fair">The total has been rounded up in your favour, from $${dueRaw.toFixed(2)} to $${due}.00. Paid by Wise, per your agreement.</p>
+      ${adv ? `<p class="note">Last week you were advanced $${adv.total}.00. As you asked, it comes back in two halves: $${adv.deductNow}.00 this week and $${adv.deductLater}.00 next week. After next week nothing more is taken.</p>` : ''}
     </div>
   </section>
 
