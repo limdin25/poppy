@@ -21,6 +21,7 @@ import CallbackBanner from '../components/followups/CallbackBanner';
 import { DialerProModalProvider } from './DialerProModalContext';
 import DialerProModal from './DialerProModal';
 import DeskToggle from './DeskToggle';
+import HostunicoCallHeader from './HostunicoCallHeader';
 import { DeskProvider, useDesk } from '../lib/DeskContext';
 
 // Side-effect-only component: pumps real wk_contacts and wk_pipeline_columns
@@ -75,6 +76,7 @@ function DeskScopedCrm() {
 }
 
 function CrmShell() {
+  const { desk } = useDesk();
   // Start collapsed the first time, then remember the user's choice across
   // loads (localStorage). Default collapsed keeps the dialer clean out of the box.
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -95,6 +97,7 @@ function CrmShell() {
   // away. It is only on arrival: he can still open it by hand and it stays open
   // while he is in the room.
   const onDialer = location.pathname.startsWith('/admin/crm/dialer');
+  const compactCallRoom = desk === 'sa' && onDialer;
   const wasOnDialer = useRef(false);
   useEffect(() => {
     if (onDialer && !wasOnDialer.current) setSidebarCollapsed(true);
@@ -114,6 +117,7 @@ function CrmShell() {
                  reply box sat below the fold on every phone. */
               className="h-dvh flex flex-col bg-[#F3F3EE]"
             >
+              {compactCallRoom ? <HostunicoCallHeader /> : <>
               {/* Who came back to us — ALWAYS on screen, even when empty
                   (Hugo 2026-08-26: "make visible always"). Above the follow-up
                   banner because a builder who already rang beats a timer that
@@ -160,6 +164,7 @@ function CrmShell() {
                   </button>
                 </div>
               </header>
+              </>}
 
               {/* Sidebar + main */}
               <div className="min-h-0 flex-1 flex overflow-hidden">

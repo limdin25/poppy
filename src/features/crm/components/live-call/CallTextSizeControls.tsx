@@ -37,9 +37,8 @@ export function useCallTextSize(pane: Pane) {
 export default function CallTextSizeControls({ pane, size, onChange }: { pane: Pane; size: number; onChange: (value: number) => void }) {
   const bounds = CALL_TEXT_SIZES[pane];
   return <div role="group" aria-label={`${pane} text size`} className="flex shrink-0 items-center gap-1.5 text-xs text-slate-600">
-    <span className="mr-1">Text size</span>
-    <button type="button" onClick={() => onChange(size - 2)} disabled={size <= bounds.min} aria-label={`Decrease ${pane} text size`} className="h-8 w-8 rounded-lg border border-slate-300 bg-white text-xl font-semibold hover:bg-slate-100 disabled:opacity-40">-</button>
-    <output aria-label={`${pane} font size`} className="min-w-9 text-center tabular-nums">{size}px</output>
-    <button type="button" onClick={() => onChange(size + 2)} disabled={size >= bounds.max} aria-label={`Increase ${pane} text size`} className="h-8 w-8 rounded-lg border border-slate-300 bg-white text-xl font-semibold hover:bg-slate-100 disabled:opacity-40">+</button>
+    <button type="button" onClick={() => onChange(size - 2)} disabled={size <= bounds.min} aria-label={`Decrease ${pane} text size`} title={`Smaller ${pane} text (${size}px)`} className="h-8 w-8 rounded-lg border border-slate-300 bg-white text-xl font-semibold hover:bg-slate-100 disabled:opacity-40">-</button>
+    <output aria-label={`${pane} font size`} className="sr-only">{size}px</output>
+    <button type="button" onClick={() => onChange(size + 2)} disabled={size >= bounds.max} aria-label={`Increase ${pane} text size`} title={`Larger ${pane} text (${size}px)`} className="h-8 w-8 rounded-lg border border-slate-300 bg-white text-xl font-semibold hover:bg-slate-100 disabled:opacity-40">+</button>
   </div>;
 }

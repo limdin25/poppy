@@ -19,13 +19,14 @@ import { hostunicoCallerName } from '../../lib/hostunicoCaller';
 export interface SaCallRoomProps {
   contact: Contact | null; contactHeader?: ReactNode; emptyState?: ReactNode;
   currentCallId: string | null; callConnected: boolean; liveDurationSec?: number;
+  callInProgress?: boolean;
   agentFirstName: string; campaignId?: string | null; pipelineId?: string | null;
   direction: 'outbound' | 'inbound'; autoSaveId?: string;
   onControlsMount?: (node: HTMLDivElement | null) => void;
   onEndCall?: () => void;
 }
 
-export default function SaCallRoom({ contact, contactHeader, emptyState, currentCallId, callConnected, liveDurationSec = 0, agentFirstName, campaignId, direction, onControlsMount, onEndCall }: SaCallRoomProps) {
+export default function SaCallRoom({ contact, contactHeader, emptyState, currentCallId, callConnected, callInProgress = callConnected, liveDurationSec = 0, agentFirstName, campaignId, direction, onControlsMount, onEndCall }: SaCallRoomProps) {
   const { isAdmin, loading } = useAuth();
   const { viewAsId, viewAsName } = useViewAs();
   const { byId } = useAgentDirectory();
@@ -89,16 +90,9 @@ export default function SaCallRoom({ contact, contactHeader, emptyState, current
   }, [campaignId, contact?.id]);
 
   return <div className="flex h-full min-h-0 flex-col overflow-hidden bg-slate-50" data-testid="dialer-sa-panel">
-    <header className="flex shrink-0 items-center gap-3 border-b bg-white px-3 py-2">
-      <button onClick={() => setCollapsed(!collapsed)} aria-expanded={!collapsed} aria-controls="hostunico-call-sidebar" className="flex shrink-0 items-center gap-2 rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-xs font-semibold hover:bg-slate-100">
-        {collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}{collapsed ? 'Show property and controls' : 'Hide property and controls'}
-      </button>
-      <div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{contact?.name || 'Hostunico calling room'} <span className="ml-2 font-normal text-slate-500">{contact?.phone}</span></p><p className="truncate text-xs text-slate-500">{selected ? `${facts.description} in ${facts.place}${facts.rent ? ` · ${facts.rent}` : ''}` : 'One call per unique contact number'}</p></div>
-      <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs ${callConnected ? 'bg-emerald-50 text-emerald-800' : 'bg-slate-100 text-slate-500'}`}>{callConnected ? 'On the call' : 'Ready to call'}</span>
-      {callConnected && onEndCall && <button onClick={onEndCall} className="shrink-0 rounded-lg bg-red-700 px-3 py-2 text-xs font-semibold text-white">End call</button>}
-    </header>
     <div className="relative flex min-h-0 flex-1 overflow-hidden">
-      <aside id="hostunico-call-sidebar" aria-label="Property, report and call controls" className={`${collapsed ? 'hidden' : 'flex'} w-[320px] max-w-[85vw] shrink-0 flex-col overflow-y-auto border-r bg-slate-50 xl:w-[340px]`}>
+      <aside id="hostunico-call-sidebar" aria-label="Property, report and call controls" className={`${collapsed ? 'hidden' : 'flex'} absolute inset-y-0 left-0 z-20 w-[300px] max-w-[85vw] shrink-0 flex-col overflow-y-auto border-r bg-slate-50 lg:static lg:z-auto xl:w-[320px]`}>
+        <div className="flex h-11 shrink-0 items-center gap-2 border-b bg-white px-3"><p className="min-w-0 flex-1 truncate text-sm font-semibold" title={contact?.name}>{contact?.name || 'Choose a lead'}</p><span className={`shrink-0 rounded-full px-2 py-1 text-[11px] ${callConnected ? 'bg-emerald-50 text-emerald-800' : 'bg-slate-100 text-slate-500'}`}>{callConnected ? 'On call' : 'Ready'}</span><button onClick={() => setCollapsed(true)} aria-label="Hide property and controls" title="Hide property and controls" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg hover:bg-slate-100"><PanelLeftClose size={16} /></button></div>
         <div ref={onControlsMount} className="shrink-0 p-2" data-testid="hostunico-dialer-controls" />
         {contact && <div className="space-y-3 p-3 pt-0">
           <section className="overflow-hidden rounded-xl border bg-white" aria-label="Property on this call">
@@ -122,7 +116,10 @@ export default function SaCallRoom({ contact, contactHeader, emptyState, current
         </div>}
       </aside>
       <div className="grid min-h-0 min-w-0 flex-1 grid-cols-1 overflow-y-auto md:grid-cols-2 md:overflow-hidden" data-testid="hostunico-focus-columns">
-        <div className="min-h-[440px] min-w-0 border-r md:min-h-0"><HostunicoScriptPane key={contact?.id || 'no-contact'} listing={selected} agentName={callerName} onOpener={setOpener} onMode={setMode} country={country} reportPitch={pitchSnapshot?.listingId === selected?.id && pitchSnapshot?.country === country ? pitchSnapshot.value : null} /></div>
+        <div className="min-h-[440px] min-w-0 border-r md:min-h-0"><HostunicoScriptPane key={contact?.id || 'no-contact'} listing={selected} agentName={callerName} onOpener={setOpener} onMode={setMode} country={country} reportPitch={pitchSnapshot?.listingId === selected?.id && pitchSnapshot?.country === country ? pitchSnapshot.value : null} controls={<>
+          <button onClick={() => setCollapsed(!collapsed)} aria-expanded={!collapsed} aria-controls="hostunico-call-sidebar" aria-label={collapsed ? 'Show property and controls' : 'Hide property and controls'} title={collapsed ? 'Show property and controls' : 'Hide property and controls'} className="flex h-8 w-8 shrink-0 items-center justify-center gap-1.5 rounded-lg border bg-slate-50 text-xs hover:bg-slate-100 xl:w-auto xl:px-2">{collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}<span className="hidden xl:inline">Property</span></button>
+          {callInProgress && onEndCall && <button onClick={onEndCall} className="h-8 shrink-0 rounded-lg bg-red-700 px-2 text-xs font-semibold text-white">End call</button>}
+        </>} /></div>
         <section className="flex min-h-[440px] min-w-0 flex-col bg-white md:min-h-0" aria-label="Live AI coach">
           {direction === 'inbound' && <p className="border-b bg-blue-50 p-2 text-xs text-blue-700">They called back. Confirm which property they mean.</p>}
           {contextError && <p role="alert" className="bg-amber-50 p-2 text-xs text-amber-900">{contextError}</p>}

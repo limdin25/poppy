@@ -1,5 +1,6 @@
 import { hostunicoPriceCopy } from '../../../../../supabase/functions/_shared/hostunico-pricing';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Pause, Play } from 'lucide-react';
 import { HOSTUNICO_ANSWERS } from '../../../../../supabase/functions/_shared/hostunico-sales';
 import type { SaListing } from '../../hooks/useSaListings';
 import { hostunicoProperty } from '../../lib/hostunicoProperty';
@@ -7,7 +8,7 @@ import CallTextSizeControls, { useCallTextSize } from './CallTextSizeControls';
 import { hostunicoReportHook, type HostunicoReportPitch } from '../../lib/hostunicoReportPitch';
 
 type Mode = 'spareroom' | 'facebook' | 'followup';
-export default function HostunicoScriptPane({ listing, agentName, onOpener, onMode, country = 'GB', reportPitch }: { onMode?: (mode: Mode) => void; country?: string; listing: SaListing | null; agentName: string; onOpener: (line: string) => void; reportPitch?: HostunicoReportPitch | null }) {
+export default function HostunicoScriptPane({ listing, agentName, onOpener, onMode, country = 'GB', reportPitch, controls }: { onMode?: (mode: Mode) => void; country?: string; listing: SaListing | null; agentName: string; onOpener: (line: string) => void; reportPitch?: HostunicoReportPitch | null; controls?: ReactNode }) {
   const [mode, setMode] = useState<Mode>('spareroom');
   const [rolling, setRolling] = useState(false);
   const { size, changeSize } = useCallTextSize('script');
@@ -48,10 +49,14 @@ export default function HostunicoScriptPane({ listing, agentName, onOpener, onMo
     ['Optional details after permission', 'If you have a moment, can I confirm any missing property details so we can refine the estimate?', 'Ask only for missing facts, such as full postcode, bedrooms and bathrooms. Keep unknowns labelled. After permission, if useful, ask when it would be ready to let and whether they are the owner or authorised manager. Do not hold up the first hook with these questions.'],
   ];
   return <section className="flex h-full min-h-0 flex-col bg-white" aria-label="Hostunico sales script">
-    <header className="border-b p-3 space-y-3">
-      <div className="flex items-center justify-between gap-2"><h2 style={{ fontSize: Math.max(16, Math.round(size * 0.6)) }} className="font-semibold">Your script</h2><button className="rounded-lg border px-3 py-1.5 text-xs" onClick={() => setRolling(!rolling)} aria-pressed={rolling}>{rolling ? 'Pause scrolling' : 'Auto-scroll'}</button></div>
+    <header className="flex h-11 shrink-0 items-center gap-1.5 overflow-x-auto border-b px-2" aria-label="Script controls">
+      {controls}
+      <h2 className="sr-only">Your script</h2>
+      <select aria-label="Choose the call script" value={mode} onChange={(e) => setMode(e.target.value as Mode)} className="h-8 min-w-0 flex-1 rounded-lg border bg-white py-1 pl-2 pr-5 text-xs font-semibold">
+        <option value="spareroom">1. SpareRoom</option><option value="facebook">1. Facebook</option><option value="followup">2. Review report</option>
+      </select>
+      <button title={rolling ? 'Pause scrolling' : 'Auto-scroll'} aria-label={rolling ? 'Pause scrolling' : 'Auto-scroll'} className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${rolling ? 'bg-slate-900 text-white' : 'bg-white text-slate-600'}`} onClick={() => setRolling(!rolling)} aria-pressed={rolling}>{rolling ? <Pause size={14} /> : <Play size={14} />}</button>
       <CallTextSizeControls pane="script" size={size} onChange={changeSize} />
-      <div className="flex flex-wrap gap-1" aria-label="Choose the call script">{(['spareroom', 'facebook', 'followup'] as const).map((m) => <button key={m} onClick={() => setMode(m)} aria-pressed={mode === m} className={`rounded-lg px-3 py-2 text-xs font-semibold ${mode === m ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600'}`}>{m === 'spareroom' ? '1 · SpareRoom' : m === 'facebook' ? '1 · Facebook' : '2 · Review report'}</button>)}</div>
     </header>
     <div ref={scroll} className="min-h-0 flex-1 overflow-y-auto p-5 space-y-6" onWheel={() => setRolling(false)} onTouchStart={() => setRolling(false)}>
       {steps.map(([title, line, note], i) => <article key={title}><p style={secondaryText} className="mb-2 font-bold uppercase tracking-wide text-slate-500">{i + 1}. {title}</p><p style={{ fontSize: size }} className="whitespace-pre-line font-medium leading-relaxed text-slate-900">{line}</p><p style={secondaryText} className="mt-2 leading-relaxed text-slate-500">{note}</p></article>)}

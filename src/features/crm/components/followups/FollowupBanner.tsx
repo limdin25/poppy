@@ -13,7 +13,7 @@
 // Mounts inside Smsv2Layout once, polls a 30s tick to refresh "is this
 // due yet?" state. The hook drives the data + realtime channel.
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Bell,
   ChevronDown,
@@ -32,12 +32,13 @@ import { useDialerProModal } from '../../layout/DialerProModalContext';
 import ContactSmsModal from '../contacts/ContactSmsModal';
 import type { Contact } from '../../types';
 
-export default function FollowupBanner() {
+export default function FollowupBanner({ compact = false }: { compact?: boolean }) {
   const { items, setStatus, snooze } = useFollowups();
   const { contacts, columns } = useSmsV2();
   const { openDialerPro } = useDialerProModal();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
   const [, setNow] = useState(Date.now());
   const [smsTo, setSmsTo] = useState<Contact | null>(null);
   const [smsChannel, setSmsChannel] = useState<'sms' | 'whatsapp' | 'email' | null>(null);
@@ -61,9 +62,17 @@ export default function FollowupBanner() {
   }, [items]);
 
   useEffect(() => {
-    document.body.style.setProperty('--followup-banner-h', due.length > 0 ? '40px' : '0px');
+    document.body.style.setProperty('--followup-banner-h', !compact && due.length > 0 ? '40px' : '0px');
     return () => { document.body.style.setProperty('--followup-banner-h', '0px'); };
-  }, [due.length]);
+  }, [due.length, compact]);
+  useEffect(() => {
+    if (!compact || !open) return;
+    const closeOutside = (event: MouseEvent) => { if (!root.current?.contains(event.target as Node)) setOpen(false); };
+    const closeEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', closeOutside);
+    document.addEventListener('keydown', closeEscape);
+    return () => { document.removeEventListener('mousedown', closeOutside); document.removeEventListener('keydown', closeEscape); };
+  }, [compact, open]);
 
   if (due.length === 0) return null;
 
@@ -75,8 +84,8 @@ export default function FollowupBanner() {
     : undefined;
 
   return (
-    <div className="bg-[#FFFBEB] border-b border-[#F59E0B]/40 px-4 py-1.5 flex-shrink-0 relative z-10">
-      <div className="flex items-center gap-2 max-w-[1280px] mx-auto">
+    <div ref={root} className={compact ? 'relative shrink-0 rounded-lg border border-amber-200 bg-amber-50' : 'bg-[#FFFBEB] border-b border-[#F59E0B]/40 px-4 py-1.5 flex-shrink-0 relative z-10'}>
+      {compact ? <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} title={`${due.length} follow-ups due. Next: ${nextDisplayName}`} className="flex h-8 items-center gap-1.5 px-2 text-xs font-semibold text-amber-800"><Bell size={14} /><span>{due.length} due</span></button> : <div className="flex items-center gap-2 max-w-[1280px] mx-auto">
         <Bell className="w-3.5 h-3.5 text-[#B45309] flex-shrink-0" strokeWidth={2.4} />
         <span className="text-[11px] font-bold uppercase tracking-wide text-[#B45309]">
           {due.length} follow-up{due.length > 1 ? 's' : ''} due
@@ -110,10 +119,10 @@ export default function FollowupBanner() {
             </>
           )}
         </button>
-      </div>
+      </div>}
 
       {open && (
-        <div className="max-w-[1280px] mx-auto mt-2 space-y-1 max-h-[260px] overflow-y-auto pr-1">
+        <div className={compact ? 'absolute right-0 top-full z-[180] mt-2 max-h-[60vh] w-[min(680px,90vw)] space-y-1 overflow-y-auto rounded-xl border bg-white p-2 shadow-xl' : 'max-w-[1280px] mx-auto mt-2 space-y-1 max-h-[260px] overflow-y-auto pr-1'}>
           {due.map((f) => {
             const contact = contacts.find((c) => c.id === f.contact_id);
             const displayName = contact?.name || f.contact_name || f.contact_phone || 'Unknown contact';

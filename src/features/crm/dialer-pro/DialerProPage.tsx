@@ -883,23 +883,24 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
       <div className={isSaCall ? "w-full min-w-0 select-text" : "fixed z-[210] select-text"} style={isSaCall ? undefined : { left: cardPos.x, top: cardPos.y, width: CARD_W }}>
         {/* Idle card — same card shape as Outgoing Call, with Start button instead of End Call */}
         {!(isLive || state.phase === 'wrap_up') && (
-          <div className="bg-white border border-[#E5E7EB] rounded-2xl shadow-[0_24px_64px_rgba(0,0,0,0.18)] overflow-hidden">
+          <div className={isSaCall ? 'overflow-hidden rounded-xl border bg-white' : 'bg-white border border-[#E5E7EB] rounded-2xl shadow-[0_24px_64px_rgba(0,0,0,0.18)] overflow-hidden'}>
             {/* Header — draggable */}
             <div
               onPointerDown={onDragStart} onPointerMove={onDragMove} onPointerUp={onDragEnd} onPointerCancel={onDragEnd}
-              className="flex items-center gap-2 px-4 py-2.5 bg-[#F3F3EE] border-b border-[#E5E7EB] cursor-grab active:cursor-grabbing"
+              className={isSaCall ? 'flex items-center gap-2 border-b bg-slate-50 px-3 py-1.5' : 'flex items-center gap-2 px-4 py-2.5 bg-[#F3F3EE] border-b border-[#E5E7EB] cursor-grab active:cursor-grabbing'}
             >
-              <Phone className="w-4 h-4 text-[#3C5A87]" />
+              {!isSaCall && <Phone className="w-4 h-4 text-[#3C5A87]" />}
               <span className="text-[12px] font-semibold text-[#6B7280]">
-                {state.phase === 'paused' ? 'Paused' : 'Power Dialer'}
+                {state.phase === 'paused' ? 'Paused' : isSaCall ? `${queue.length} leads` : 'Power Dialer'}
               </span>
+              {isSaCall && <span className="min-w-0 flex-1 truncate text-xs text-slate-500" title={queue[0]?.name}>{queue[0] ? `Next: ${queue[0].name}` : 'Queue empty'}</span>}
               <button onPointerDown={(e) => e.stopPropagation()} onClick={() => setKeypadOpen((v) => !v)}
                 title="Open keypad"
                 className={cn('p-1 rounded-md transition-colors',
                   keypadOpen ? 'bg-[#3C5A87] text-white' : 'text-[#6B7280] hover:bg-white/70')}>
                 <Hash className="w-3.5 h-3.5" />
               </button>
-              <span className="text-[11px] text-[#9CA3AF] truncate ml-auto">{agentFirstName}</span>
+              {!isSaCall && <span className="text-[11px] text-[#9CA3AF] truncate ml-auto">{agentFirstName}</span>}
             </div>
 
             {/* Keypad popover — opened from the header button. DTMF only fires
@@ -916,8 +917,8 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
             )}
 
             {/* Avatar area */}
-            <div className="flex flex-col items-center py-5 px-4">
-              <div className="w-20 h-20 rounded-full bg-[#E5E7EB] flex items-center justify-center text-[#9CA3AF] text-[28px] font-bold mb-3">
+            <div className={isSaCall ? (campaigns.length > 1 ? 'px-3 py-2' : 'hidden') : 'flex flex-col items-center py-5 px-4'}>
+              {!isSaCall && <><div className="w-20 h-20 rounded-full bg-[#E5E7EB] flex items-center justify-center text-[#9CA3AF] text-[28px] font-bold mb-3">
                 <Phone className="w-8 h-8" />
               </div>
               <div className="text-[14px] font-medium text-[#6B7280]">
@@ -927,7 +928,7 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
                 <div className="text-[12px] text-[#9CA3AF] mt-1">
                   Next: {queue[0].name}
                 </div>
-              )}
+              )}</>}
               {/* Campaign selector */}
               {campaigns.length > 1 && (
                 <select value={activeCampaignId} onChange={(e) => setActiveCampaignId(e.target.value)}
@@ -964,7 +965,7 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
                 is down, so the agent doesn't get the "button greyed out and
                 I don't know why" failure mode. Spend/kill-switch/empty-queue
                 still disable as before. */}
-            <div className="px-3 pb-3">
+            <div className={isSaCall ? 'p-2' : 'px-3 pb-3'}>
               {state.phase === 'paused' ? (
                 <div className="flex gap-2">
                   <button onClick={() => { machine.resume(); void startDialer(); }} disabled={spend.isLimitReached || ks.allDialers || reconnecting}
@@ -1041,13 +1042,13 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
             </div>
           ) : isLive ? (
             /* ── Card A: Outgoing Call ── */
-            <div className="bg-white border border-[#E5E7EB] rounded-2xl shadow-[0_24px_64px_rgba(0,0,0,0.18)] overflow-hidden">
+            <div className={isSaCall ? 'overflow-hidden rounded-xl border bg-white' : 'bg-white border border-[#E5E7EB] rounded-2xl shadow-[0_24px_64px_rgba(0,0,0,0.18)] overflow-hidden'}>
               {/* Header — draggable */}
               <div
                 onPointerDown={onDragStart} onPointerMove={onDragMove} onPointerUp={onDragEnd} onPointerCancel={onDragEnd}
-                className="flex items-center gap-2 px-4 py-2.5 bg-[#F3F3EE] border-b border-[#E5E7EB] cursor-grab active:cursor-grabbing"
+                className={isSaCall ? 'flex items-center gap-2 border-b bg-slate-50 px-3 py-1.5' : 'flex items-center gap-2 px-4 py-2.5 bg-[#F3F3EE] border-b border-[#E5E7EB] cursor-grab active:cursor-grabbing'}
               >
-                <Phone className="w-4 h-4 text-[#3C5A87]" />
+                {!isSaCall && <Phone className="w-4 h-4 text-[#3C5A87]" />}
                 <span className="text-[12px] font-semibold text-[#6B7280]">
                   {state.phase === 'connected' ? 'Connected' : 'Outgoing Call'}
                 </span>
@@ -1057,7 +1058,7 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
                     keypadOpen ? 'bg-[#3C5A87] text-white' : 'text-[#6B7280] hover:bg-white/70')}>
                   <Hash className="w-3.5 h-3.5" />
                 </button>
-                <span className="text-[11px] text-[#9CA3AF] truncate ml-auto">{agentFirstName}</span>
+                <span className="text-[11px] text-[#9CA3AF] truncate ml-auto">{isSaCall ? `${queue.length} leads` : agentFirstName}</span>
                 <button onPointerDown={(e) => e.stopPropagation()} onClick={() => setMinimized(true)}
                   className="p-0.5 rounded hover:bg-white/60 text-[#6B7280]">
                   <Minus className="w-3.5 h-3.5" />
@@ -1065,18 +1066,18 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
               </div>
 
               {/* Avatar + lead info + timer */}
-              <div className="flex flex-col items-center py-5 px-4">
-                <div className="w-20 h-20 rounded-full bg-[#3C5A87] flex items-center justify-center text-white text-[28px] font-bold mb-3">
+              <div className={isSaCall ? 'flex items-center justify-between gap-2 px-3 py-2' : 'flex flex-col items-center py-5 px-4'}>
+                {!isSaCall && <><div className="w-20 h-20 rounded-full bg-[#3C5A87] flex items-center justify-center text-white text-[28px] font-bold mb-3">
                   {(state.currentLead.name ?? '?').split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase()}
                 </div>
-                <div className="text-[15px] font-semibold text-[#1A1A1A] truncate max-w-full">{state.currentLead.name}</div>
+                <div className="text-[15px] font-semibold text-[#1A1A1A] truncate max-w-full">{state.currentLead.name}</div></>}
                 <div className="text-[13px] text-[#6B7280] tabular-nums mt-0.5">{state.currentLead.phone}</div>
-                {contact?.customFields?.property_address && (
+                {!isSaCall && contact?.customFields?.property_address && (
                   <div className="text-[11px] text-[#6B7280] mt-1.5 truncate max-w-full px-2 text-center" title={contact.customFields.property_address}>
                     📍 {contact.customFields.property_address}
                   </div>
                 )}
-                {contact?.customFields?.property_url && (() => {
+                {!isSaCall && contact?.customFields?.property_url && (() => {
                   const raw = contact.customFields.property_url.trim();
                   const href = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
                   const label = raw.replace(/^https?:\/\//i, '').replace(/^www\./i, '');
@@ -1093,7 +1094,7 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
                     </a>
                   );
                 })()}
-                <div className="text-[18px] font-semibold text-[#1A1A1A] tabular-nums mt-2">
+                <div className={isSaCall ? 'text-sm font-semibold tabular-nums' : 'text-[18px] font-semibold text-[#1A1A1A] tabular-nums mt-2'}>
                   {state.phase === 'connected' ? formatDuration(liveDuration) : (
                     <span className="inline-flex gap-1">
                       <span className="w-1.5 h-1.5 rounded-full bg-[#1A1A1A] animate-bounce" style={{ animationDelay: '0ms' }} />
@@ -1105,10 +1106,10 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
               </div>
 
               {/* 2x4 action buttons — GHL layout */}
-              <div className="px-3 pb-2 space-y-1.5">
+              <div className={isSaCall ? 'grid grid-cols-4 gap-1 px-2 pb-1' : 'px-3 pb-2 space-y-1.5'}>
                 {/* Row 1: Message | Notes | Drop VM | Warm Transfer */}
-                <div className="grid grid-cols-4 gap-1.5">
-                  <button onClick={() => setMinimized(true)}
+                <div className={isSaCall ? 'contents' : 'grid grid-cols-4 gap-1.5'}>
+                  {!isSaCall && <><button onClick={() => setMinimized(true)}
                     className="flex flex-col items-center gap-1 py-2 rounded-lg text-[10px] font-medium text-[#6B7280] hover:bg-[#F3F3EE] hover:text-[#1A1A1A] transition-colors">
                     <MessageSquare className="w-4 h-4" strokeWidth={1.8} />
                     Message
@@ -1117,7 +1118,7 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
                     className="flex flex-col items-center gap-1 py-2 rounded-lg text-[10px] font-medium text-[#6B7280] hover:bg-[#F3F3EE] hover:text-[#1A1A1A] transition-colors">
                     <FileText className="w-4 h-4" strokeWidth={1.8} />
                     Notes
-                  </button>
+                  </button></>}
                   <button
                     onClick={() => void machine.dropVoicemail()}
                     disabled={!canDropVm}
@@ -1132,14 +1133,14 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
                     <Voicemail className="w-4 h-4" strokeWidth={1.8} />
                     Drop VM
                   </button>
-                  <button disabled
+                  {!isSaCall && <button disabled
                     className="flex flex-col items-center gap-1 py-2 rounded-lg text-[10px] font-medium text-[#9CA3AF] cursor-not-allowed transition-colors">
                     <PhoneForwarded className="w-4 h-4" strokeWidth={1.8} />
                     Warm
-                  </button>
+                  </button>}
                 </div>
                 {/* Row 2: Hold | Mute | Scripts | Dial (DTMF pad) */}
-                <div className="grid grid-cols-4 gap-1.5">
+                <div className={isSaCall ? 'contents' : 'grid grid-cols-4 gap-1.5'}>
                   <button onClick={machine.holdToggle}
                     className={cn('flex flex-col items-center gap-1 py-2 rounded-lg text-[10px] font-medium transition-colors',
                       state.isOnHold ? 'bg-[#FEF3C7] text-[#92400E]' : 'text-[#6B7280] hover:bg-[#F3F3EE] hover:text-[#1A1A1A]',
@@ -1154,11 +1155,11 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
                     {state.isMuted ? <MicOff className="w-4 h-4" strokeWidth={1.8} /> : <Mic className="w-4 h-4" strokeWidth={1.8} />}
                     Mute
                   </button>
-                  <button onClick={() => setMinimized(true)}
+                  {!isSaCall && <button onClick={() => setMinimized(true)}
                     className="flex flex-col items-center gap-1 py-2 rounded-lg text-[10px] font-medium text-[#6B7280] hover:bg-[#F3F3EE] hover:text-[#1A1A1A] transition-colors">
                     <FileText className="w-4 h-4" strokeWidth={1.8} />
                     Scripts
-                  </button>
+                  </button>}
                   <button
                     onClick={() => setKeypadOpen((v) => !v)}
                     disabled={state.phase !== 'connected'}
@@ -1314,6 +1315,7 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
             contactHeader={contactHeader}
             currentCallId={state.currentCallId}
             callConnected={state.phase === 'connected'}
+            callInProgress={isLive}
             liveDurationSec={liveDuration}
             agentFirstName={agentFirstName}
             campaignId={camp?.id ?? null}
