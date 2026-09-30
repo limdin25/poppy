@@ -2156,7 +2156,7 @@ serve(async (req: Request) => {
               if (!instant) {
                 const [listing, report] = await Promise.all([
                   listingId ? supa.from('sa_listings').select('address,city,bedrooms,bathrooms,property_type,rent_pcm,source_price,report_property').eq('id', listingId).eq('wk_contact_id', call.contact_id).maybeSingle() : Promise.resolve({ data: null }),
-                  listingId ? supa.from('sa_property_reports').select('state,sms_state,received_at').eq('listing_id', listingId).maybeSingle() : Promise.resolve({ data: null }),
+                  listingId ? supa.from('sa_property_reports').select('state,sms_state,received_at,report_pitch').eq('listing_id', listingId).maybeSingle() : Promise.resolve({ data: null }),
                 ]);
                 const output = await streamCoachInternal({ apiKey: openaiKey, model: (ai.live_coach_model as string) || 'gpt-5.4-mini', hostunico: true, systemMessages: [HOSTUNICO_COACH_PROMPT], userMsg: JSON.stringify({ lead: contact?.name, country: contact?.hostunico_country || 'GB', mode: fields.hostunico_script_mode || 'spareroom', advertisedProperty: listing.data, report: report.data, transcript: (recent.data || []).reverse(), latestCaller: transcriptText }), onChunk: (text, first) => { if (first) log('Hostunico first token'); writer.schedule(text); }, isAborted: () => aborted });
                 answer = output?.body || '';

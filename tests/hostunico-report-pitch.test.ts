@@ -10,7 +10,7 @@ const render = (reportPitch?: HostunicoReportPitch | null) => renderToStaticMark
 describe('first-call report comparison', () => {
   it('uses actual supplied figures with the fee basis and no profit promise', () => {
     const copy = hostunicoReportHook(pitch);
-    expect(copy).toContain('The area estimate shows about £2,400 a month versus your asking rent of £1,000');
+    expect(copy).toContain('The area estimate shows about £2,400 per operating month versus your asking rent of £1,000');
     expect(copy).toContain('after the Airbnb fee, before our management fee and running costs');
     expect(copy).toContain('£1,400 higher before those costs');
     expect(copy).toContain('not guaranteed profit');

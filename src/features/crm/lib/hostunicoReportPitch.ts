@@ -17,5 +17,5 @@ export function hostunicoReportHook(pitch?: HostunicoReportPitch | null): string
     : pitch.areaEstimate ? 'The area estimate' : 'The property estimate';
   const comparison = pitch.rent ? ` versus your asking rent of ${pitch.rent}` : '';
   const difference = pitch.rent && pitch.higher && pitch.difference ? ` That is ${pitch.difference} higher before those costs.` : '';
-  return `${basis} shows about ${pitch.monthly} a month${comparison}. That is ${pitch.afterAirbnbFee ? 'after' : 'before'} the Airbnb fee, before our management fee and running costs.${difference} It is an estimate, not guaranteed profit. Can I send you the report?`;
+  return `${basis} shows about ${pitch.monthly} per operating month${comparison}. That is ${pitch.afterAirbnbFee ? 'after' : 'before'} the Airbnb fee, before our management fee and running costs.${difference} It is an estimate, not guaranteed profit. Can I send you the report?`;
 }

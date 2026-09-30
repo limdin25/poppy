@@ -109,6 +109,17 @@ describe('human report sends', () => {
     expect((await handler(request('activity', {}, 'bad'))).status).toBe(401);
     expect(fixture.smsRequests).toBe(0);
   });
+  it('caches only a ready report hook and clears it when research is unfinished', async () => {
+    const pitch = { monthly: '£2,500', rent: '£1,000', difference: '£1,500', higher: true, areaEstimate: true, studioComparison: false, afterAirbnbFee: true };
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ stage: 'ready', reportUrl: 'https://hostunico.com/r/A1b2C', reportPitch: pitch })));
+    expect(await (await handler(request('status'))).json()).toMatchObject({ reportPitch: pitch });
+    expect(fixture.tables.sa_property_reports[0].report_pitch).toEqual(pitch);
+    fixture.tables.sa_property_reports[0].state = 'researching';
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ stage: 'researching' })));
+    expect(await (await handler(request('status'))).json()).toMatchObject({ reportPitch: null });
+    expect(fixture.tables.sa_property_reports[0].report_pitch).toBeNull();
+    expect(fixture.smsRequests).toBe(0);
+  });
   it('blocks SMS to a landline and saves a mobile on the same contact without changing the calling number', async () => {
     fixture.tables.wk_contacts[0].phone = '+442079460000';
     expect((await handler(request('send_sms', { permission: true }))).status).toBe(400);

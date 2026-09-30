@@ -10,6 +10,7 @@ import { hostunicoProperty } from '../../lib/hostunicoProperty';
 import type { Contact } from '../../types';
 import { supabase } from '@/integrations/supabase/browser';
 import { hostunicoCountry } from '../../../../../supabase/functions/_shared/hostunico-pricing';
+import type { HostunicoReportPitch } from '../../lib/hostunicoReportPitch';
 import { useAuth } from '../../lib/useCrmAuth';
 import { useViewAs } from '../../lib/ViewAsContext';
 import { useAgentDirectory } from '../../hooks/useAgentDirectory';
@@ -37,6 +38,8 @@ export default function SaCallRoom({ contact, contactHeader, emptyState, current
   const [ahead, setAhead] = useState('');
   const [emailReport, setEmailReport] = useState<string | null>(null);
   const [country, setCountry] = useState('GB');
+  const [pitchSnapshot, setPitchSnapshot] = useState<{ listingId: string; country: string; value: HostunicoReportPitch | null } | null>(null);
+  const receivePitch = useCallback((listingId: string, country: string, value: HostunicoReportPitch | null) => setPitchSnapshot({ listingId, country, value }), []);
   const [countryError, setCountryError] = useState('');
   const [contextError, setContextError] = useState('');
   useEffect(() => {
@@ -108,7 +111,7 @@ export default function SaCallRoom({ contact, contactHeader, emptyState, current
               {selected?.summary && <details><summary className="cursor-pointer text-xs font-medium">Read advert description</summary><p className="mt-2 whitespace-pre-line text-xs leading-relaxed text-slate-600">{selected.summary}</p></details>}
             </div>
           </section>
-          <SaReportPanel key={selected?.id || 'none'} listing={selected} phone={contact.phone} onEmail={(url) => { setEmailReport(url); setCollapsed(false); }} />
+          <SaReportPanel key={`${selected?.id || 'none'}:${country}`} listing={selected} phone={contact.phone} country={country} onReportPitch={receivePitch} onEmail={(url) => { setEmailReport(url); setCollapsed(false); }} />
           {ahead && <p className="text-[11px] text-slate-500" role="status">{ahead}</p>}
           <details className="rounded-xl border bg-white p-3"><summary className="cursor-pointer text-xs font-semibold">Lead country and pricing</summary><label className="mt-2 block text-xs text-slate-600">Lead country<select aria-label="Lead country for pricing" value={country === 'GB' ? 'GB' : 'US'} className="mt-1 w-full rounded-lg border bg-white px-2 py-2" onChange={async (e) => {
             const next = e.target.value;
@@ -119,7 +122,7 @@ export default function SaCallRoom({ contact, contactHeader, emptyState, current
         </div>}
       </aside>
       <div className="grid min-h-0 min-w-0 flex-1 grid-cols-1 overflow-y-auto md:grid-cols-2 md:overflow-hidden" data-testid="hostunico-focus-columns">
-        <div className="min-h-[440px] min-w-0 border-r md:min-h-0"><HostunicoScriptPane key={contact?.id || 'no-contact'} listing={selected} agentName={callerName} onOpener={setOpener} onMode={setMode} country={country} /></div>
+        <div className="min-h-[440px] min-w-0 border-r md:min-h-0"><HostunicoScriptPane key={contact?.id || 'no-contact'} listing={selected} agentName={callerName} onOpener={setOpener} onMode={setMode} country={country} reportPitch={pitchSnapshot?.listingId === selected?.id && pitchSnapshot?.country === country ? pitchSnapshot.value : null} /></div>
         <section className="flex min-h-[440px] min-w-0 flex-col bg-white md:min-h-0" aria-label="Live AI coach">
           {direction === 'inbound' && <p className="border-b bg-blue-50 p-2 text-xs text-blue-700">They called back. Confirm which property they mean.</p>}
           {contextError && <p role="alert" className="bg-amber-50 p-2 text-xs text-amber-900">{contextError}</p>}

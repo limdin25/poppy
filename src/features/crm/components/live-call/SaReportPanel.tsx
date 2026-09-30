@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/browser';
 import type { SaListing } from '../../hooks/useSaListings';
 import { reportPhoneKind } from '../../../../../supabase/functions/_shared/hostunico-phone';
 import HostunicoReportActivity from './HostunicoReportActivity';
+import type { HostunicoReportPitch } from '../../lib/hostunicoReportPitch';
 
 export async function reportAction(action: string, values: Record<string, unknown>) {
   const { data } = await supabase.auth.getSession();
@@ -22,8 +23,9 @@ export async function reportAction(action: string, values: Record<string, unknow
 interface ReportState {
   stage: string; message?: string; reportUrl?: string; smsStatus?: string; receivedAt?: string; mobile?: string;
   property?: { postcode: string; bedrooms: number; bathrooms: number; advertisedRentPcm?: number; areaEstimate?: boolean; areaLabel?: string };
+  reportPitch?: HostunicoReportPitch | null;
 }
-export default function SaReportPanel({ listing, phone, onEmail }: { listing: SaListing | null; phone?: string; onEmail?: (url: string) => void }) {
+export default function SaReportPanel({ listing, phone, onEmail, country = 'GB', onReportPitch }: { listing: SaListing | null; phone?: string; onEmail?: (url: string) => void; country?: string; onReportPitch?: (listingId: string, country: string, pitch: HostunicoReportPitch | null) => void }) {
   const [report, setReport] = useState<ReportState | null>(null);
   const [postcode, setPostcode] = useState('');
   const [bedrooms, setBedrooms] = useState('');
@@ -41,6 +43,9 @@ export default function SaReportPanel({ listing, phone, onEmail }: { listing: Sa
     return reportAction('status', { listing_id: listing.id });
   }, [listing?.id]);
   const loadActivity = useCallback(() => reportAction('activity', { listing_id: listing?.id }), [listing?.id]);
+  useEffect(() => {
+    if (listing) onReportPitch?.(listing.id, country, report?.stage === 'ready' ? report.reportPitch ?? null : null);
+  }, [listing?.id, country, report?.stage, report?.reportPitch, onReportPitch]);
   useEffect(() => {
     let cancelled = false;
     setReport(null); setError(''); setPermission(false); setWhole(false);
