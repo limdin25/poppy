@@ -37,6 +37,8 @@ interface Props {
   isSaCall?: boolean;
   hostunicoCountry?: string;
   hostunicoContext?: string;
+  hostunicoPhone?: string;
+  hostunicoReportMobile?: string | null;
   /** Property calls only: the first blue line of the property script for THIS
    *  call, built by PropertyCallRoom from the same facts the script pane is
    *  filled with. When set it IS the opener card. Without it the card used to
@@ -136,7 +138,7 @@ function pickFiller(): string {
   return BUYTIME_FILLERS[Math.floor(Math.random() * BUYTIME_FILLERS.length)];
 }
 
-export default function LiveTranscriptPane({ durationSec, contactId, callId, agentFirstName, isPropertyCall = false, isSaCall = false, hostunicoCountry = 'GB', hostunicoContext, propertyOpener }: Props) {
+export default function LiveTranscriptPane({ durationSec, contactId, callId, agentFirstName, isPropertyCall = false, isSaCall = false, hostunicoCountry = 'GB', hostunicoContext, hostunicoPhone, hostunicoReportMobile, propertyOpener }: Props) {
   const { aiCoach } = useKillSwitch();
   const store = useSmsV2();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -419,7 +421,7 @@ export default function LiveTranscriptPane({ durationSec, contactId, callId, age
     }
   }, [lines.length]);
 
-  if (isSaCall) return <HostunicoCoachView lines={liveLines} cards={liveEvents.filter((event) => event.script_section === hostunicoContext)} active={!!callId} offline={aiCoach} connected={coachConnected} opener={opener} country={hostunicoCountry} agentName={agentFirstName || 'Pedro'} />;
+  if (isSaCall) return <HostunicoCoachView lines={liveLines} cards={liveEvents.filter((event) => event.script_section === hostunicoContext)} active={!!callId} offline={aiCoach} connected={coachConnected} opener={opener} country={hostunicoCountry} agentName={agentFirstName || 'Pedro'} phone={hostunicoPhone} reportMobile={hostunicoReportMobile} />;
 
   return (
     <div className="flex flex-col h-full">

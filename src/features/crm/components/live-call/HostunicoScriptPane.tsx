@@ -5,10 +5,10 @@ import { HOSTUNICO_ANSWERS } from '../../../../../supabase/functions/_shared/hos
 import type { SaListing } from '../../hooks/useSaListings';
 import { hostunicoProperty } from '../../lib/hostunicoProperty';
 import CallTextSizeControls, { useCallTextSize } from './CallTextSizeControls';
-import { hostunicoReportHook, type HostunicoReportPitch } from '../../lib/hostunicoReportPitch';
+import { hostunicoReportIntroduction, hostunicoReportHook, hostunicoReportRecipient, type HostunicoReportPitch } from '../../lib/hostunicoReportPitch';
 
 type Mode = 'spareroom' | 'facebook' | 'followup';
-export default function HostunicoScriptPane({ listing, agentName, onOpener, onMode, country = 'GB', reportPitch, controls }: { onMode?: (mode: Mode) => void; country?: string; listing: SaListing | null; agentName: string; onOpener: (line: string) => void; reportPitch?: HostunicoReportPitch | null; controls?: ReactNode }) {
+export default function HostunicoScriptPane({ listing, agentName, onOpener, onMode, country = 'GB', reportPitch, controls, phone, reportMobile, onArrangeCallback }: { onMode?: (mode: Mode) => void; country?: string; listing: SaListing | null; agentName: string; onOpener: (line: string) => void; reportPitch?: HostunicoReportPitch | null; controls?: ReactNode; phone?: string; reportMobile?: string | null; onArrangeCallback?: () => void }) {
   const [mode, setMode] = useState<Mode>('spareroom');
   const [rolling, setRolling] = useState(false);
   const { size, changeSize } = useCallTextSize('script');
@@ -19,10 +19,10 @@ export default function HostunicoScriptPane({ listing, agentName, onOpener, onMo
   const { place } = property;
   const rent = property.rent ? ` at ${property.rent}` : '';
   const opener = mode === 'spareroom'
-    ? `Hi, it's ${agentName || 'Pedro'} from Hostunico. I saw your ${property.description} in ${place}${rent} on SpareRoom. Is it still available?`
+    ? `Hi, this is ${agentName || 'Pedro'} here. I saw your ${property.description} in ${place}${rent} on SpareRoom. Is it still available?`
     : mode === 'facebook'
-      ? `Hi, it's ${agentName || 'Pedro'} from Hostunico. You enquired about managing your property through Airbnb. Is the property still available?`
-      : `Hi, it's ${agentName || 'Pedro'} from Hostunico. Have you had a chance to look at the property report? What did you think of the numbers?`;
+      ? `Hi, this is ${agentName || 'Pedro'} here. You enquired about managing your property through Airbnb. Is the property still available?`
+      : `Hi, this is ${agentName || 'Pedro'} here. We spoke about your property and I sent you the earnings report. Have you had a chance to look at it?`;
   useEffect(() => { onOpener(opener); }, [opener, onOpener]);
   useEffect(() => { onMode?.(mode); }, [mode, onMode]);
   useEffect(() => { setRolling(false); scroll.current?.scrollTo(0, 0); }, [mode, listing?.id]);
@@ -36,17 +36,20 @@ export default function HostunicoScriptPane({ listing, agentName, onOpener, onMo
     return () => window.clearInterval(timer);
   }, [rolling]);
   const steps = mode === 'followup' ? [
-    ['Listen first', opener, 'Not read it? Offer to go through it together. Questions? Answer them first. A no? Thank them and record it.'],
+    ['Listen first', opener, 'Use call two only after the report was sent. If they have read it, ask: What did you think of the numbers? Not read it? Offer to go through it together. Questions? Answer them first. A no? Thank them and record it.'],
     ['Confirm the price', hostunicoPriceCopy(country), 'Check that the fee and separate costs are clear.'],
     ['Prepare the property', 'If you would like to go ahead, can I ask a few questions so we can give you a clear setup checklist?', 'When is it available? Who can authorise this? Are the lease, mortgage, building and local permissions checked?'],
     ['Find what is missing', 'Is it furnished and ready for guests? Do you have current photos, a way for guests to get in, and a cleaner? Do you already have an Airbnb account?', 'Owner keeps their Airbnb account. Pedro records needs; Elsie and the team handle operations.'],
     ['Agree the next step', 'What still needs doing, what budget do you have for setup, and when do you think it could be ready? I will send you the checklist with the next steps.', 'Record each missing item and its date. Arrange the agreement and owner login through onboarding. Confirm launch only after checks.'],
   ] : [
     ['Start here', opener, 'Wait for the answer. Keep it conversational. This queue is for whole-property studios and one-bedroom homes. If it turns out to be a room or house share, mark unsuitable and move on.'],
-    ['Give the comparison, then ask', hostunicoReportHook(reportPitch), 'Use only the figures in this property report. Keep area and studio comparison assumptions clear. Respect a no.'],
-    ['After yes, confirm where to send it', 'What mobile number or email should I send the link to?', 'If this is a landline, enter their mobile in Send report. Read the number or email back. Check the recipient, advert photo and correct report, then press Send yourself. If the report is preparing, send only when it is ready.'],
+    ['Ask for one minute, then pause', hostunicoReportIntroduction(), 'Wait for their answer before explaining the service or giving figures. If asked who you are with, say Hostunico. Do not claim to be looking for a place to rent. If they are busy, briefly offer to send the earnings report instead. Respect a no.'],
+    ['If yes, explain why and give the comparison', hostunicoReportHook(reportPitch), 'Use only the figures in this property report. Keep area and studio comparison assumptions clear. Pause after the comparison, then offer to send it.'],
+    ['After yes, confirm where to send it', hostunicoReportRecipient(phone, reportMobile), 'This line follows the current contact and saved report mobile. Confirm that they can receive texts. For a different number, enter and save their confirmed mobile in Send report. Read it back. If they prefer email, use Email instead.'],
+    ['Optional details after permission', 'Before I send it, when would the property be available for guests?', 'If useful, also ask whether they are the owner or managing it for the owner. Confirm only missing report facts, such as full postcode and bathrooms. Do not repeat answers already given or delay sending if they are busy.'],
+    ['Send the report', 'I will send that over now.', 'Check the recipient, advert photo and correct report, then press Send report by SMS yourself. Tick permission only after they agree. If the report is preparing, say you will send it when ready.'],
     ['After the send succeeds', 'I have sent the report link. Could you check if you have received it?', 'Use this line only after a successful manual send. Record receipt. The report has one invitation: Want me to walk you through what onboarding looks like?'],
-    ['Optional details after permission', 'If you have a moment, can I confirm any missing property details so we can refine the estimate?', 'Ask only for missing facts, such as full postcode, bedrooms and bathrooms. Keep unknowns labelled. After permission, if useful, ask when it would be ready to let and whether they are the owner or authorised manager. Do not hold up the first hook with these questions.'],
+    ['Agree a callback', 'Would tomorrow work for a quick call to talk through the report?', 'If yes, ask: What time suits you? Confirm the day, UK time and number. If tomorrow does not work, ask which day does. Save only the time they actually agree to in Review call booked. This creates a reminder for Pedro, not an automatic call or text.'],
   ];
   return <section className="flex h-full min-h-0 flex-col bg-white" aria-label="Hostunico sales script">
     <header className="flex h-11 shrink-0 items-center gap-1.5 overflow-x-auto border-b px-2" aria-label="Script controls">
@@ -59,7 +62,7 @@ export default function HostunicoScriptPane({ listing, agentName, onOpener, onMo
       <CallTextSizeControls pane="script" size={size} onChange={changeSize} />
     </header>
     <div ref={scroll} className="min-h-0 flex-1 overflow-y-auto p-5 space-y-6" onWheel={() => setRolling(false)} onTouchStart={() => setRolling(false)}>
-      {steps.map(([title, line, note], i) => <article key={title}><p style={secondaryText} className="mb-2 font-bold uppercase tracking-wide text-slate-500">{i + 1}. {title}</p><p style={{ fontSize: size }} className="whitespace-pre-line font-medium leading-relaxed text-slate-900">{line}</p><p style={secondaryText} className="mt-2 leading-relaxed text-slate-500">{note}</p></article>)}
+      {steps.map(([title, line, note], i) => <article key={title}><p style={secondaryText} className="mb-2 font-bold uppercase tracking-wide text-slate-500">{i + 1}. {title}</p><p style={{ fontSize: size }} className="whitespace-pre-line font-medium leading-relaxed text-slate-900">{line}</p><p style={secondaryText} className="mt-2 leading-relaxed text-slate-500">{note}</p>{title === 'Agree a callback' && onArrangeCallback && <button onClick={onArrangeCallback} className="mt-3 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-800">Save agreed callback</button>}</article>)}
       <details className="rounded-xl border p-3"><summary style={headingText} className="cursor-pointer font-semibold">Quick answers, including price</summary><div className="mt-3 space-y-4">{HOSTUNICO_ANSWERS.map((a) => <div key={a.key}><b style={headingText}>{a.title}</b><p style={{ fontSize: size }} className="mt-1 whitespace-pre-line leading-relaxed">{a.key === 'price' ? hostunicoPriceCopy(country) : a.say}</p></div>)}</div></details>
       <a href="https://hostunico-sales-scripts.briny-scout-0044.chatgpt.site" target="_blank" rel="noreferrer" style={secondaryText} className="block text-blue-700 underline">Open the study guide</a>
     </div>

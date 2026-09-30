@@ -13,3 +13,11 @@ export function reportPhoneKind(raw: unknown): 'mobile' | 'landline' | 'unknown'
   // 070 is personal numbering and 076 is usually paging, not a UK mobile.
   return /^\+447[1-57-9]\d{8}$/.test(phone) ? 'mobile' : 'landline';
 }
+
+export function reportRecipientQuestion(phone?: string, savedMobile?: string | null): string {
+  const calling = reportPhone(phone);
+  const mobile = reportPhone(savedMobile);
+  if (mobile && mobile !== calling) return `Can I text the report to your mobile ending ${mobile.slice(-4)}?`;
+  if ((mobile && mobile === calling) || reportPhoneKind(phone) === 'mobile') return 'Can I send the report by text to this number?';
+  return 'What mobile number can I text the report to? Or would you prefer email?';
+}

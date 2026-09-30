@@ -39,12 +39,14 @@ interface Props {
   selectedId: string | null;
   onSelect: (id: string) => void;
   currentCallId?: string | null;
+  reviewRequested?: boolean;
+  onReviewClosed?: () => void;
 }
 
 const shortDate = (iso: string | null | undefined) =>
   iso ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '';
 
-export default function SaListingPane({ contactId, selectedId, onSelect, currentCallId }: Props) {
+export default function SaListingPane({ contactId, selectedId, onSelect, currentCallId, reviewRequested = false, onReviewClosed }: Props) {
   const { listings, loading, error, refetch } = useSaListings(contactId);
   const selected = listings.find((l) => l.id === selectedId) ?? listings[0] ?? null;
 
@@ -97,6 +99,8 @@ export default function SaListingPane({ contactId, selectedId, onSelect, current
           contactId={contactId}
           currentCallId={currentCallId ?? null}
           onSaved={() => void refetch()}
+          reviewRequested={reviewRequested}
+          onReviewClosed={onReviewClosed}
         />
       )}
     </div>
@@ -113,7 +117,7 @@ function Fact({ k, v, strong }: { k: string; v: React.ReactNode; strong?: boolea
   );
 }
 
-function SaListingDetail({ listing: l, contactId, currentCallId, onSaved }: { listing: SaListing; contactId: string; currentCallId: string | null; onSaved: () => void }) {
+function SaListingDetail({ listing: l, contactId, currentCallId, onSaved, reviewRequested = false, onReviewClosed }: { listing: SaListing; contactId: string; currentCallId: string | null; onSaved: () => void; reviewRequested?: boolean; onReviewClosed?: () => void }) {
   const { columns } = useSmsV2();
   const [followupOpen, setFollowupOpen] = useState(false);
   const reviewColumn = columns.find((c) => c.name === 'Review call booked');
@@ -243,8 +247,9 @@ function SaListingDetail({ listing: l, contactId, currentCallId, onSaved }: { li
           ))}
         </div>
         {saved && <div className="text-[11.5px] text-[#166534]">{saved}</div>}
+        {reviewRequested && !reviewColumn && <p role="alert" className="text-xs text-red-700">The review-call stage has not loaded. Please refresh before saving the callback.</p>}
         {saveError && <div className="text-[11.5px] text-[#B91C1C]">{saveError}</div>}
-        {reviewColumn && <FollowupPromptModal open={followupOpen} onOpenChange={setFollowupOpen} contactId={contactId} contactName={l.agency} columnId={reviewColumn.id} columnName="Review call booked" callId={currentCallId} initialNote={note || `Review the Hostunico report for ${l.address}`} onSaved={() => { setFollowupOpen(false); void save('review_booked'); }} />}
+        {reviewColumn && <FollowupPromptModal open={followupOpen || reviewRequested} onOpenChange={(open) => { setFollowupOpen(open); if (!open) onReviewClosed?.(); }} contactId={contactId} contactName={l.agency} columnId={reviewColumn.id} columnName="Review call booked" callId={currentCallId} initialNote={note || `Review the Hostunico report for ${l.address}`} onSaved={() => { setFollowupOpen(false); onReviewClosed?.(); void save('review_booked'); }} />}
       </div>
     </div>
   );

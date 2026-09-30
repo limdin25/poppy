@@ -23,8 +23,9 @@ describe('Hostunico caller identity', () => {
     const agentName = hostunicoCallerName(identity);
     expect(agentName).toBe('Pedro');
     const html = renderToStaticMarkup(createElement(HostunicoScriptPane, { listing: null, agentName, onOpener: () => {} }));
-    expect(html).toContain('Pedro from Hostunico');
+    expect(html).toContain('Hi, this is Pedro here.');
     expect(html).not.toContain('Hugo from Hostunico');
+    expect(html).not.toContain('Hi, this is Hugo here.');
   });
   it('uses the assigned seller outside view-as, with Pedro as the unresolved Hostunico fallback', () => {
     expect(hostunicoCallerName({ ...identity, viewAsId: null })).toBe('Marr');
@@ -43,7 +44,7 @@ describe('independent script and coach reading sizes', () => {
     const localStorage = storage();
     vi.stubGlobal('window', { localStorage });
     expect(readCallTextSize('script')).toBe(24);
-    expect(readCallTextSize('coach')).toBe(30);
+    expect(readCallTextSize('coach')).toBe(36);
     saveCallTextSize('script', 28);
     saveCallTextSize('coach', 36);
     expect(readCallTextSize('script')).toBe(28);
@@ -58,14 +59,14 @@ describe('independent script and coach reading sizes', () => {
   });
   it('bounds adjustments and survives invalid or blocked storage', () => {
     const local = storage();
-    expect(saveCallTextSize('coach', 100, local)).toBe(42);
+    expect(saveCallTextSize('coach', 100, local)).toBe(48);
     expect(saveCallTextSize('script', 0, local)).toBe(18);
     local.setItem('hostunico:script-font-size', 'not a number');
     expect(readCallTextSize('script', local)).toBe(24);
     const blocked = { getItem: () => { throw new Error('blocked'); }, setItem: () => { throw new Error('blocked'); } };
-    expect(readCallTextSize('coach', blocked)).toBe(30);
+    expect(readCallTextSize('coach', blocked)).toBe(36);
     expect(saveCallTextSize('coach', 34, blocked)).toBe(34);
-    const controls = renderToStaticMarkup(createElement(CallTextSizeControls, { pane: 'coach', size: 42, onChange: () => {} }));
+    const controls = renderToStaticMarkup(createElement(CallTextSizeControls, { pane: 'coach', size: 48, onChange: () => {} }));
     expect(controls).toMatch(/disabled="" aria-label="Increase coach text size"/);
   });
   it('enlarges notes, recent speech and history proportionally while keeping the next line dominant', () => {
@@ -89,7 +90,7 @@ describe('independent script and coach reading sizes', () => {
 });
 
 describe('the next words stand apart from past speech', () => {
-  it('renders both next lines at 30px and recent Pedro speech and earlier suggestions at 12px', () => {
+  it('renders both next lines at 36px and past speech and suggestions at 14px', () => {
     const html = renderToStaticMarkup(createElement(HostunicoCoachView, {
       ...coachProps,
       lines: [{ id: 'spoken', speaker: 'agent', body: 'I can help with that.', ts: '1' }],
@@ -97,8 +98,8 @@ describe('the next words stand apart from past speech', () => {
     }));
     expect(html).toContain('Pedro just said');
     expect(html).toMatch(/text-xs[^>]*>I can help with that\./);
-    expect(html).toMatch(/font-size:30px[^>]*data-testid="hostunico-next-line"[^>]*>You keep your account\./);
-    expect(html).toMatch(/font-size:30px[^>]*data-testid="hostunico-next-question"[^>]*>When is it available\?/);
+    expect(html).toMatch(/font-size:36px[^>]*data-testid="hostunico-next-line"[^>]*>You keep your account\./);
+    expect(html).toMatch(/font-size:36px[^>]*data-testid="hostunico-next-question"[^>]*>When is it available\?/);
     expect(html).toMatch(/text-xs[^>]*>Earlier advice\./);
   });
   it('never promotes a stale suggestion after the lead speaks again', () => {

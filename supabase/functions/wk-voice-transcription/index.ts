@@ -22,6 +22,7 @@
 
 import { HOSTUNICO_STAGES, HOSTUNICO_RULES, HOSTUNICO_ANSWERS, hostunicoInstantAnswer } from '../_shared/hostunico-sales.ts';
 import { HOSTUNICO_COACH_PROMPT, cleanHostunicoCoach } from '../_shared/hostunico-coach.ts';
+import { reportPhoneKind } from '../_shared/hostunico-phone.ts';
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 import {
@@ -2134,13 +2135,13 @@ serve(async (req: Request) => {
           if (call.script_key === 'sa_call') {
             const [recent, contactResult] = await Promise.all([
               supa.from('wk_live_transcripts').select('speaker,body,ts').eq('call_id', call.id).order('ts', { ascending: false }).limit(8),
-              supa.from('wk_contacts').select('name,phone,hostunico_country,custom_fields').eq('id', call.contact_id).maybeSingle(),
+              supa.from('wk_contacts').select('name,phone,hostunico_sms_phone,hostunico_country,custom_fields').eq('id', call.contact_id).maybeSingle(),
             ]);
             if (recent.error || contactResult.error) throw new Error('Hostunico coach context unavailable');
             const contact = contactResult.data;
             const fields = contact?.custom_fields || {};
             const listingId = fields.hostunico_listing_id;
-            const instant = hostunicoInstantAnswer(transcriptText, contact?.hostunico_country || 'GB');
+            const instant = hostunicoInstantAnswer(transcriptText, contact?.hostunico_country || 'GB', { phone: contact?.phone, mobile: contact?.hostunico_sms_phone });
             const context = `${listingId || ''}:${fields.hostunico_script_mode || 'spareroom'}:${contact?.hostunico_country || 'GB'}`;
             const { data: cardId, error: cardError } = await supa.rpc('wk_hostunico_start_coach', { p_call_id: call.id, p_generation: generationId, p_context: context });
             if (cardError) throw new Error('Hostunico coach card unavailable');
@@ -2158,7 +2159,7 @@ serve(async (req: Request) => {
                   listingId ? supa.from('sa_listings').select('address,city,bedrooms,bathrooms,property_type,rent_pcm,source_price,report_property').eq('id', listingId).eq('wk_contact_id', call.contact_id).maybeSingle() : Promise.resolve({ data: null }),
                   listingId ? supa.from('sa_property_reports').select('state,sms_state,received_at,report_pitch').eq('listing_id', listingId).maybeSingle() : Promise.resolve({ data: null }),
                 ]);
-                const output = await streamCoachInternal({ apiKey: openaiKey, model: (ai.live_coach_model as string) || 'gpt-5.4-mini', hostunico: true, systemMessages: [HOSTUNICO_COACH_PROMPT], userMsg: JSON.stringify({ lead: contact?.name, country: contact?.hostunico_country || 'GB', mode: fields.hostunico_script_mode || 'spareroom', advertisedProperty: listing.data, report: report.data, transcript: (recent.data || []).reverse(), latestCaller: transcriptText }), onChunk: (text, first) => { if (first) log('Hostunico first token'); writer.schedule(text); }, isAborted: () => aborted });
+                const output = await streamCoachInternal({ apiKey: openaiKey, model: (ai.live_coach_model as string) || 'gpt-5.4-mini', hostunico: true, systemMessages: [HOSTUNICO_COACH_PROMPT], userMsg: JSON.stringify({ lead: contact?.name, country: contact?.hostunico_country || 'GB', recipient: { callingNumberType: reportPhoneKind(contact?.phone), confirmedMobile: contact?.hostunico_sms_phone || null }, mode: fields.hostunico_script_mode || 'spareroom', advertisedProperty: listing.data, report: report.data, transcript: (recent.data || []).reverse(), latestCaller: transcriptText }), onChunk: (text, first) => { if (first) log('Hostunico first token'); writer.schedule(text); }, isAborted: () => aborted });
                 answer = output?.body || '';
               }
               await writer.flush();

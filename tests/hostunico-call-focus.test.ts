@@ -24,7 +24,7 @@ describe('the property changes with the call', () => {
     expect(first).toContain('your studio in Manchester at £1,000');
     expect(next).toContain('your 2-bedroom flat in Liverpool at £1,200');
     expect(next).not.toContain('Princess Road');
-    expect(next).toContain('What mobile number or email');
+    expect(next).toContain('What mobile number can I text the report to? Or would you prefer email?');
   });
 });
 describe('fast answers stay current', () => {

@@ -2,7 +2,7 @@ import { useState } from 'react';
 
 export const CALL_TEXT_SIZES = {
   script: { initial: 24, min: 18, max: 36 },
-  coach: { initial: 30, min: 22, max: 42 },
+  coach: { initial: 36, min: 22, max: 48 },
 } as const;
 type Pane = keyof typeof CALL_TEXT_SIZES;
 type TextStorage = Pick<Storage, 'getItem' | 'setItem'>;

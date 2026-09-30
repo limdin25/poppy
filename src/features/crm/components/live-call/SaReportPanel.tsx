@@ -25,7 +25,7 @@ interface ReportState {
   property?: { postcode: string; bedrooms: number; bathrooms: number; advertisedRentPcm?: number; areaEstimate?: boolean; areaLabel?: string };
   reportPitch?: HostunicoReportPitch | null;
 }
-export default function SaReportPanel({ listing, phone, onEmail, country = 'GB', onReportPitch }: { listing: SaListing | null; phone?: string; onEmail?: (url: string) => void; country?: string; onReportPitch?: (listingId: string, country: string, pitch: HostunicoReportPitch | null) => void }) {
+export default function SaReportPanel({ listing, phone, onEmail, country = 'GB', onReportPitch, onReportMobile }: { listing: SaListing | null; phone?: string; onEmail?: (url: string) => void; country?: string; onReportPitch?: (listingId: string, country: string, pitch: HostunicoReportPitch | null) => void; onReportMobile?: (listingId: string, mobile: string) => void }) {
   const [report, setReport] = useState<ReportState | null>(null);
   const [postcode, setPostcode] = useState('');
   const [bedrooms, setBedrooms] = useState('');
@@ -46,6 +46,9 @@ export default function SaReportPanel({ listing, phone, onEmail, country = 'GB',
   useEffect(() => {
     if (listing) onReportPitch?.(listing.id, country, report?.stage === 'ready' ? report.reportPitch ?? null : null);
   }, [listing?.id, country, report?.stage, report?.reportPitch, onReportPitch]);
+  useEffect(() => {
+    if (listing) onReportMobile?.(listing.id, savedMobile);
+  }, [listing?.id, savedMobile, onReportMobile]);
   useEffect(() => {
     let cancelled = false;
     setReport(null); setError(''); setPermission(false); setWhole(false);

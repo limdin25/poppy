@@ -41,6 +41,10 @@ export default function SaCallRoom({ contact, contactHeader, emptyState, current
   const [country, setCountry] = useState('GB');
   const [pitchSnapshot, setPitchSnapshot] = useState<{ listingId: string; country: string; value: HostunicoReportPitch | null } | null>(null);
   const receivePitch = useCallback((listingId: string, country: string, value: HostunicoReportPitch | null) => setPitchSnapshot({ listingId, country, value }), []);
+  const [mobileSnapshot, setMobileSnapshot] = useState<{ listingId: string; mobile: string } | null>(null);
+  const receiveMobile = useCallback((listingId: string, mobile: string) => setMobileSnapshot({ listingId, mobile }), []);
+  const [reviewRequest, setReviewRequest] = useState<{ contactId: string; listingId: string } | null>(null);
+  const [notesOpen, setNotesOpen] = useState(false);
   const [countryError, setCountryError] = useState('');
   const [contextError, setContextError] = useState('');
   useEffect(() => {
@@ -52,9 +56,10 @@ export default function SaCallRoom({ contact, contactHeader, emptyState, current
     return () => { cancelled = true; };
   }, [contact?.id, contact?.phone]);
   const handleSelect = useCallback((id: string) => setSelectedId(id), []);
-  useEffect(() => { setSelectedId(null); }, [contact?.id]);
+  useEffect(() => { setSelectedId(null); setNotesOpen(false); setReviewRequest(null); }, [contact?.id]);
   const selected = useMemo(() => listings.find((l) => l.id === selectedId) ?? listings[0] ?? null, [listings, selectedId]);
   const facts = hostunicoProperty(selected);
+  const reviewRequested = !!selected && reviewRequest?.listingId === selected.id && reviewRequest.contactId === contact?.id;
   useEffect(() => { setEmailReport(null); }, [contact?.id, selected?.id]);
   useEffect(() => {
     if (!selected) return;
@@ -105,25 +110,25 @@ export default function SaCallRoom({ contact, contactHeader, emptyState, current
               {selected?.summary && <details><summary className="cursor-pointer text-xs font-medium">Read advert description</summary><p className="mt-2 whitespace-pre-line text-xs leading-relaxed text-slate-600">{selected.summary}</p></details>}
             </div>
           </section>
-          <SaReportPanel key={`${selected?.id || 'none'}:${country}`} listing={selected} phone={contact.phone} country={country} onReportPitch={receivePitch} onEmail={(url) => { setEmailReport(url); setCollapsed(false); }} />
+          <SaReportPanel key={`${selected?.id || 'none'}:${country}`} listing={selected} phone={contact.phone} country={country} onReportPitch={receivePitch} onReportMobile={receiveMobile} onEmail={(url) => { setEmailReport(url); setCollapsed(false); }} />
           {ahead && <p className="text-[11px] text-slate-500" role="status">{ahead}</p>}
           <details className="rounded-xl border bg-white p-3"><summary className="cursor-pointer text-xs font-semibold">Lead country and pricing</summary><label className="mt-2 block text-xs text-slate-600">Lead country<select aria-label="Lead country for pricing" value={country === 'GB' ? 'GB' : 'US'} className="mt-1 w-full rounded-lg border bg-white px-2 py-2" onChange={async (e) => {
             const next = e.target.value;
             if (!selected) return;
             try { await reportAction('country', { listing_id: selected.id, country: next }); setCountry(next); setCountryError(''); } catch { setCountryError('Country was not saved. Please try again.'); }
           }}><option value="GB">United Kingdom (software £29/month)</option><option value="US">Outside UK (software $29/month)</option></select></label>{countryError && <p role="alert" className="mt-2 text-xs text-red-700">{countryError}</p>}</details>
-          <details className="rounded-xl border bg-white"><summary className="cursor-pointer p-3 text-xs font-semibold">Contact, notes and outcome</summary>{contactHeader}<SaListingPane contactId={contact.id} selectedId={selected?.id ?? null} onSelect={handleSelect} currentCallId={currentCallId} /></details>
+          <details open={notesOpen} onToggle={(event) => setNotesOpen(event.currentTarget.open)} className="rounded-xl border bg-white"><summary className="cursor-pointer p-3 text-xs font-semibold">Contact, notes and outcome</summary>{contactHeader}<SaListingPane contactId={contact.id} selectedId={selected?.id ?? null} onSelect={handleSelect} currentCallId={currentCallId} reviewRequested={reviewRequested} onReviewClosed={() => setReviewRequest(null)} /></details>
         </div>}
       </aside>
       <div className="grid min-h-0 min-w-0 flex-1 grid-cols-1 overflow-y-auto md:grid-cols-2 md:overflow-hidden" data-testid="hostunico-focus-columns">
-        <div className="min-h-[440px] min-w-0 border-r md:min-h-0"><HostunicoScriptPane key={contact?.id || 'no-contact'} listing={selected} agentName={callerName} onOpener={setOpener} onMode={setMode} country={country} reportPitch={pitchSnapshot?.listingId === selected?.id && pitchSnapshot?.country === country ? pitchSnapshot.value : null} controls={<>
+        <div className="min-h-[440px] min-w-0 border-r md:min-h-0"><HostunicoScriptPane key={contact?.id || 'no-contact'} listing={selected} agentName={callerName} onOpener={setOpener} onMode={setMode} country={country} reportPitch={pitchSnapshot?.listingId === selected?.id && pitchSnapshot?.country === country ? pitchSnapshot.value : null} phone={contact?.phone} reportMobile={mobileSnapshot?.listingId === selected?.id ? mobileSnapshot?.mobile : null} onArrangeCallback={contact && selected ? () => { setCollapsed(false); setNotesOpen(true); setReviewRequest({ contactId: contact.id, listingId: selected.id }); } : undefined} controls={<>
           <button onClick={() => setCollapsed(!collapsed)} aria-expanded={!collapsed} aria-controls="hostunico-call-sidebar" aria-label={collapsed ? 'Show property and controls' : 'Hide property and controls'} title={collapsed ? 'Show property and controls' : 'Hide property and controls'} className="flex h-8 w-8 shrink-0 items-center justify-center gap-1.5 rounded-lg border bg-slate-50 text-xs hover:bg-slate-100 xl:w-auto xl:px-2">{collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}<span className="hidden xl:inline">Property</span></button>
           {callInProgress && onEndCall && <button onClick={onEndCall} className="h-8 shrink-0 rounded-lg bg-red-700 px-2 text-xs font-semibold text-white">End call</button>}
         </>} /></div>
         <section className="flex min-h-[440px] min-w-0 flex-col bg-white md:min-h-0" aria-label="Live AI coach">
           {direction === 'inbound' && <p className="border-b bg-blue-50 p-2 text-xs text-blue-700">They called back. Confirm which property they mean.</p>}
           {contextError && <p role="alert" className="bg-amber-50 p-2 text-xs text-amber-900">{contextError}</p>}
-          <div className="min-h-0 flex-1">{contact ? <LiveTranscriptPane key={currentCallId || contact.id} durationSec={liveDurationSec} contactId={contact.id} callId={currentCallId} agentFirstName={callerName} hostunicoCountry={country} hostunicoContext={`${selected?.id || ''}:${mode}:${country}`} isSaCall propertyOpener={opener} /> : <div className="p-5 text-sm text-slate-500">{emptyState || 'Choose a lead to start. The live coach appears here.'}</div>}</div>
+          <div className="min-h-0 flex-1">{contact ? <LiveTranscriptPane key={currentCallId || contact.id} durationSec={liveDurationSec} contactId={contact.id} callId={currentCallId} agentFirstName={callerName} hostunicoCountry={country} hostunicoContext={`${selected?.id || ''}:${mode}:${country}`} hostunicoPhone={contact.phone} hostunicoReportMobile={mobileSnapshot?.listingId === selected?.id ? mobileSnapshot?.mobile : null} isSaCall propertyOpener={opener} /> : <div className="p-5 text-sm text-slate-500">{emptyState || 'Choose a lead to start. The live coach appears here.'}</div>}</div>
         </section>
       </div>
       {emailReport && contact && <section aria-label="Email property report" className="absolute inset-y-0 left-0 z-30 flex w-full max-w-md flex-col border-r bg-white shadow-xl"><div className="flex items-center justify-between border-b p-3"><h2 className="font-semibold">Email the report</h2><button onClick={() => setEmailReport(null)} className="rounded-lg border px-3 py-1.5 text-xs">Close email</button></div><div className="min-h-0 flex-1"><SaEmailPane key={selected?.id} contactId={contact.id} contactEmail={contact.email} listing={selected} agentFirstName={callerName} reportUrl={emailReport} country={country} /></div></section>}
