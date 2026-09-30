@@ -44,6 +44,16 @@ describe('fast answers stay current', () => {
     expect(hostunicoInstantAnswer('How much is it?', 'US')?.say).toContain('$29');
     expect(splitHostunicoCoach('SAY: One answer.\nASK: One question?')).toEqual({ say: 'One answer.', ask: 'One question?' });
   });
+  it('replaces advice as the prospect corrects their question without reviving the old answer', () => {
+    const props = { active: true, offline: false, connected: true, opener: 'Hello', country: 'GB' };
+    const old = { id: 'old', ts: '1', body: 'SAY: The fee is 9%.\nASK:', status: 'final' };
+    const lines = [{ id: 'correction', ts: '2', speaker: 'caller', body: 'Actually I mean your company address, not the fee.' }];
+    const nextWords = (cards: typeof old[]) => renderToStaticMarkup(createElement(HostunicoCoachView, { ...props, lines, cards })).match(/data-testid="hostunico-next-line"[^>]*>([\s\S]*?)<\/p>/)?.[1];
+    expect(nextWords([old])).toContain('Your next line is coming');
+    const corrected = { id: 'new', ts: '3', body: 'SAY: Our registered address is 483 Green Lanes, London, N13 4BS.\nASK:', status: 'final' };
+    expect(nextWords([old, corrected])).toContain('483 Green Lanes');
+    expect(nextWords([old, corrected])).not.toContain('9%');
+  });
 });
 describe('report recipients and real advert photos', () => {
   it('accepts whole studios and one-bedroom homes, excluding shared kitchens even under a misleading whole-property tag', () => {

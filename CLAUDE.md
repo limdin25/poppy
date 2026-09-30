@@ -256,6 +256,15 @@ Pedro rings letting agents about city-centre flats to rent. Full write-up:
 npx tsc --noEmit && npx vitest run
 ```
 
+## TypeSafe skill (Hugo, 30 September 2026)
+
+Use the installed `typesafe-ai` skill when developing AI decisions in this project:
+`/Users/hugo/.agents/skills/typesafe-ai/SKILL.md`. Read its live docs before changing
+the integration. Hostunico's live coach uses Jev to select high-confidence approved
+answers alongside the existing OpenAI stream. It only coaches Pedro. It cannot
+send messages, answer phones or change lead records. Keep `TYPESAFE_API_KEY`
+server-side. The report reply classifier still uses its existing OpenAI path.
+
 ---
 
 ## How to write a Comet prompt

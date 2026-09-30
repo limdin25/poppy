@@ -20,13 +20,8 @@ export function hostunicoReportRecipient(phone?: string, savedMobile?: string | 
 
 export function hostunicoReportHook(pitch?: HostunicoReportPitch | null): string {
   if (!pitch?.monthly.trim()) {
-    return 'We manage properties for short and mid-term lets through Airbnb. I can put together a report comparing the estimated Airbnb income and costs with your asking rent. Would you like me to prepare that and send it when it is ready?';
+    return 'We manage properties for short-term lets through Airbnb. I can put together a report showing what your property could make. Would you like me to prepare that and send it when it is ready?';
   }
-  const basis = pitch.studioComparison
-    ? 'So, using one-bedroom homes nearby as a rough guide for your studio, the report suggests'
-    : pitch.areaEstimate ? 'So, based on local figures, the report suggests' : 'So, the property report suggests';
-  const comparison = pitch.rent ? `, compared with the ${pitch.rent} you are asking` : '';
-  const difference = pitch.rent && pitch.higher && pitch.difference ? ` That is ${pitch.difference} more before those costs.` : '';
-  const assumptions = pitch.studioComparison ? ' We would need to refine that for your studio.' : pitch.areaEstimate ? ' We still need to confirm the property details.' : '';
-  return `We manage properties for short and mid-term lets through Airbnb, and I have prepared an earnings report for your property.\n\n${basis} around ${pitch.monthly} in Airbnb income per operating month${comparison}. That is ${pitch.afterAirbnbFee ? 'after' : 'before'} the Airbnb fee, before our management fee and running costs.${difference}${assumptions} These are estimates, not guaranteed profit.\n\nWould you like me to send you the report so you can look through the numbers?`;
+  const comparison = pitch.rent ? `, compared with the ${pitch.rent} you're asking` : '';
+  return `We manage properties for short-term lets through Airbnb. I've put together a report for your property, and it shows you could make around ${pitch.monthly} a month${comparison}.\n\nWould you like me to send you the report so you can have a look and see if it's something you'd like to explore?`;
 }

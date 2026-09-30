@@ -23,6 +23,7 @@
 import { HOSTUNICO_STAGES, HOSTUNICO_RULES, HOSTUNICO_ANSWERS, hostunicoInstantAnswer } from '../_shared/hostunico-sales.ts';
 import { HOSTUNICO_COACH_PROMPT, cleanHostunicoCoach } from '../_shared/hostunico-coach.ts';
 import { reportPhoneKind } from '../_shared/hostunico-phone.ts';
+import { raceHostunicoCoach, selectHostunicoJevAnswer } from '../_shared/hostunico-jev.ts';
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 import {
@@ -1578,12 +1579,13 @@ async function streamCoachInternal(args: {
   onChunk: (accumulated: string, isFirst: boolean) => void;
   isAborted: () => boolean;
   hostunico?: boolean;
+  signal?: AbortSignal;
 }): Promise<CoachOutput | null> {
   const { apiKey, model, systemMessages, userMsg, onChunk, isAborted } = args;
 
   const resp = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
-    signal: AbortSignal.timeout(15000),
+    signal: args.signal ? AbortSignal.any([args.signal, AbortSignal.timeout(15000)]) : AbortSignal.timeout(15000),
     headers: {
       'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
@@ -2155,11 +2157,22 @@ serve(async (req: Request) => {
             try {
               let answer = instant ? `SAY: ${instant.say}\nASK: ${instant.nextQuestion}` : '';
               if (!instant) {
-                const [listing, report] = await Promise.all([
-                  listingId ? supa.from('sa_listings').select('address,city,bedrooms,bathrooms,property_type,rent_pcm,source_price,report_property').eq('id', listingId).eq('wk_contact_id', call.contact_id).maybeSingle() : Promise.resolve({ data: null }),
-                  listingId ? supa.from('sa_property_reports').select('state,sms_state,received_at,report_pitch').eq('listing_id', listingId).maybeSingle() : Promise.resolve({ data: null }),
-                ]);
-                const output = await streamCoachInternal({ apiKey: openaiKey, model: (ai.live_coach_model as string) || 'gpt-5.4-mini', hostunico: true, systemMessages: [HOSTUNICO_COACH_PROMPT], userMsg: JSON.stringify({ lead: contact?.name, country: contact?.hostunico_country || 'GB', recipient: { callingNumberType: reportPhoneKind(contact?.phone), confirmedMobile: contact?.hostunico_sms_phone || null }, mode: fields.hostunico_script_mode || 'spareroom', advertisedProperty: listing.data, report: report.data, transcript: (recent.data || []).reverse(), latestCaller: transcriptText }), onChunk: (text, first) => { if (first) log('Hostunico first token'); writer.schedule(text); }, isAborted: () => aborted });
+                const transcript = [...(recent.data || [])].reverse();
+                const output = await raceHostunicoCoach({
+                  fast: (signal) => selectHostunicoJevAnswer({ apiKey: Deno.env.get('TYPESAFE_API_KEY') || '', latestCaller: transcriptText, transcript, country: contact?.hostunico_country || 'GB', signal }),
+                  generate: async (onChunk, signal) => {
+                    const [listing, report] = await Promise.all([
+                      listingId ? supa.from('sa_listings').select('address,city,bedrooms,bathrooms,property_type,rent_pcm,source_price,report_property').eq('id', listingId).eq('wk_contact_id', call.contact_id).maybeSingle() : Promise.resolve({ data: null }),
+                      listingId ? supa.from('sa_property_reports').select('state,sms_state,received_at,report_pitch').eq('listing_id', listingId).maybeSingle() : Promise.resolve({ data: null }),
+                    ]);
+                    if (signal.aborted || aborted) return null;
+                    const generated = await streamCoachInternal({ apiKey: openaiKey, model: (ai.live_coach_model as string) || 'gpt-5.4-mini', hostunico: true, signal, systemMessages: [HOSTUNICO_COACH_PROMPT], userMsg: JSON.stringify({ lead: contact?.name, country: contact?.hostunico_country || 'GB', recipient: { callingNumberType: reportPhoneKind(contact?.phone), confirmedMobile: contact?.hostunico_sms_phone || null }, mode: fields.hostunico_script_mode || 'spareroom', advertisedProperty: listing.data, report: report.data, transcript, latestCaller: transcriptText }), onChunk, isAborted: () => aborted || signal.aborted });
+                    return generated?.body || null;
+                  },
+                  onChunk: (text, first) => { if (first) log('Hostunico first words'); writer.schedule(text); },
+                  isAborted: () => aborted,
+                });
+                if (output) log('Hostunico response source', output.source);
                 answer = output?.body || '';
               }
               await writer.flush();
