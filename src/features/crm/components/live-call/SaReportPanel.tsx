@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/browser';
 import type { SaListing } from '../../hooks/useSaListings';
 import { reportPhoneKind } from '../../../../../supabase/functions/_shared/hostunico-phone';
+import HostunicoReportActivity from './HostunicoReportActivity';
 
 export async function reportAction(action: string, values: Record<string, unknown>) {
   const { data } = await supabase.auth.getSession();
@@ -39,6 +40,7 @@ export default function SaReportPanel({ listing, phone, onEmail }: { listing: Sa
     if (!listing) return;
     return reportAction('status', { listing_id: listing.id });
   }, [listing?.id]);
+  const loadActivity = useCallback(() => reportAction('activity', { listing_id: listing?.id }), [listing?.id]);
   useEffect(() => {
     let cancelled = false;
     setReport(null); setError(''); setPermission(false); setWhole(false);
@@ -86,7 +88,7 @@ export default function SaReportPanel({ listing, phone, onEmail }: { listing: Sa
       <div><h2 className="text-sm font-semibold">{area ? 'Area estimate' : 'Property report'}</h2><p className="text-xs text-slate-500" role="status">{report?.stage === 'ready' ? area ? 'Area estimate ready. Confirm the assumptions.' : 'Report ready' : report?.message || 'Checking report...'}</p></div>
       <div className="flex flex-wrap items-center gap-2">
         {report?.stage === 'review' && !alreadySent && <button disabled={busy} onClick={() => void act('retry')} className="rounded-lg border px-3 py-2 text-xs font-medium">Retry research</button>}
-        {report?.reportUrl && <a href={report.reportUrl} target="_blank" rel="noreferrer" className="rounded-lg border px-3 py-2 text-xs font-medium">View report</a>}
+        {report?.reportUrl && <a href={`${report.reportUrl}?preview=1`} target="_blank" rel="noreferrer" className="rounded-lg border px-3 py-2 text-xs font-medium">Preview report</a>}
         {report?.reportUrl && onEmail && <button onClick={() => onEmail(report.reportUrl!)} className="rounded-lg border px-3 py-2 text-xs font-medium">Email instead</button>}
       </div>
     </div>
@@ -111,6 +113,7 @@ export default function SaReportPanel({ listing, phone, onEmail }: { listing: Sa
       <button onClick={() => void act('send_sms')} disabled={busy || !canText || !permission || report?.stage !== 'ready'} className="w-full rounded-lg bg-slate-900 px-3 py-2.5 text-sm font-semibold text-white disabled:opacity-40">{busy ? 'Working...' : 'Send report by SMS'}</button>
     </div>}
     {alreadySent && <div className="mt-3 flex flex-wrap items-center gap-3 text-xs"><span>SMS status: <b>{report?.smsStatus?.replaceAll('_', ' ')}</b></span>{report?.receivedAt ? <span className="text-green-700">They confirmed receipt</span> : <button disabled={busy || ['sending', 'check_inbox'].includes(report?.smsStatus || '')} onClick={() => void act('received')} className="rounded-lg border px-3 py-1.5 disabled:opacity-40">They confirmed receipt</button>}<a href="/admin/crm/inbox" className="text-blue-700 underline">Open inbox</a></div>}
+    {report?.reportUrl && <HostunicoReportActivity load={loadActivity} />}
     {error && <p role="alert" className="mt-2 text-xs text-red-700">{error}</p>}
   </section>;
 }

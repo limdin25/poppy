@@ -72,12 +72,13 @@ describe('human report sends', () => {
     fixture.tables.wk_campaign_agents = [{ campaign_id: campaign, agent_id: 'pedro' }];
     fixture.tables.wk_contacts = Array.from({ length: 10 }, (_, i) => ({ id: `lead-${i}`, desk: 'sa', owner_agent_id: 'pedro', do_not_call: false, phone: '+447700900123' }));
     fixture.tables.wk_dialer_queue = fixture.tables.wk_contacts.map((contact) => ({ campaign_id: campaign, contact_id: contact.id, status: 'pending', scheduled_for: null, wk_contacts: contact }));
-    fixture.tables.sa_listings = fixture.tables.wk_contacts.map((contact, i) => ({ id: `${i}`.padStart(36, '0'), wk_contact_id: contact.id, source: 'spareroom', hostunico_call_eligible: true, report_property: property }));
+    fixture.tables.sa_listings = fixture.tables.wk_contacts.map((contact, i) => ({ id: `${i}`.padStart(36, '0'), wk_contact_id: contact.id, source: 'spareroom', hostunico_call_eligible: true, report_property: property, rent_pcm: 1000, source_price: '£1000 pcm' }));
     fixture.tables.sa_property_reports = [];
     const started: string[] = [];
     let inFlight = 0, maxInFlight = 0;
     vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
       expect(url).toBe('https://hostunico.com/api/hostunico/crm-estimates/start');
+      expect(JSON.parse(String(init.body)).listing).toMatchObject({ advertisedRentPcm: 1000, sourcePrice: '£1000 pcm', wholePropertyVerified: true });
       started.push(JSON.parse(String(init.body)).id);
       maxInFlight = Math.max(maxInFlight, ++inFlight);
       await Promise.resolve(); inFlight--;
@@ -93,6 +94,20 @@ describe('human report sends', () => {
     expect(maxInFlight).toBeLessThanOrEqual(2);
     expect(fixture.smsRequests).toBe(0);
     expect((await handler(request('prepare_queue', { campaign_id: campaign, offset: 10 }))).status).toBe(400);
+  });
+  it('shows report activity only to the assigned agent, including read-only access after opt-out', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      expect(url).toBe('https://hostunico.com/api/hostunico/crm-estimates/activity');
+      return Response.json({ activity: { opens: 1, onboardingOpened: true, events: [{ event: 'onboarding_step', section: 'airbnb' }] } });
+    }));
+    fixture.tables.wk_contacts[0].do_not_call = true;
+    const response = await handler(request('activity'));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ activity: { opens: 1, onboardingOpened: true } });
+    fixture.tables.wk_contacts[0].owner_agent_id = 'someone-else';
+    expect((await handler(request('activity'))).status).toBe(403);
+    expect((await handler(request('activity', {}, 'bad'))).status).toBe(401);
+    expect(fixture.smsRequests).toBe(0);
   });
   it('blocks SMS to a landline and saves a mobile on the same contact without changing the calling number', async () => {
     fixture.tables.wk_contacts[0].phone = '+442079460000';
