@@ -89,7 +89,9 @@ describe('the script', () => {
   })
   it('sells management, gives the fee and asks for report permission', () => {
     expect(PAGE).toContain('Management fee: 9%')
-    expect(PAGE).toContain('<br>VAT: 20% of the management fee, added separately.')
+    expect(PAGE).toContain('Management fee: 9% + VAT')
+    expect(PAGE).not.toMatch(/VAT registration|billing remains|Hi, it is Pedro from/)
+    expect(PAGE).toContain('Have you got one minute for me to explain why I called?')
     expect(PAGE).not.toMatch(/10\.8(?:0)?\s*%/)
     expect(PAGE).toContain('When would it be ready to let?')
     expect(PAGE).toContain('Press Send report by SMS only after they agree')
