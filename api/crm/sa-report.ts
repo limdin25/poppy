@@ -109,6 +109,12 @@ export default async function handler(req: Request): Promise<Response> {
       return json(await start({ ...listing, report_property: property }));
     }
     if (!row) return json({ stage: 'needs_details', message: 'Confirm property details to prepare this report.', property: reportProperty(listing.report_property) });
+    if (action === 'retry' && req.method === 'POST') {
+      if (row.state !== 'review' || row.sms_state !== 'unsent') throw new Problem(409, 'Only an unfinished, unsent report can be retried.');
+      const result = await remote('retry', { id: row.remote_id, token: row.access_token });
+      check(await supa.from('sa_property_reports').update({ state: result.stage, message: result.message }).eq('listing_id', listingId).eq('remote_id', row.remote_id));
+      return json(result);
+    }
     if (action === 'received' && req.method === 'POST') {
       if (!row.sms_sid) throw new Problem(409, 'Send the report before confirming receipt.');
       check(await supa.from('sa_property_reports').update({ received_at: new Date().toISOString() }).eq('listing_id', listingId).eq('remote_id', row.remote_id));

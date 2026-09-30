@@ -48,6 +48,20 @@ beforeEach(() => {
   }));
 });
 describe('human report sends', () => {
+  it('retries only unfinished unsent research and never sends a text', async () => {
+    expect((await handler(request('retry'))).status).toBe(409);
+    fixture.tables.sa_property_reports[0].state = 'review';
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      expect(url).toBe('https://hostunico.com/api/hostunico/crm-estimates/retry');
+      return Response.json({ stage: 'queued', message: 'Queued' });
+    }));
+    expect((await handler(request('retry'))).status).toBe(200);
+    expect(fixture.tables.sa_property_reports[0].state).toBe('queued');
+    expect(fixture.smsRequests).toBe(0);
+    fixture.tables.sa_property_reports[0].state = 'review';
+    fixture.tables.sa_property_reports[0].sms_state = 'check_inbox';
+    expect((await handler(request('retry'))).status).toBe(409);
+  });
   it('rejects signed-out users and another agent contact without sending', async () => {
     expect((await handler(request('send_sms', { permission: true }, 'bad'))).status).toBe(401);
     fixture.tables.wk_contacts[0].owner_agent_id = 'other';

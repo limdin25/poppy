@@ -60,7 +60,7 @@ export default function SaReportPanel({ listing, phone, onEmail }: { listing: Sa
     const timer = window.setInterval(() => void load(), 8000);
     return () => { cancelled = true; window.clearInterval(timer); };
   }, [refresh, listing?.id]);
-  async function act(action: 'prepare' | 'send_sms' | 'received') {
+  async function act(action: 'prepare' | 'send_sms' | 'received' | 'retry') {
     if (!listing || busy) return;
     setBusy(true); setError('');
     try {
@@ -78,6 +78,7 @@ export default function SaReportPanel({ listing, phone, onEmail }: { listing: Sa
     <div className="flex flex-wrap items-center gap-3 justify-between">
       <div><h2 className="text-sm font-semibold">{area ? 'Area estimate' : 'Property report'}</h2><p className="text-xs text-slate-500" role="status">{report?.stage === 'ready' ? area ? 'Area estimate ready. Confirm the assumptions.' : 'Report ready' : report?.message || 'Checking report...'}</p></div>
       <div className="flex flex-wrap items-center gap-2">
+        {report?.stage === 'review' && !alreadySent && <button disabled={busy} onClick={() => void act('retry')} className="rounded-lg border px-3 py-2 text-xs font-medium">Retry research</button>}
         {report?.reportUrl && <a href={report.reportUrl} target="_blank" rel="noreferrer" className="rounded-lg border px-3 py-2 text-xs font-medium">View report</a>}
         {report?.reportUrl && onEmail && <button onClick={() => onEmail(report.reportUrl!)} className="rounded-lg border px-3 py-2 text-xs font-medium">Email instead</button>}
         <button onClick={() => void act('send_sms')} disabled={busy || !permission || report?.stage !== 'ready' || alreadySent} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">{busy ? 'Working...' : alreadySent ? 'Report SMS submitted' : 'Send report by SMS'}</button>
