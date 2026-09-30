@@ -4,9 +4,10 @@ import { HOSTUNICO_ANSWERS } from '../../../../../supabase/functions/_shared/hos
 import type { SaListing } from '../../hooks/useSaListings';
 import { hostunicoProperty } from '../../lib/hostunicoProperty';
 import CallTextSizeControls, { useCallTextSize } from './CallTextSizeControls';
+import { hostunicoReportHook, type HostunicoReportPitch } from '../../lib/hostunicoReportPitch';
 
 type Mode = 'spareroom' | 'facebook' | 'followup';
-export default function HostunicoScriptPane({ listing, agentName, onOpener, onMode, country = 'GB' }: { onMode?: (mode: Mode) => void; country?: string; listing: SaListing | null; agentName: string; onOpener: (line: string) => void }) {
+export default function HostunicoScriptPane({ listing, agentName, onOpener, onMode, country = 'GB', reportPitch }: { onMode?: (mode: Mode) => void; country?: string; listing: SaListing | null; agentName: string; onOpener: (line: string) => void; reportPitch?: HostunicoReportPitch | null }) {
   const [mode, setMode] = useState<Mode>('spareroom');
   const [rolling, setRolling] = useState(false);
   const { size, changeSize } = useCallTextSize('script');
@@ -19,7 +20,7 @@ export default function HostunicoScriptPane({ listing, agentName, onOpener, onMo
   const opener = mode === 'spareroom'
     ? `Hi, it's ${agentName || 'Pedro'} from Hostunico. I saw your ${property.description} in ${place}${rent} on SpareRoom. Is it still available?`
     : mode === 'facebook'
-      ? `Hi, it's ${agentName || 'Pedro'} from Hostunico. You enquired about managing your property through Airbnb. Is now a good time for a quick chat?`
+      ? `Hi, it's ${agentName || 'Pedro'} from Hostunico. You enquired about managing your property through Airbnb. Is the property still available?`
       : `Hi, it's ${agentName || 'Pedro'} from Hostunico. Have you had a chance to look at the property report? What did you think of the numbers?`;
   useEffect(() => { onOpener(opener); }, [opener, onOpener]);
   useEffect(() => { onMode?.(mode); }, [mode, onMode]);
@@ -40,11 +41,11 @@ export default function HostunicoScriptPane({ listing, agentName, onOpener, onMo
     ['Find what is missing', 'Is it furnished and ready for guests? Do you have current photos, a way for guests to get in, and a cleaner? Do you already have an Airbnb account?', 'Owner keeps their Airbnb account. Pedro records needs; Elsie and the team handle operations.'],
     ['Agree the next step', 'What still needs doing, what budget do you have for setup, and when do you think it could be ready? I will send you the checklist with the next steps.', 'Record each missing item and its date. Arrange the agreement and owner login through onboarding. Confirm launch only after checks.'],
   ] : [
-    ['Start here', opener, 'Wait for the answer. Keep it conversational.'],
-    ['Check the timing', mode === 'spareroom' ? 'When would it be ready to let? And are you the owner, or managing it for the owner?' : 'Can you tell me about the property and when you would like to start?', 'This queue is for whole-property studios and one-bedroom homes. If the advert turns out to be a room or house share, record it and move on.'],
-    ['Offer something useful', 'The reason I am calling is that we help owners manage short stays through Airbnb. I can send you an area estimate showing possible earnings and costs compared with your current rent. It labels the assumptions, and we can refine it with your property details. Would that be useful?', 'Ask for the yes. Estimated earnings depend on the property, permissions, demand and costs.'],
-    ['Send the report', 'This first estimate uses area assumptions. Can I confirm the full postcode, bedrooms and bathrooms for the whole property? What mobile number or email should I send the link to?', 'If this is a landline, enter their mobile in Send report. Read it back and confirm permission before sending.'],
-    ['Confirm and follow up', 'I am sending it now. Could you check if you have received the link?', 'Say this after sending. Record receipt. The report has one invitation: Want me to walk you through what onboarding looks like? No need to push the setup on call one.'],
+    ['Start here', opener, 'Wait for the answer. Keep it conversational. This queue is for whole-property studios and one-bedroom homes. If it turns out to be a room or house share, mark unsuitable and move on.'],
+    ['Give the comparison, then ask', hostunicoReportHook(reportPitch), 'Use only the figures in this property report. Keep area and studio comparison assumptions clear. Respect a no.'],
+    ['After yes, confirm where to send it', 'What mobile number or email should I send the link to?', 'If this is a landline, enter their mobile in Send report. Read the number or email back. Check the recipient, advert photo and correct report, then press Send yourself. If the report is preparing, send only when it is ready.'],
+    ['After the send succeeds', 'I have sent the report link. Could you check if you have received it?', 'Use this line only after a successful manual send. Record receipt. The report has one invitation: Want me to walk you through what onboarding looks like?'],
+    ['Optional details after permission', 'If you have a moment, can I confirm any missing property details so we can refine the estimate?', 'Ask only for missing facts, such as full postcode, bedrooms and bathrooms. Keep unknowns labelled. After permission, if useful, ask when it would be ready to let and whether they are the owner or authorised manager. Do not hold up the first hook with these questions.'],
   ];
   return <section className="flex h-full min-h-0 flex-col bg-white" aria-label="Hostunico sales script">
     <header className="border-b p-3 space-y-3">
