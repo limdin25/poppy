@@ -8,18 +8,30 @@ const fixture = vi.hoisted(() => {
 vi.mock('@supabase/supabase-js', () => {
   class Query {
     filters: ((row: any) => boolean)[] = [];
-    patch: any = null; one = false;
+    patch: any = null; one = false; count = Infinity;
     constructor(private table: string) {}
     select() { return this; }
-    eq(k: string, v: any) { this.filters.push((r) => r[k] === v); return this; }
+    eq(k: string, v: any) { this.filters.push((r) => k.split('.').reduce((value, key) => value?.[key], r) === v); return this; }
     neq(k: string, v: any) { this.filters.push((r) => r[k] !== v); return this; }
-    or(value: string) { const entries = value.split(',').map((v) => v.split('.eq.')); this.filters.push((row) => entries.some(([k, v]) => row[k] === v)); return this; }
-    limit() { return this; }
+    or(value: string) {
+      this.filters.push((row) => value.split(',').some((condition) => {
+        const [key, operator, ...parts] = condition.split('.'); const target = parts.join('.');
+        return operator === 'is' ? row[key] == null : operator === 'lte' ? row[key] <= target : row[key] === target;
+      }));
+      return this;
+    }
+    order() { return this; }
+    limit(count: number) { this.count = count; return this; }
+    upsert(value: any) {
+      const rows = fixture.tables[this.table] ||= [];
+      if (!rows.some((row) => row.listing_id === value.listing_id)) rows.push({ ...value, remote_id: value.listing_id });
+      return this;
+    }
     update(p: any) { this.patch = p; return this; }
     maybeSingle() { this.one = true; return this; }
     single() { this.one = true; return this; }
     then(resolve: (value: any) => unknown) {
-      const rows = (fixture.tables[this.table] || []).filter((r) => this.filters.every((f) => f(r)));
+      const rows = (fixture.tables[this.table] || []).filter((r) => this.filters.every((f) => f(r))).slice(0, this.count);
       if (this.patch) rows.forEach((r) => Object.assign(r, this.patch));
       return Promise.resolve({ data: this.one ? rows[0] ? { ...rows[0] } : null : rows.map((r) => ({ ...r })), error: null }).then(resolve);
     }
@@ -54,6 +66,34 @@ beforeEach(() => {
   }));
 });
 describe('human report sends', () => {
+  it('prepares ten leads in five bounded requests without sending messages', async () => {
+    const campaign = '5d9657f9-d9b4-4e27-a2d1-83db80867f92';
+    const property = { postcode: 'E14', bedrooms: 1, bathrooms: 1, wholeProperty: true, areaEstimate: true };
+    fixture.tables.wk_campaign_agents = [{ campaign_id: campaign, agent_id: 'pedro' }];
+    fixture.tables.wk_contacts = Array.from({ length: 10 }, (_, i) => ({ id: `lead-${i}`, desk: 'sa', owner_agent_id: 'pedro', do_not_call: false, phone: '+447700900123' }));
+    fixture.tables.wk_dialer_queue = fixture.tables.wk_contacts.map((contact) => ({ campaign_id: campaign, contact_id: contact.id, status: 'pending', scheduled_for: null, wk_contacts: contact }));
+    fixture.tables.sa_listings = fixture.tables.wk_contacts.map((contact, i) => ({ id: `${i}`.padStart(36, '0'), wk_contact_id: contact.id, source: 'spareroom', hostunico_call_eligible: true, report_property: property }));
+    fixture.tables.sa_property_reports = [];
+    const started: string[] = [];
+    let inFlight = 0, maxInFlight = 0;
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
+      expect(url).toBe('https://hostunico.com/api/hostunico/crm-estimates/start');
+      started.push(JSON.parse(String(init.body)).id);
+      maxInFlight = Math.max(maxInFlight, ++inFlight);
+      await Promise.resolve(); inFlight--;
+      return Response.json({ stage: 'ready', message: 'Ready', reportUrl: 'https://hostunico.com/r/A1b2C' });
+    }));
+    for (let offset = 0; offset < 10; offset += 2) {
+      const response = await handler(request('prepare_queue', { campaign_id: campaign, offset }));
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ prepared: 2, ready: 2, ahead: 10, nextOffset: offset === 8 ? null : offset + 2 });
+      expect(started).toHaveLength(offset + 2);
+    }
+    expect(new Set(started).size).toBe(10);
+    expect(maxInFlight).toBeLessThanOrEqual(2);
+    expect(fixture.smsRequests).toBe(0);
+    expect((await handler(request('prepare_queue', { campaign_id: campaign, offset: 10 }))).status).toBe(400);
+  });
   it('blocks SMS to a landline and saves a mobile on the same contact without changing the calling number', async () => {
     fixture.tables.wk_contacts[0].phone = '+442079460000';
     expect((await handler(request('send_sms', { permission: true }))).status).toBe(400);

@@ -34,7 +34,7 @@ export default async function handler(req: Request): Promise<Response> {
     const allowed = check(await caller.rpc('wk_is_agent_or_admin'));
     if (!allowed) throw new Problem(403, 'CRM access required.');
     const admin = check(await caller.rpc('wk_is_admin'));
-    const body = (req.method === 'POST' ? await req.json() : Object.fromEntries(new URL(req.url).searchParams)) as { action?: string; campaign_id?: string; contact_id?: string; listing_id?: string; country?: string; property?: unknown; replace?: boolean; permission?: boolean; mobile?: string; mobile_confirmed?: boolean; mode?: string };
+    const body = (req.method === 'POST' ? await req.json() : Object.fromEntries(new URL(req.url).searchParams)) as { action?: string; campaign_id?: string; contact_id?: string; listing_id?: string; country?: string; property?: unknown; replace?: boolean; permission?: boolean; mobile?: string; mobile_confirmed?: boolean; mode?: string; offset?: number };
     if (!body || typeof body !== 'object') throw new Problem(400, 'A request object is required.');
     const action = String(body.action || 'status');
     const contact = async (id: string) => {
@@ -57,6 +57,8 @@ export default async function handler(req: Request): Promise<Response> {
     };
     if (action === 'prepare_queue' && req.method === 'POST') {
       if (body.campaign_id !== HOSTUNICO_CAMPAIGN) throw new Problem(400, 'Choose the Hostunico calling campaign.');
+      const offset = body.offset ?? 0;
+      if (!Number.isInteger(offset) || offset < 0 || offset >= REPORT_AHEAD || offset % 2 !== 0) throw new Problem(400, 'Invalid report batch.');
       const membership = check(await supa.from('wk_campaign_agents').select('agent_id').eq('campaign_id', HOSTUNICO_CAMPAIGN).eq('agent_id', auth.user.id).maybeSingle());
       if (!admin && !membership) throw new Problem(403, 'Campaign access required.');
       const now = new Date().toISOString();
@@ -67,8 +69,9 @@ export default async function handler(req: Request): Promise<Response> {
       if (body.contact_id) q = q.neq('contact_id', body.contact_id);
       const queue = check(await q);
       let prepared = 0, ready = 0, preparing = 0, needsDetails = 0, failed = 0;
-      // Bounded concurrency keeps the CRM responsive and the shared report worker healthy.
-      for (let i = 0; i < queue.length; i += 2) await Promise.all(queue.slice(i, i + 2).map(async (lead) => {
+      // One pair per request stays below the edge response deadline. The desk
+      // continues through all ten, updating progress after each pair.
+      await Promise.all(queue.slice(offset, offset + 2).map(async (lead) => {
         try {
           const listing = check(await supa.from('sa_listings').select('id,report_property').eq('wk_contact_id', lead.contact_id).eq('source', 'spareroom').eq('hostunico_call_eligible', true).order('dealt_at', { ascending: false }).order('id').limit(1).maybeSingle());
           if (!listing || !reportProperty(listing.report_property)) { needsDetails++; return; }
@@ -78,7 +81,7 @@ export default async function handler(req: Request): Promise<Response> {
           else { prepared++; if (result.stage === 'ready') ready++; else preparing++; }
         } catch { failed++; }
       }));
-      return json({ prepared, ready, preparing, needsDetails, failed, ahead: queue.length });
+      return json({ prepared, ready, preparing, needsDetails, failed, ahead: queue.length, nextOffset: offset + 2 < queue.length ? offset + 2 : null });
     }
     const listingId = String(body.listing_id ?? '');
     if (!/^[0-9a-f-]{36}$/i.test(listingId)) throw new Problem(400, 'Choose a property.');

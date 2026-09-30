@@ -60,8 +60,15 @@ export default function SaCallRoom({ contact, contactHeader, emptyState, current
       if (running) return;
       running = true;
       try {
-        const result = await reportAction('prepare_queue', { campaign_id: campaignId, contact_id: contact?.id });
-        if (!cancelled) setAhead(`${result.ready} ready ahead${result.preparing ? `, ${result.preparing} preparing` : ''}${result.needsDetails ? `, ${result.needsDetails} need details` : ''}${result.failed ? `, ${result.failed} need review` : ''}`);
+        const totals = { ready: 0, preparing: 0, needsDetails: 0, failed: 0 };
+        let offset: number | null = 0;
+        while (offset !== null && !cancelled) {
+          const result = await reportAction('prepare_queue', { campaign_id: campaignId, contact_id: contact?.id, offset });
+          if (cancelled) break;
+          for (const key of Object.keys(totals) as (keyof typeof totals)[]) totals[key] += Number(result[key]) || 0;
+          offset = result.nextOffset ?? null;
+          setAhead(`${totals.ready} ready ahead${totals.preparing ? `, ${totals.preparing} preparing` : ''}${totals.needsDetails ? `, ${totals.needsDetails} need details` : ''}${totals.failed ? `, ${totals.failed} need review` : ''}${offset !== null ? ', checking next reports' : ''}`);
+        }
       } catch { if (!cancelled) setAhead('Reports ahead could not refresh.'); }
       finally { running = false; }
     }
@@ -89,7 +96,7 @@ export default function SaCallRoom({ contact, contactHeader, emptyState, current
               <div className="flex items-center justify-between"><h2 className="text-sm font-semibold">Property on this call</h2>{selected?.listingUrl && <a href={selected.listingUrl} target="_blank" rel="noreferrer" aria-label="Open SpareRoom advert" className="text-blue-700"><ExternalLink size={15} /></a>}</div>
               {listings.length > 1 ? <label className="block text-xs text-slate-500">{listings.length} properties, one contact<select aria-label="Property on this call" value={selected?.id || ''} onChange={(e) => setSelectedId(e.target.value)} className="mt-1 w-full rounded-lg border bg-white px-2 py-2 text-xs text-slate-900">{listings.map((l) => <option key={l.id} value={l.id}>{l.address}</option>)}</select></label> : <p className="text-sm font-medium">{selected?.address || 'Property details to confirm'}</p>}
               <div className="flex flex-wrap gap-1 text-[11px]">{[facts.layout, facts.bathroom, facts.rent].filter(Boolean).map((fact) => <span key={fact} className="rounded-md bg-slate-100 px-2 py-1">{fact}</span>)}</div>
-              <p className="text-[11px] text-slate-500">Advert details. Confirm the whole property on the call.</p>
+              <p className="text-[11px] text-slate-500">Whole studio or one-bedroom advert. Report assumptions are labelled.</p>
               {selected?.summary && <details><summary className="cursor-pointer text-xs font-medium">Read advert description</summary><p className="mt-2 whitespace-pre-line text-xs leading-relaxed text-slate-600">{selected.summary}</p></details>}
             </div>
           </section>
