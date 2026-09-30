@@ -177,11 +177,11 @@ serve(async (req: Request) => {
     let contactIsAuctioneer = false;
     let contactDesk: string | null = null;
     try {
-      const { variants: fromVariants } = phoneVariants(from);
+      const { e164: fromE164, variants: fromVariants } = phoneVariants(from);
       let { data: contactRow } = await supabase
         .from('wk_contacts')
         .select('id, pipeline_column_id, custom_fields, desk')
-        .in('phone', fromVariants)
+        .or(`phone.in.(${fromVariants.join(',')}),hostunico_sms_phone.eq.${fromE164}`)
         .limit(1)
         .maybeSingle();
       // Nothing on the exact formats: try the last 9 digits, which is how

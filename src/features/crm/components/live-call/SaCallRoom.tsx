@@ -1,38 +1,36 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Building2 } from 'lucide-react';
+import { PanelLeftClose, PanelLeftOpen, ExternalLink } from 'lucide-react';
 import HostunicoScriptPane from './HostunicoScriptPane';
 import SaReportPanel, { reportAction } from './SaReportPanel';
 import LiveTranscriptPane from './LiveTranscriptPane';
 import SaListingPane from './SaListingPane';
 import SaEmailPane from './SaEmailPane';
-import { useSaListings, gbpMonth } from '../../hooks/useSaListings';
+import { useSaListings } from '../../hooks/useSaListings';
+import { hostunicoProperty } from '../../lib/hostunicoProperty';
 import type { Contact } from '../../types';
 import { supabase } from '@/integrations/supabase/browser';
 import { hostunicoCountry } from '../../../../../supabase/functions/_shared/hostunico-pricing';
 
 export interface SaCallRoomProps {
-  contact: Contact | null;
-  contactHeader?: ReactNode;
-  emptyState?: ReactNode;
-  currentCallId: string | null;
-  callConnected: boolean;
-  liveDurationSec?: number;
-  agentFirstName: string;
-  campaignId?: string | null;
-  pipelineId?: string | null;
-  direction: 'outbound' | 'inbound';
-  autoSaveId?: string;
+  contact: Contact | null; contactHeader?: ReactNode; emptyState?: ReactNode;
+  currentCallId: string | null; callConnected: boolean; liveDurationSec?: number;
+  agentFirstName: string; campaignId?: string | null; pipelineId?: string | null;
+  direction: 'outbound' | 'inbound'; autoSaveId?: string;
+  onControlsMount?: (node: HTMLDivElement | null) => void;
+  onEndCall?: () => void;
 }
 
-export default function SaCallRoom({ contact, contactHeader, emptyState, currentCallId, liveDurationSec = 0, agentFirstName, campaignId, direction }: SaCallRoomProps) {
+export default function SaCallRoom({ contact, contactHeader, emptyState, currentCallId, callConnected, liveDurationSec = 0, agentFirstName, campaignId, direction, onControlsMount, onEndCall }: SaCallRoomProps) {
   const { listings } = useSaListings(contact?.id);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [details, setDetails] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
   const [opener, setOpener] = useState('');
+  const [mode, setMode] = useState('spareroom');
   const [ahead, setAhead] = useState('');
   const [emailReport, setEmailReport] = useState<string | null>(null);
   const [country, setCountry] = useState('GB');
   const [countryError, setCountryError] = useState('');
+  const [contextError, setContextError] = useState('');
   useEffect(() => {
     let cancelled = false;
     setCountry(hostunicoCountry(null, contact?.phone)); setCountryError('');
@@ -42,49 +40,78 @@ export default function SaCallRoom({ contact, contactHeader, emptyState, current
     return () => { cancelled = true; };
   }, [contact?.id, contact?.phone]);
   const handleSelect = useCallback((id: string) => setSelectedId(id), []);
-  useEffect(() => { setSelectedId(null); setDetails(false); }, [contact?.id]);
+  useEffect(() => { setSelectedId(null); }, [contact?.id]);
   const selected = useMemo(() => listings.find((l) => l.id === selectedId) ?? listings[0] ?? null, [listings, selectedId]);
+  const facts = hostunicoProperty(selected);
   useEffect(() => { setEmailReport(null); }, [contact?.id, selected?.id]);
   useEffect(() => {
-    if (!campaignId || campaignId !== '5d9657f9-d9b4-4e27-a2d1-83db80867f92') return;
+    if (!selected) return;
     let cancelled = false;
-    let running = false;
+    setContextError('');
+    void reportAction('coach_context', { listing_id: selected.id, mode, context_at: new Date().toISOString() }).catch(() => {
+      if (!cancelled) setContextError('The coach could not load this property. Use the script while it reconnects.');
+    });
+    return () => { cancelled = true; };
+  }, [selected?.id, mode, currentCallId]);
+  useEffect(() => {
+    if (campaignId !== '5d9657f9-d9b4-4e27-a2d1-83db80867f92') return;
+    let cancelled = false, running = false;
     async function prepare() {
       if (running) return;
       running = true;
       try {
         const result = await reportAction('prepare_queue', { campaign_id: campaignId, contact_id: contact?.id });
-        if (!cancelled) setAhead(`${result.ready} reports ready ahead${result.preparing ? `, ${result.preparing} preparing` : ''}${result.needsDetails ? `, ${result.needsDetails} need property details` : ''}${result.failed ? `, ${result.failed} could not be prepared` : ''}`);
-      } catch (e) { if (!cancelled) setAhead(e instanceof Error ? e.message : 'Could not prepare reports ahead.'); }
+        if (!cancelled) setAhead(`${result.ready} ready ahead${result.preparing ? `, ${result.preparing} preparing` : ''}${result.needsDetails ? `, ${result.needsDetails} need details` : ''}${result.failed ? `, ${result.failed} need review` : ''}`);
+      } catch { if (!cancelled) setAhead('Reports ahead could not refresh.'); }
       finally { running = false; }
     }
     void prepare();
     const timer = window.setInterval(() => void prepare(), 45000);
     return () => { cancelled = true; window.clearInterval(timer); };
   }, [campaignId, contact?.id]);
-  if (!contact) return <div className="flex h-full items-center justify-center text-slate-500">{emptyState || 'Choose a lead to start calling.'}</div>;
-  return <div className="flex h-full min-h-0 flex-col bg-slate-50" data-testid="dialer-sa-panel">
-    <header className="shrink-0 border-b bg-white p-3 space-y-2">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="min-w-0"><p className="text-sm font-semibold">{contact.name} <span className="ml-2 font-normal text-slate-500">{contact.phone}</span></p><p className="text-xs text-slate-500">{selected ? [selected.address, gbpMonth(selected.rentPcm)].filter(Boolean).join(' · ') : 'Choose a property'}</p></div>
-        <button onClick={() => setDetails(!details)} aria-expanded={details} className="flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium"><Building2 size={14} />{details ? 'Close details' : `Property, notes and outcome${listings.length > 1 ? ` (${listings.length})` : ''}`}</button>
-      </div>
-      {listings.length > 1 && <select aria-label="Property on this call" value={selected?.id || ''} onChange={(e) => setSelectedId(e.target.value)} className="h-9 w-full rounded-lg border bg-white px-2 text-xs">{listings.map((l) => <option key={l.id} value={l.id}>{l.address} · {gbpMonth(l.rentPcm)}</option>)}</select>}
-      {direction === 'inbound' && <p className="text-xs text-blue-700">They called back. Thank them, check which property they mean, then choose the right script.</p>}
-      <label className="flex items-center gap-2 text-xs text-slate-600">Lead country<select aria-label="Lead country for pricing" value={country === 'GB' ? 'GB' : 'US'} className="rounded-lg border bg-white px-3 py-2" onChange={async (e) => {
-        const next = e.target.value;
-        if (!selected) return;
-        try { await reportAction('country', { listing_id: selected.id, country: next }); setCountry(next); setCountryError(''); } catch { setCountryError('Country was not saved. Please try again.'); }
-      }}><option value="GB">United Kingdom (software £29/month)</option><option value="US">Outside UK (software $29/month)</option></select></label>
-      {countryError && <p role="alert" className="text-xs text-red-700">{countryError}</p>}
-      <SaReportPanel key={selected?.id || 'none'} listing={selected} phone={contact.phone} onEmail={setEmailReport} />
-      {ahead && <p className="text-[11px] text-slate-500" role="status">{ahead}</p>}
+
+  return <div className="flex h-full min-h-0 flex-col overflow-hidden bg-slate-50" data-testid="dialer-sa-panel">
+    <header className="flex shrink-0 items-center gap-3 border-b bg-white px-3 py-2">
+      <button onClick={() => setCollapsed(!collapsed)} aria-expanded={!collapsed} aria-controls="hostunico-call-sidebar" className="flex shrink-0 items-center gap-2 rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-xs font-semibold hover:bg-slate-100">
+        {collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}{collapsed ? 'Show property and controls' : 'Hide property and controls'}
+      </button>
+      <div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{contact?.name || 'Hostunico calling room'} <span className="ml-2 font-normal text-slate-500">{contact?.phone}</span></p><p className="truncate text-xs text-slate-500">{selected ? `${facts.description} in ${facts.place}${facts.rent ? ` · ${facts.rent}` : ''}` : 'One call per unique contact number'}</p></div>
+      <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs ${callConnected ? 'bg-emerald-50 text-emerald-800' : 'bg-slate-100 text-slate-500'}`}>{callConnected ? 'On the call' : 'Ready to call'}</span>
+      {callConnected && onEndCall && <button onClick={onEndCall} className="shrink-0 rounded-lg bg-red-700 px-3 py-2 text-xs font-semibold text-white">End call</button>}
     </header>
-    <div className="relative min-h-0 flex-1 grid grid-cols-1 lg:grid-cols-2 overflow-y-auto lg:overflow-hidden">
-      <div className="min-h-[360px] lg:min-h-0 border-r"><HostunicoScriptPane listing={selected} agentName={agentFirstName} onOpener={setOpener} country={country} /></div>
-      <section className="min-h-[340px] lg:min-h-0 flex flex-col bg-white" aria-label="Live AI coach"><h2 className="border-b p-3 font-semibold">Live coach <span className="ml-2 text-xs font-normal text-slate-500">Listen, answer, pause</span></h2><div className="min-h-0 flex-1"><LiveTranscriptPane key={currentCallId || contact.id} durationSec={liveDurationSec} contactId={contact.id} callId={currentCallId} agentFirstName={agentFirstName} hostunicoCountry={country} isSaCall propertyOpener={opener} /></div></section>
-      {details && <section aria-label="Property details and outcome" className="absolute inset-y-0 right-0 z-20 flex w-full max-w-md flex-col border-l bg-white shadow-xl"><div className="flex items-center justify-between border-b p-3"><h2 className="font-semibold">Property and next step</h2><button onClick={() => setDetails(false)} className="rounded-lg border px-3 py-1.5 text-xs">Close</button></div><div className="overflow-y-auto min-h-0">{contactHeader}<SaListingPane contactId={contact.id} selectedId={selected?.id ?? null} onSelect={handleSelect} currentCallId={currentCallId} /></div></section>}
-      {emailReport && <section aria-label="Email property report" className="absolute inset-y-0 right-0 z-30 flex w-full max-w-md flex-col border-l bg-white shadow-xl"><div className="flex items-center justify-between border-b p-3"><h2 className="font-semibold">Email the report</h2><button onClick={() => setEmailReport(null)} className="rounded-lg border px-3 py-1.5 text-xs">Close</button></div><div className="min-h-0 flex-1"><SaEmailPane key={selected?.id} contactId={contact.id} contactEmail={contact.email} listing={selected} agentFirstName={agentFirstName} reportUrl={emailReport} country={country} /></div></section>}
+    <div className="relative flex min-h-0 flex-1 overflow-hidden">
+      <aside id="hostunico-call-sidebar" aria-label="Property, report and call controls" className={`${collapsed ? 'hidden' : 'flex'} w-[320px] max-w-[85vw] shrink-0 flex-col overflow-y-auto border-r bg-slate-50 xl:w-[340px]`}>
+        <div ref={onControlsMount} className="shrink-0 p-2" data-testid="hostunico-dialer-controls" />
+        {contact && <div className="space-y-3 p-3 pt-0">
+          <section className="overflow-hidden rounded-xl border bg-white" aria-label="Property on this call">
+            {selected?.photoUrls[0] && <img key={selected.id} src={selected.photoUrls[0]} alt={`SpareRoom advert: ${selected.address}`} className="h-32 w-full object-cover" referrerPolicy="no-referrer" />}
+            <div className="space-y-2 p-3">
+              <div className="flex items-center justify-between"><h2 className="text-sm font-semibold">Property on this call</h2>{selected?.listingUrl && <a href={selected.listingUrl} target="_blank" rel="noreferrer" aria-label="Open SpareRoom advert" className="text-blue-700"><ExternalLink size={15} /></a>}</div>
+              {listings.length > 1 ? <label className="block text-xs text-slate-500">{listings.length} properties, one contact<select aria-label="Property on this call" value={selected?.id || ''} onChange={(e) => setSelectedId(e.target.value)} className="mt-1 w-full rounded-lg border bg-white px-2 py-2 text-xs text-slate-900">{listings.map((l) => <option key={l.id} value={l.id}>{l.address}</option>)}</select></label> : <p className="text-sm font-medium">{selected?.address || 'Property details to confirm'}</p>}
+              <div className="flex flex-wrap gap-1 text-[11px]">{[facts.layout, facts.bathroom, facts.rent].filter(Boolean).map((fact) => <span key={fact} className="rounded-md bg-slate-100 px-2 py-1">{fact}</span>)}</div>
+              <p className="text-[11px] text-slate-500">Advert details. Confirm the whole property on the call.</p>
+              {selected?.summary && <details><summary className="cursor-pointer text-xs font-medium">Read advert description</summary><p className="mt-2 whitespace-pre-line text-xs leading-relaxed text-slate-600">{selected.summary}</p></details>}
+            </div>
+          </section>
+          <SaReportPanel key={selected?.id || 'none'} listing={selected} phone={contact.phone} onEmail={(url) => { setEmailReport(url); setCollapsed(false); }} />
+          {ahead && <p className="text-[11px] text-slate-500" role="status">{ahead}</p>}
+          <details className="rounded-xl border bg-white p-3"><summary className="cursor-pointer text-xs font-semibold">Lead country and pricing</summary><label className="mt-2 block text-xs text-slate-600">Lead country<select aria-label="Lead country for pricing" value={country === 'GB' ? 'GB' : 'US'} className="mt-1 w-full rounded-lg border bg-white px-2 py-2" onChange={async (e) => {
+            const next = e.target.value;
+            if (!selected) return;
+            try { await reportAction('country', { listing_id: selected.id, country: next }); setCountry(next); setCountryError(''); } catch { setCountryError('Country was not saved. Please try again.'); }
+          }}><option value="GB">United Kingdom (software £29/month)</option><option value="US">Outside UK (software $29/month)</option></select></label>{countryError && <p role="alert" className="mt-2 text-xs text-red-700">{countryError}</p>}</details>
+          <details className="rounded-xl border bg-white"><summary className="cursor-pointer p-3 text-xs font-semibold">Contact, notes and outcome</summary>{contactHeader}<SaListingPane contactId={contact.id} selectedId={selected?.id ?? null} onSelect={handleSelect} currentCallId={currentCallId} /></details>
+        </div>}
+      </aside>
+      <div className="grid min-h-0 min-w-0 flex-1 grid-cols-1 overflow-y-auto md:grid-cols-2 md:overflow-hidden" data-testid="hostunico-focus-columns">
+        <div className="min-h-[440px] min-w-0 border-r md:min-h-0"><HostunicoScriptPane key={contact?.id || 'no-contact'} listing={selected} agentName={agentFirstName} onOpener={setOpener} onMode={setMode} country={country} /></div>
+        <section className="flex min-h-[440px] min-w-0 flex-col bg-white md:min-h-0" aria-label="Live AI coach">
+          {direction === 'inbound' && <p className="border-b bg-blue-50 p-2 text-xs text-blue-700">They called back. Confirm which property they mean.</p>}
+          {contextError && <p role="alert" className="bg-amber-50 p-2 text-xs text-amber-900">{contextError}</p>}
+          <div className="min-h-0 flex-1">{contact ? <LiveTranscriptPane key={currentCallId || contact.id} durationSec={liveDurationSec} contactId={contact.id} callId={currentCallId} agentFirstName={agentFirstName} hostunicoCountry={country} hostunicoContext={`${selected?.id || ''}:${mode}:${country}`} isSaCall propertyOpener={opener} /> : <div className="p-5 text-sm text-slate-500">{emptyState || 'Choose a lead to start. The live coach appears here.'}</div>}</div>
+        </section>
+      </div>
+      {emailReport && contact && <section aria-label="Email property report" className="absolute inset-y-0 left-0 z-30 flex w-full max-w-md flex-col border-r bg-white shadow-xl"><div className="flex items-center justify-between border-b p-3"><h2 className="font-semibold">Email the report</h2><button onClick={() => setEmailReport(null)} className="rounded-lg border px-3 py-1.5 text-xs">Close email</button></div><div className="min-h-0 flex-1"><SaEmailPane key={selected?.id} contactId={contact.id} contactEmail={contact.email} listing={selected} agentFirstName={agentFirstName} reportUrl={emailReport} country={country} /></div></section>}
     </div>
   </div>;
 }

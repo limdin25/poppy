@@ -1,5 +1,19 @@
 import { toE164Uk } from './sa-listings.mjs';
 
+export function wholeHomeEligibility(title, advertText) {
+  const text = String(advertText || '').split('\nAvailability\n')[0];
+  const name = String(title || '');
+  if (!/\(whole property\)/i.test(text)) return { eligible: false, reason: 'Whole property not verified' };
+  const studio = /This ad is for a Studio flat/i.test(text) || /\bstudio\b/i.test(name);
+  const oneBed = /This ad is for a 1 bed (?:flat|house)/i.test(text);
+  if (!studio && !oneBed) return { eligible: false, reason: 'Only studios and one-bedroom whole homes' };
+  if (/\bhouse\s*share\b|\broom\b/i.test(name) || (/\ben[- ]?suite\b/i.test(name) && !/studio|flat|apartment/i.test(name))) return { eligible: false, reason: 'Advert offers a room or house share' };
+  const affirmative = text.split(/[.\n]+/).filter((line) => !/\b(not|unlike|without|no shared)\b|than (?:a |the )?(?:conventional|traditional) house share/i.test(line)).join('\n');
+  if (/shared (?:kitchen|bathroom|student|flat|house)|sharing (?:their|a|the|our|your)?\s*(?:own )?(?:communal )?(?:kitchen|bathroom)|(?:ensuite|en-suite) room|room (?:in a|remaining)|house\s*share/i.test(affirmative)) return { eligible: false, reason: 'Shared facilities or room offered in the description' };
+  if (/This ad is for a [2-9] bed/i.test(text)) return { eligible: false, reason: 'More than one bedroom' };
+  return { eligible: true, studio, bedrooms: studio ? null : 1, reason: studio ? 'Whole studio verified from advert' : 'Whole one-bedroom home verified from advert' };
+}
+
 export function areaProperty(property) {
   const postcode = String(property.details.areaOutcode || '').toUpperCase();
   if (!/^[A-Z]{1,2}\d[A-Z\d]?$/.test(postcode)) return null;

@@ -91,7 +91,7 @@ describe('the script', () => {
     expect(PAGE).toContain('Management fee: 9%')
     expect(PAGE).toContain('<br>VAT: 20% of the management fee, added separately.')
     expect(PAGE).not.toMatch(/10\.8(?:0)?\s*%/)
-    expect(PAGE).toContain('whole property or a room')
+    expect(PAGE).toContain('When would it be ready to let?')
     expect(PAGE).toContain('Press Send report by SMS only after they agree')
     expect(PAGE).toContain('not guaranteed income')
     expect(PAGE).not.toContain('company pays the asking rent')

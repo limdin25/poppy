@@ -213,6 +213,11 @@ serve(async (req: Request) => {
       }
     }
 
+    if (scriptKey === 'sa_call' && campaignId === '5d9657f9-d9b4-4e27-a2d1-83db80867f92') {
+      const eligible = resolvedContactId ? await supa.from('sa_listings').select('id').eq('wk_contact_id', resolvedContactId).eq('hostunico_call_eligible', true).limit(1) : { data: [], error: null };
+      if (eligible.error || !eligible.data?.length) return jsonResponse(200, { allowed: false, reason: 'This lead has no verified whole-property studio or one-bedroom home in the current calling queue.' });
+    }
+
     // Live AI coach gate — workspace-level toggle in wk_ai_settings. We mint
     // the call with ai_coach_enabled=true ONLY if all three are set: the
     // master ai_enabled flag, the live_coach_enabled flag, AND an OpenAI key.

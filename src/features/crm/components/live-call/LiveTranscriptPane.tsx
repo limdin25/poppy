@@ -17,6 +17,8 @@ import { useSmsV2 } from '../../store/SmsV2Store';
 import { instantCoachCard, type InstantCard } from '@/core/coach/instantCoach';
 import { hostunicoInstantAnswer } from '../../../../../supabase/functions/_shared/hostunico-sales';
 import { supabase } from '@/integrations/supabase/browser';
+import HostunicoCoachView from './HostunicoCoachView';
+import { mergeLiveRows } from '../../../../../supabase/functions/_shared/hostunico-coach';
 
 interface Props {
   durationSec: number;
@@ -34,6 +36,7 @@ interface Props {
   isPropertyCall?: boolean;
   isSaCall?: boolean;
   hostunicoCountry?: string;
+  hostunicoContext?: string;
   /** Property calls only: the first blue line of the property script for THIS
    *  call, built by PropertyCallRoom from the same facts the script pane is
    *  filled with. When set it IS the opener card. Without it the card used to
@@ -133,12 +136,13 @@ function pickFiller(): string {
   return BUYTIME_FILLERS[Math.floor(Math.random() * BUYTIME_FILLERS.length)];
 }
 
-export default function LiveTranscriptPane({ durationSec, contactId, callId, agentFirstName, isPropertyCall = false, isSaCall = false, hostunicoCountry = 'GB', propertyOpener }: Props) {
+export default function LiveTranscriptPane({ durationSec, contactId, callId, agentFirstName, isPropertyCall = false, isSaCall = false, hostunicoCountry = 'GB', hostunicoContext, propertyOpener }: Props) {
   const { aiCoach } = useKillSwitch();
   const store = useSmsV2();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [liveLines, setLiveLines] = useState<LiveTranscriptRow[]>([]);
   const [liveEvents, setLiveEvents] = useState<LiveCoachRow[]>([]);
+  const [coachConnected, setCoachConnected] = useState(false);
   // Live transcript is collapsed by DEFAULT (Hugo 2026-07-22) so the coach
   // cards (what the agent reads aloud) own the space. Toggle to peek at words.
   const [transcriptOpen, setTranscriptOpen] = useState(false);
@@ -240,8 +244,11 @@ export default function LiveTranscriptPane({ durationSec, contactId, callId, age
     }
 
     let cancelled = false;
+    let revision = 0;
+    setLiveLines([]); setLiveEvents([]); setCoachConnected(false); setInstant(null);
 
-    void (async () => {
+    const refresh = async () => {
+      const atRevision = revision;
       const [tRes, cRes] = await Promise.all([
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (supabase.from('wk_live_transcripts' as any) as any)
@@ -255,9 +262,11 @@ export default function LiveTranscriptPane({ durationSec, contactId, callId, age
           .order('ts', { ascending: true }),
       ]);
       if (cancelled) return;
-      if (tRes.data) setLiveLines(tRes.data as LiveTranscriptRow[]);
-      if (cRes.data) setLiveEvents(cRes.data as LiveCoachRow[]);
-    })();
+      if (tRes.data) setLiveLines((previous) => atRevision === revision ? tRes.data : mergeLiveRows(tRes.data as LiveTranscriptRow[], previous));
+      if (cRes.data) setLiveEvents((previous) => atRevision === revision ? cRes.data : mergeLiveRows(cRes.data as LiveCoachRow[], previous));
+    };
+    void refresh();
+    const recovery = isSaCall ? window.setInterval(() => void refresh(), 5000) : null;
 
     const tCh = supabase
       .channel(`live-transcripts:${callId}`)
@@ -270,6 +279,7 @@ export default function LiveTranscriptPane({ durationSec, contactId, callId, age
           filter: `call_id=eq.${callId}`,
         },
         (payload: RealtimeInsertPayload<LiveTranscriptRow>) => {
+          revision++;
           // Dedupe in case the backfill SELECT and the realtime INSERT race.
           setLiveLines((prev) =>
             prev.some((l) => l.id === payload.new.id) ? prev : [...prev, payload.new]
@@ -307,6 +317,7 @@ export default function LiveTranscriptPane({ durationSec, contactId, callId, age
           filter: `call_id=eq.${callId}`,
         },
         (payload: RealtimeChangePayload<LiveCoachRow>) => {
+          revision++;
           if (payload.eventType === 'INSERT') {
             const next = payload.new;
             setLiveEvents((prev) =>
@@ -330,9 +341,10 @@ export default function LiveTranscriptPane({ durationSec, contactId, callId, age
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => { if (!cancelled) { setCoachConnected(status === 'SUBSCRIBED'); if (status === 'SUBSCRIBED') void refresh(); } });
     return () => {
       cancelled = true;
+      if (recovery) window.clearInterval(recovery);
       try { supabase.removeChannel(tCh); } catch { /* ignore */ }
       try { supabase.removeChannel(cCh); } catch { /* ignore */ }
     };
@@ -406,6 +418,8 @@ export default function LiveTranscriptPane({ durationSec, contactId, callId, age
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [lines.length]);
+
+  if (isSaCall) return <HostunicoCoachView lines={liveLines} cards={liveEvents.filter((event) => event.script_section === hostunicoContext)} active={!!callId} offline={aiCoach} connected={coachConnected} opener={opener} country={hostunicoCountry} />;
 
   return (
     <div className="flex flex-col h-full">

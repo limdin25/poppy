@@ -157,6 +157,7 @@ export function useSaListings(contactId: string | null | undefined) {
       const { data, error } = await (supabase.from('sa_listings' as any) as any)
         .select('id, rightmove_id, agency, agency_phone, city, outcode, address, rent_pcm, source_price, bedrooms, bathrooms, property_type, summary, listing_url, photo_urls, first_listed_at, let_available_date, dealt_at, outcome, outcome_note, outcome_at')
         .eq('wk_contact_id', contactId)
+        .eq('hostunico_call_eligible', true)
         .order('dealt_at', { ascending: false })
         .order('id');
       if (error) throw new Error(error.message);

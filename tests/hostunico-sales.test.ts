@@ -38,7 +38,7 @@ describe('Hostunico sales desk', () => {
     expect(REPORT_AHEAD).toBe(10);
   });
   it('only builds texts for the report service, including the income caveat', () => {
-    const url = 'https://hostunico.com/api/hostunico/crm-reports/123?token=abc';
+    const url = 'https://hostunico.com/r/A1b2C';
     expect(reportSms(url)).toContain('not guaranteed income');
     expect(() => reportSms('https://evil.example/report')).toThrow();
     expect(() => reportSms('https://hostunico.com/login')).toThrow();

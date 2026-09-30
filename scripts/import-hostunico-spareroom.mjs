@@ -1,10 +1,17 @@
 // Explicit human-requested import. No calls, texts or emails. Defaults to a dry run.
 import { readFileSync } from 'node:fs';
 import { createClient } from '@supabase/supabase-js';
-import { prepareSpareRoomImport, areaProperty } from './lib/hostunico-spareroom.mjs';
+import { prepareSpareRoomImport, areaProperty, wholeHomeEligibility } from './lib/hostunico-spareroom.mjs';
 const file = process.argv.find((arg) => arg.startsWith('--file='))?.slice(7);
 if (!file) throw new Error('Pass --file with the private export JSON.');
-const plan = prepareSpareRoomImport(JSON.parse(readFileSync(file, 'utf8')));
+const sourceDirectory = process.argv.find((arg) => arg.startsWith('--source='))?.slice(9);
+if (!sourceDirectory) throw new Error('Pass --source with the saved advert pages. Only verified whole studios and one-bedroom homes can be imported.');
+const sourceRows = JSON.parse(readFileSync(file, 'utf8')).filter((row) => {
+  const id = /flatshare_id=(\d+)/.exec(row.Link || '')?.[1];
+  if (!id) return false;
+  try { return wholeHomeEligibility(row.Name, readFileSync(`${sourceDirectory}/${id}.txt`, 'utf8')).eligible; } catch { return false; }
+});
+const plan = prepareSpareRoomImport(sourceRows);
 console.log(JSON.stringify({ sourceRows: plan.sourceRows, contacts: plan.contacts.length, properties: plan.properties.length, duplicateRows: plan.duplicateRows, rejected: plan.rejected.length }));
 if (plan.rejected.length) throw new Error('Import contains invalid phone numbers or listing IDs.');
 if (!process.argv.includes('--apply')) process.exit(0);
@@ -43,6 +50,9 @@ for (const [index, c] of plan.contacts.entries()) {
     propertiesAdded++;
   }
   if (contact.do_not_call) { optedOut++; continue; }
+  const verified = check(await supa.from('sa_listings').select('id').eq('wk_contact_id', contact.id).eq('hostunico_call_eligible', true).limit(1));
+  // New imports enter the queue only after the photo and eligibility screen.
+  if (!verified.length) continue;
   const history = check(await supa.from('wk_dialer_queue').select('id').eq('campaign_id', campaignId).eq('contact_id', contact.id).limit(1));
   if (!history.length) { check(await supa.from('wk_dialer_queue').insert({ campaign_id: campaignId, contact_id: contact.id, status: 'pending', priority: plan.contacts.length - index })); queued++; }
 }

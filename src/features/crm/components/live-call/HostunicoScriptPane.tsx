@@ -2,20 +2,23 @@ import { hostunicoPriceCopy } from '../../../../../supabase/functions/_shared/ho
 import { useEffect, useRef, useState } from 'react';
 import { HOSTUNICO_ANSWERS } from '../../../../../supabase/functions/_shared/hostunico-sales';
 import type { SaListing } from '../../hooks/useSaListings';
+import { hostunicoProperty } from '../../lib/hostunicoProperty';
 
 type Mode = 'spareroom' | 'facebook' | 'followup';
-export default function HostunicoScriptPane({ listing, agentName, onOpener, country = 'GB' }: { country?: string; listing: SaListing | null; agentName: string; onOpener: (line: string) => void }) {
+export default function HostunicoScriptPane({ listing, agentName, onOpener, onMode, country = 'GB' }: { onMode?: (mode: Mode) => void; country?: string; listing: SaListing | null; agentName: string; onOpener: (line: string) => void }) {
   const [mode, setMode] = useState<Mode>('spareroom');
   const [rolling, setRolling] = useState(false);
   const scroll = useRef<HTMLDivElement>(null);
-  const place = listing?.city || 'your area';
-  const rent = listing?.sourcePrice ? ` at £${listing.sourcePrice.replace(/pcm/i, ' a month').replace(/pw/i, ' a week')}` : listing?.rentPcm ? ` at £${Math.round(listing.rentPcm).toLocaleString('en-GB')} a month` : '';
+  const property = hostunicoProperty(listing);
+  const { place } = property;
+  const rent = property.rent ? ` at ${property.rent}` : '';
   const opener = mode === 'spareroom'
-    ? `Hi, it's ${agentName || 'Pedro'} from Hostunico. I saw your property in ${place}${rent} on SpareRoom. Is it still available?`
+    ? `Hi, it's ${agentName || 'Pedro'} from Hostunico. I saw your ${property.description} in ${place}${rent} on SpareRoom. Is it still available?`
     : mode === 'facebook'
       ? `Hi, it's ${agentName || 'Pedro'} from Hostunico. You enquired about managing your property through Airbnb. Is now a good time for a quick chat?`
       : `Hi, it's ${agentName || 'Pedro'} from Hostunico. Have you had a chance to look at the property report? What did you think of the numbers?`;
   useEffect(() => { onOpener(opener); }, [opener, onOpener]);
+  useEffect(() => { onMode?.(mode); }, [mode, onMode]);
   useEffect(() => { setRolling(false); scroll.current?.scrollTo(0, 0); }, [mode, listing?.id]);
   useEffect(() => {
     if (!rolling) return;
@@ -34,9 +37,9 @@ export default function HostunicoScriptPane({ listing, agentName, onOpener, coun
     ['Agree the next step', 'What still needs doing, what budget do you have for setup, and when do you think it could be ready? I will send you the checklist with the next steps.', 'Record each missing item and its date. Arrange the agreement and owner login through onboarding. Confirm launch only after checks.'],
   ] : [
     ['Start here', opener, 'Wait for the answer. Keep it conversational.'],
-    ['Check the property', mode === 'spareroom' ? 'Is that the whole property or a room? And are you the owner, or managing it for the owner?' : 'Can you tell me about the property and when you would like to start?', 'A room price is not the rent for a whole home. Confirm authority and the property before estimating.'],
+    ['Check the timing', mode === 'spareroom' ? 'When would it be ready to let? And are you the owner, or managing it for the owner?' : 'Can you tell me about the property and when you would like to start?', 'This queue is for whole-property studios and one-bedroom homes. If the advert turns out to be a room or house share, record it and move on.'],
     ['Offer something useful', 'The reason I am calling is that we help owners manage short stays through Airbnb. I can send you an area estimate showing possible earnings and costs compared with your current rent. It labels the assumptions, and we can refine it with your property details. Would that be useful?', 'Ask for the yes. Estimated earnings depend on the property, permissions, demand and costs.'],
-    ['Send the report', 'This first estimate uses area assumptions. Can I confirm the full postcode, bedrooms and bathrooms for the whole property? Is this the right number to text it to?', 'Check Report ready, then press Send report by SMS. If it is still preparing, agree to send it when ready.'],
+    ['Send the report', 'This first estimate uses area assumptions. Can I confirm the full postcode, bedrooms and bathrooms for the whole property? What mobile number or email should I send the link to?', 'If this is a landline, enter their mobile in Send report. Read it back and confirm permission before sending.'],
     ['Confirm and follow up', 'I am sending it now. Could you check if you have received the link?', 'Say this after sending. Record receipt. The report has one invitation: Want me to walk you through what onboarding looks like? No need to push the setup on call one.'],
   ];
   return <section className="flex h-full min-h-0 flex-col bg-white" aria-label="Hostunico sales script">

@@ -162,13 +162,13 @@ function CrmShell() {
               </header>
 
               {/* Sidebar + main */}
-              <div className="flex-1 flex overflow-hidden">
+              <div className="min-h-0 flex-1 flex overflow-hidden">
                 <Smsv2Sidebar
                   collapsed={sidebarCollapsed}
                   onCollapse={setSidebarCollapsed}
                 />
-                <main className="flex-1 overflow-auto flex flex-col">
-                  <div className="flex-1 overflow-auto">
+                <main className="min-h-0 min-w-0 flex-1 overflow-auto flex flex-col">
+                  <div className="min-h-0 flex-1 overflow-auto">
                     {/* Per-route boundary: a page crash shows a recoverable
                         card here and keeps the header/sidebar/softphone alive
                         (no more whole-app blank screen). key resets it on nav. */}

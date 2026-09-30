@@ -12,6 +12,9 @@ vi.mock('@supabase/supabase-js', () => {
     constructor(private table: string) {}
     select() { return this; }
     eq(k: string, v: any) { this.filters.push((r) => r[k] === v); return this; }
+    neq(k: string, v: any) { this.filters.push((r) => r[k] !== v); return this; }
+    or(value: string) { const entries = value.split(',').map((v) => v.split('.eq.')); this.filters.push((row) => entries.some(([k, v]) => row[k] === v)); return this; }
+    limit() { return this; }
     update(p: any) { this.patch = p; return this; }
     maybeSingle() { this.one = true; return this; }
     single() { this.one = true; return this; }
@@ -23,7 +26,10 @@ vi.mock('@supabase/supabase-js', () => {
   }
   return { createClient: () => ({
     auth: { getUser: async (token: string) => ({ data: { user: token === 'good' ? { id: 'pedro' } : null } }) },
-    rpc: async (name: string) => ({ data: name === 'wk_is_admin' ? fixture.admin : true, error: null }),
+    rpc: async (name: string, args?: any) => {
+      if (name === 'wk_hostunico_call_context') fixture.tables.wk_contacts.find((row) => row.id === args.p_contact).custom_fields = { hostunico_listing_id: args.p_listing, hostunico_script_mode: args.p_mode };
+      return { data: name === 'wk_is_admin' ? fixture.admin : true, error: null };
+    },
     from: (table: string) => new Query(table),
   }) };
 });
@@ -37,7 +43,7 @@ beforeEach(() => {
   fixture.tables = {
     wk_contacts: [{ id: 'contact', desk: 'sa', owner_agent_id: 'pedro', do_not_call: false, phone: '+447700900123' }],
     sa_listings: [{ id: listingId, wk_contact_id: 'contact' }],
-    sa_property_reports: [{ listing_id: listingId, remote_id: listingId, access_token: 'a'.repeat(64), state: 'ready', report_url: `https://hostunico.com/api/hostunico/crm-reports/${listingId}?token=${'a'.repeat(64)}`, sms_state: 'unsent' }],
+    sa_property_reports: [{ listing_id: listingId, remote_id: listingId, access_token: 'a'.repeat(64), state: 'ready', report_url: 'https://hostunico.com/r/A1b2C', sms_state: 'unsent' }],
     wk_pipeline_columns: [], wk_sms_messages: [],
   };
   vi.stubGlobal('fetch', vi.fn(async (url: string) => {
@@ -48,6 +54,28 @@ beforeEach(() => {
   }));
 });
 describe('human report sends', () => {
+  it('blocks SMS to a landline and saves a mobile on the same contact without changing the calling number', async () => {
+    fixture.tables.wk_contacts[0].phone = '+442079460000';
+    expect((await handler(request('send_sms', { permission: true }))).status).toBe(400);
+    expect(fixture.smsRequests).toBe(0);
+    expect((await handler(request('recipient', { mobile: '020 7946 0000', mobile_confirmed: true }))).status).toBe(400);
+    expect((await handler(request('recipient', { mobile: '07700 900123', mobile_confirmed: true }))).status).toBe(200);
+    expect(fixture.tables.wk_contacts).toHaveLength(1);
+    expect(fixture.tables.wk_contacts[0].phone).toBe('+442079460000');
+    expect(fixture.tables.wk_contacts[0].hostunico_sms_phone).toBe('+447700900123');
+    expect((await handler(request('send_sms', { permission: true }))).status).toBe(200);
+  });
+  it('rejects a mobile already assigned to another contact', async () => {
+    fixture.tables.wk_contacts.push({ id: 'other', phone: '+447700900999' });
+    expect((await handler(request('recipient', { mobile: '07700900999', mobile_confirmed: true }))).status).toBe(409);
+    expect(fixture.smsRequests).toBe(0);
+  });
+  it('stores the selected property and script for the coach', async () => {
+    expect((await handler(request('coach_context', { mode: 'followup', context_at: new Date().toISOString() }))).status).toBe(200);
+    expect(fixture.tables.wk_contacts[0].custom_fields).toMatchObject({ hostunico_listing_id: listingId, hostunico_script_mode: 'followup' });
+    expect((await handler(request('coach_context', { mode: 'other' }))).status).toBe(400);
+    expect(fixture.smsRequests).toBe(0);
+  });
   it('retries only unfinished unsent research and never sends a text', async () => {
     expect((await handler(request('retry'))).status).toBe(409);
     fixture.tables.sa_property_reports[0].state = 'review';

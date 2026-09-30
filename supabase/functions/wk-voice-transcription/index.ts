@@ -20,7 +20,8 @@
 //
 // AUTH: Twilio HMAC-SHA1 signature. URL is public (verify_jwt = false).
 
-import { HOSTUNICO_STAGES, HOSTUNICO_RULES, HOSTUNICO_ANSWERS } from '../_shared/hostunico-sales.ts';
+import { HOSTUNICO_STAGES, HOSTUNICO_RULES, HOSTUNICO_ANSWERS, hostunicoInstantAnswer } from '../_shared/hostunico-sales.ts';
+import { HOSTUNICO_COACH_PROMPT, cleanHostunicoCoach } from '../_shared/hostunico-coach.ts';
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 import {
@@ -1575,11 +1576,13 @@ async function streamCoachInternal(args: {
   userMsg: string;
   onChunk: (accumulated: string, isFirst: boolean) => void;
   isAborted: () => boolean;
+  hostunico?: boolean;
 }): Promise<CoachOutput | null> {
   const { apiKey, model, systemMessages, userMsg, onChunk, isAborted } = args;
 
   const resp = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
+    signal: AbortSignal.timeout(15000),
     headers: {
       'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
@@ -1595,7 +1598,7 @@ async function streamCoachInternal(args: {
       presence_penalty: 0.3,
       frequency_penalty: 0.2,
       // GPT-5 family rejects `max_tokens` — use max_completion_tokens.
-      max_completion_tokens: 120,
+      max_completion_tokens: args.hostunico ? 220 : 120,
       // The coach runs on a GPT-5 family model, which reasons before it emits a
       // visible token, and the hidden reasoning also eats the same 120-token
       // budget the card is supposed to use.
@@ -1687,7 +1690,7 @@ async function streamCoachInternal(args: {
   }
 
   // Post-processor on the final accumulated text.
-  return postProcessCoachText(accumulated);
+  return args.hostunico ? { kind: 'suggestion', scriptSection: null, body: cleanHostunicoCoach(accumulated) } : postProcessCoachText(accumulated);
 }
 
 // Coach card kinds shipped in PR 6 (Hugo 2026-04-26):
@@ -2123,6 +2126,50 @@ serve(async (req: Request) => {
           const openaiKey = envOpenAiKey || ((ai?.openai_api_key as string | null) ?? '');
           if (!ai?.ai_enabled || !ai?.live_coach_enabled || !openaiKey) {
             log('ai disabled — bailing');
+            return;
+          }
+
+          // Hostunico uses only this lead and its selected property. Avoid the
+          // old desk's sequential script/profile lookups on every spoken turn.
+          if (call.script_key === 'sa_call') {
+            const [recent, contactResult] = await Promise.all([
+              supa.from('wk_live_transcripts').select('speaker,body,ts').eq('call_id', call.id).order('ts', { ascending: false }).limit(8),
+              supa.from('wk_contacts').select('name,phone,hostunico_country,custom_fields').eq('id', call.contact_id).maybeSingle(),
+            ]);
+            if (recent.error || contactResult.error) throw new Error('Hostunico coach context unavailable');
+            const contact = contactResult.data;
+            const fields = contact?.custom_fields || {};
+            const listingId = fields.hostunico_listing_id;
+            const instant = hostunicoInstantAnswer(transcriptText, contact?.hostunico_country || 'GB');
+            const context = `${listingId || ''}:${fields.hostunico_script_mode || 'spareroom'}:${contact?.hostunico_country || 'GB'}`;
+            const { data: cardId, error: cardError } = await supa.rpc('wk_hostunico_start_coach', { p_call_id: call.id, p_generation: generationId, p_context: context });
+            if (cardError) throw new Error('Hostunico coach card unavailable');
+            if (!cardId) return;
+            const card = { id: cardId };
+            let aborted = false;
+            const writer = createThrottledWriter<string>(async (text) => {
+              const result = await supa.from('wk_live_coach_events').update({ body: cleanHostunicoCoach(text) }).eq('id', card.id).select('id');
+              if (result.error || !result.data?.length) aborted = true;
+            }, 100);
+            try {
+              let answer = instant ? `SAY: ${instant.say}\nASK: ${instant.nextQuestion}` : '';
+              if (!instant) {
+                const [listing, report] = await Promise.all([
+                  listingId ? supa.from('sa_listings').select('address,city,bedrooms,bathrooms,property_type,rent_pcm,source_price,report_property').eq('id', listingId).eq('wk_contact_id', call.contact_id).maybeSingle() : Promise.resolve({ data: null }),
+                  listingId ? supa.from('sa_property_reports').select('state,sms_state,received_at').eq('listing_id', listingId).maybeSingle() : Promise.resolve({ data: null }),
+                ]);
+                const output = await streamCoachInternal({ apiKey: openaiKey, model: (ai.live_coach_model as string) || 'gpt-5.4-mini', hostunico: true, systemMessages: [HOSTUNICO_COACH_PROMPT], userMsg: JSON.stringify({ lead: contact?.name, country: contact?.hostunico_country || 'GB', mode: fields.hostunico_script_mode || 'spareroom', advertisedProperty: listing.data, report: report.data, transcript: (recent.data || []).reverse(), latestCaller: transcriptText }), onChunk: (text, first) => { if (first) log('Hostunico first token'); writer.schedule(text); }, isAborted: () => aborted });
+                answer = output?.body || '';
+              }
+              await writer.flush();
+              if (!aborted && answer) await supa.from('wk_live_coach_events').update({ body: cleanHostunicoCoach(answer), status: 'final' }).eq('id', card.id);
+              else await supa.from('wk_live_coach_events').delete().eq('id', card.id);
+              log(instant ? 'Hostunico approved answer ready' : 'Hostunico answer ready');
+            } catch (error) {
+              await writer.flush();
+              await supa.from('wk_live_coach_events').delete().eq('id', card.id);
+              throw error;
+            }
             return;
           }
 

@@ -285,7 +285,7 @@ serve(async (req: Request) => {
     const { data: wkContactRow } = await supa
       .from('wk_contacts')
       .select('id, pipeline_column_id, name, phone, email, custom_fields')
-      .in('phone', fromVariants)
+      .or(`phone.in.(${fromVariants.join(',')}),hostunico_sms_phone.eq.${fromE164}`)
       .limit(1)
       .maybeSingle();
 

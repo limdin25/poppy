@@ -608,6 +608,7 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
   const isLive = state.phase === 'dialing' || state.phase === 'ringing' || state.phase === 'connected';
 
   // ─── Floating card: drag + minimize ────────────────────────────────
+  const [saControlsHost, setSaControlsHost] = useState<HTMLDivElement | null>(null);
   const CARD_W = 380;
   const [cardPos, setCardPos] = useState<{ x: number; y: number }>(() => {
     try {
@@ -630,6 +631,7 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
   const dragRef = useRef<{ offX: number; offY: number; moved: boolean } | null>(null);
 
   const onDragStart = (e: React.PointerEvent) => {
+    if (isSaCall) return;
     (e.currentTarget as Element).setPointerCapture(e.pointerId);
     dragRef.current = { offX: e.clientX - cardPos.x, offY: e.clientY - cardPos.y, moved: false };
   };
@@ -683,6 +685,12 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
         .eq('pipeline_column_id', pipelineColumnId)
         .order('created_at', { ascending: true });
       if (impId) colQ = colQ.eq('owner_agent_id', impId);
+      if (isSaCall) {
+        const { data: eligible } = await (supabase.from('sa_listings' as any) as any).select('wk_contact_id').eq('hostunico_call_eligible', true);
+        const ids = [...new Set((eligible || []).map((row: { wk_contact_id: string }) => row.wk_contact_id))];
+        if (!ids.length) { columnContactsRef.current = []; setColumnLeads([]); return; }
+        colQ = colQ.in('id', ids);
+      }
       const { data } = await colQ;
       const rows = (data ?? []) as { id: string; name: string | null; phone: string | null; pipeline_column_id: string | null; custom_fields: Record<string, string> | null }[];
       columnContactsRef.current = rows.map((r) => r.id);
@@ -709,7 +717,7 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
         columnIndexRef.current = idx >= 0 ? idx : 0;
       }
     })();
-  }, [pipelineColumnId, autoCallContactId, camp?.id, impId]);
+  }, [pipelineColumnId, autoCallContactId, camp?.id, impId, isSaCall]);
 
   const dialColumnContact = useCallback(async (contactId: string) => {
     if (!camp) return;
@@ -871,143 +879,8 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
     </div>
   ) : null;
 
-  return (
-    <div className="relative h-full flex flex-col bg-[#F3F3EE]">
-      {/* Toast stack */}
-      {toasts.length > 0 && (
-        <div className="fixed top-16 right-4 z-[250] space-y-1">
-          {toasts.map((t) => (
-            <div key={t.id} className={cn(
-              'px-3 py-1.5 rounded-lg text-xs font-medium shadow-md',
-              t.type === 'error' && 'bg-red-50 text-red-700 border border-red-200',
-              t.type === 'success' && 'bg-[#EEF2F8] text-[#3C5A87] border border-[#3C5A87]/20',
-              t.type === 'info' && 'bg-white text-[#6B7280] border border-[#E5E7EB]',
-            )}>{t.msg}</div>
-          ))}
-        </div>
-      )}
-
-      {/* ─── BACKGROUND: the call room (always mounted, sticky) ─── */}
-      <div className="flex-1 overflow-hidden">
-        {isSaCall ? (
-          <SaCallRoom
-            contact={contact}
-            contactHeader={contactHeader}
-            currentCallId={state.currentCallId}
-            callConnected={state.phase === 'connected'}
-            liveDurationSec={liveDuration}
-            agentFirstName={agentFirstName}
-            campaignId={camp?.id ?? null}
-            pipelineId={camp?.pipelineId ?? null}
-            direction="outbound"
-          />
-        ) : isAuctionCall ? (
-          <AuctionCallRoom
-            contact={contact}
-            contactHeader={contactHeader}
-            currentCallId={state.currentCallId}
-            callConnected={state.phase === 'connected'}
-            liveDurationSec={liveDuration}
-            agentFirstName={agentFirstName}
-            campaignId={camp?.id ?? null}
-            pipelineId={camp?.pipelineId ?? null}
-            direction="outbound"
-          />
-        ) : isHousesCall ? (
-          /* The property room, the SAME component the inbound call screen
-             mounts (2026-08-18). Pedro: "the transition of hey elsie from
-             dialer to when I answer an incoming call is very different". It was,
-             because all of this lived in this file and nowhere else. */
-          <PropertyCallRoom
-            contact={contact}
-            contactHeader={contactHeader}
-            currentCallId={state.currentCallId}
-            callConnected={state.phase === 'connected'}
-            liveDurationSec={liveDuration}
-            agentFirstName={agentFirstName}
-            campaignId={camp?.id ?? null}
-            pipelineId={camp?.pipelineId ?? null}
-            direction="outbound"
-            autoSaveId="dialer-pro-houses-layout-v1"
-          />
-        ) : (
-        <ResizablePanelGroup
-          direction="horizontal"
-          /* The plumber room keeps v4 and every width Pedro and Marr have
-             already dragged into place. */
-          autoSaveId="dialer-pro-call-layout-v4"
-          className="h-full"
-        >
-          {/* COL 1: contact + call timeline */}
-          <ResizablePanel defaultSize={22} minSize={16} className="bg-white border-r border-[#E5E7EB] flex flex-col overflow-hidden">
-            {contact ? (
-              <>
-                {contactHeader}
-                <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 text-[12px]">
-                  {/* Keypad moved to a button on the dialer card; the SMS /
-                      WhatsApp / Email send box moved to the Messages tab on
-                      the right. COL 1 is now the contact context + timeline. */}
-                  <CallTimeline callId={state.currentCallId} />
-                </div>
-              </>
-            ) : (
-              <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center px-6">
-                <MessageSquare className="w-8 h-8 text-[#E5E7EB]" />
-                <div className="text-sm font-medium text-[#9CA3AF]">Contact details</div>
-                <div className="text-xs text-[#9CA3AF]">No leads in queue</div>
-              </div>
-            )}
-          </ResizablePanel>
-
-          <ResizableHandle withHandle />
-
-          {/* COL 2 — Sales script: editable (admin), lean, read live. */}
-          <ResizablePanel defaultSize={48} minSize={26} className="border-r border-[#E5E7EB] overflow-hidden">
-            <div className="flex h-full flex-col">
-              <div className="min-h-0 flex-1">
-                {/* key= forces a clean remount on a script switch. Without it the
-                    pane's srcDoc changes while its captured template/docReady state
-                    is still the old script's, and the onLoad it depends on may
-                    already have fired — leaving the previous script (or a blank
-                    pane) on screen at the exact moment it matters. */}
-                <DialerScriptPane
-                  key={paneScriptKey}
-                  contact={contact}
-                  scriptKey={paneScriptKey}
-                />
-              </div>
-            </div>
-          </ResizablePanel>
-
-          <ResizableHandle withHandle />
-
-          {/* COL 3 — Right tabs: Coach / Calculator / Objections / Messages. */}
-          <ResizablePanel defaultSize={30} minSize={16} className="overflow-hidden">
-            <DialerRightTabs
-              contactId={activeContactId ?? undefined}
-              contactName={contact?.name}
-              contactPhone={contact?.phone}
-              contactEmail={contact?.email}
-              ownerName={contact?.customFields?.owner_name}
-              agentFirstName={agentFirstName}
-              campaignId={camp?.id ?? null}
-              pipelineId={camp?.pipelineId ?? null}
-              currentCallId={state.currentCallId}
-              callConnected={state.phase === 'connected'}
-              liveDurationSec={liveDuration}
-            />
-          </ResizablePanel>
-        </ResizablePanelGroup>
-        )}
-      </div>
-
-      {/* The room locks here, between two calls, until the answer is right. */}
-      {checkpointDue && (
-        <KnowledgeCheckpoint asked={askedQuestions} onPassed={passCheckpoint} />
-      )}
-
-      {/* ─── FLOATING CARD + Queue/History (always visible, draggable) ─── */}
-      <div className="fixed z-[210] select-text" style={{ left: cardPos.x, top: cardPos.y, width: CARD_W }}>
+  const dialerControls = (
+      <div className={isSaCall ? "w-full min-w-0 select-text" : "fixed z-[210] select-text"} style={isSaCall ? undefined : { left: cardPos.x, top: cardPos.y, width: CARD_W }}>
         {/* Idle card — same card shape as Outgoing Call, with Start button instead of End Call */}
         {!(isLive || state.phase === 'wrap_up') && (
           <div className="bg-white border border-[#E5E7EB] rounded-2xl shadow-[0_24px_64px_rgba(0,0,0,0.18)] overflow-hidden">
@@ -1413,6 +1286,146 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
           </div>
         </div>
       </div>
+  );
+
+  return (
+    <div className="relative h-full min-h-0 flex flex-col bg-[#F3F3EE]">
+      {/* Toast stack */}
+      {toasts.length > 0 && (
+        <div className="fixed top-16 right-4 z-[250] space-y-1">
+          {toasts.map((t) => (
+            <div key={t.id} className={cn(
+              'px-3 py-1.5 rounded-lg text-xs font-medium shadow-md',
+              t.type === 'error' && 'bg-red-50 text-red-700 border border-red-200',
+              t.type === 'success' && 'bg-[#EEF2F8] text-[#3C5A87] border border-[#3C5A87]/20',
+              t.type === 'info' && 'bg-white text-[#6B7280] border border-[#E5E7EB]',
+            )}>{t.msg}</div>
+          ))}
+        </div>
+      )}
+
+      {/* ─── BACKGROUND: the call room (always mounted, sticky) ─── */}
+      <div className="min-h-0 flex-1 overflow-hidden">
+        {isSaCall ? (
+          <SaCallRoom
+            onControlsMount={setSaControlsHost}
+            onEndCall={() => void machine.hangUp()}
+            contact={contact}
+            contactHeader={contactHeader}
+            currentCallId={state.currentCallId}
+            callConnected={state.phase === 'connected'}
+            liveDurationSec={liveDuration}
+            agentFirstName={agentFirstName}
+            campaignId={camp?.id ?? null}
+            pipelineId={camp?.pipelineId ?? null}
+            direction="outbound"
+          />
+        ) : isAuctionCall ? (
+          <AuctionCallRoom
+            contact={contact}
+            contactHeader={contactHeader}
+            currentCallId={state.currentCallId}
+            callConnected={state.phase === 'connected'}
+            liveDurationSec={liveDuration}
+            agentFirstName={agentFirstName}
+            campaignId={camp?.id ?? null}
+            pipelineId={camp?.pipelineId ?? null}
+            direction="outbound"
+          />
+        ) : isHousesCall ? (
+          /* The property room, the SAME component the inbound call screen
+             mounts (2026-08-18). Pedro: "the transition of hey elsie from
+             dialer to when I answer an incoming call is very different". It was,
+             because all of this lived in this file and nowhere else. */
+          <PropertyCallRoom
+            contact={contact}
+            contactHeader={contactHeader}
+            currentCallId={state.currentCallId}
+            callConnected={state.phase === 'connected'}
+            liveDurationSec={liveDuration}
+            agentFirstName={agentFirstName}
+            campaignId={camp?.id ?? null}
+            pipelineId={camp?.pipelineId ?? null}
+            direction="outbound"
+            autoSaveId="dialer-pro-houses-layout-v1"
+          />
+        ) : (
+        <ResizablePanelGroup
+          direction="horizontal"
+          /* The plumber room keeps v4 and every width Pedro and Marr have
+             already dragged into place. */
+          autoSaveId="dialer-pro-call-layout-v4"
+          className="h-full"
+        >
+          {/* COL 1: contact + call timeline */}
+          <ResizablePanel defaultSize={22} minSize={16} className="bg-white border-r border-[#E5E7EB] flex flex-col overflow-hidden">
+            {contact ? (
+              <>
+                {contactHeader}
+                <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 text-[12px]">
+                  {/* Keypad moved to a button on the dialer card; the SMS /
+                      WhatsApp / Email send box moved to the Messages tab on
+                      the right. COL 1 is now the contact context + timeline. */}
+                  <CallTimeline callId={state.currentCallId} />
+                </div>
+              </>
+            ) : (
+              <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center px-6">
+                <MessageSquare className="w-8 h-8 text-[#E5E7EB]" />
+                <div className="text-sm font-medium text-[#9CA3AF]">Contact details</div>
+                <div className="text-xs text-[#9CA3AF]">No leads in queue</div>
+              </div>
+            )}
+          </ResizablePanel>
+
+          <ResizableHandle withHandle />
+
+          {/* COL 2 — Sales script: editable (admin), lean, read live. */}
+          <ResizablePanel defaultSize={48} minSize={26} className="border-r border-[#E5E7EB] overflow-hidden">
+            <div className="flex h-full flex-col">
+              <div className="min-h-0 flex-1">
+                {/* key= forces a clean remount on a script switch. Without it the
+                    pane's srcDoc changes while its captured template/docReady state
+                    is still the old script's, and the onLoad it depends on may
+                    already have fired — leaving the previous script (or a blank
+                    pane) on screen at the exact moment it matters. */}
+                <DialerScriptPane
+                  key={paneScriptKey}
+                  contact={contact}
+                  scriptKey={paneScriptKey}
+                />
+              </div>
+            </div>
+          </ResizablePanel>
+
+          <ResizableHandle withHandle />
+
+          {/* COL 3 — Right tabs: Coach / Calculator / Objections / Messages. */}
+          <ResizablePanel defaultSize={30} minSize={16} className="overflow-hidden">
+            <DialerRightTabs
+              contactId={activeContactId ?? undefined}
+              contactName={contact?.name}
+              contactPhone={contact?.phone}
+              contactEmail={contact?.email}
+              ownerName={contact?.customFields?.owner_name}
+              agentFirstName={agentFirstName}
+              campaignId={camp?.id ?? null}
+              pipelineId={camp?.pipelineId ?? null}
+              currentCallId={state.currentCallId}
+              callConnected={state.phase === 'connected'}
+              liveDurationSec={liveDuration}
+            />
+          </ResizablePanel>
+        </ResizablePanelGroup>
+        )}
+      </div>
+
+      {/* The room locks here, between two calls, until the answer is right. */}
+      {checkpointDue && (
+        <KnowledgeCheckpoint asked={askedQuestions} onPassed={passCheckpoint} />
+      )}
+
+      {isSaCall ? saControlsHost && ReactDOM.createPortal(dialerControls, saControlsHost) : dialerControls}
 
       {/* Edit contact modal */}
       {editing && ReactDOM.createPortal(
