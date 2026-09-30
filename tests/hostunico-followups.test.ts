@@ -77,7 +77,8 @@ describe('display pricing only', () => {
     expect(hostunicoCountry('US', '+447700900123')).toBe('US');
     expect(hostunicoPriceCopy()).toContain('£29');
     expect(hostunicoPriceCopy('US')).toContain('$29');
-    expect(hostunicoPriceCopy()).toContain('9% management plus 1.8% VAT');
+    expect(hostunicoPriceCopy()).toContain('Management fee: 9%');
+    expect(hostunicoPriceCopy()).toContain('\nVAT: 20% of the management fee, added separately.');
     expect(hostunicoPriceCopy()).toContain('current billing remains 9%');
   });
 });

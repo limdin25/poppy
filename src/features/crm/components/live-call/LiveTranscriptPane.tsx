@@ -492,7 +492,7 @@ export default function LiveTranscriptPane({ durationSec, contactId, callId, age
                 <div className="text-[9px] font-bold uppercase tracking-wide text-[#2E7D43] mb-1">
                   ⚡ SAY THIS · {instant.title}
                 </div>
-                <div className="text-[18px] leading-[1.35] font-semibold text-[#1A1A1A]">
+                <div className="whitespace-pre-line text-[18px] leading-[1.35] font-semibold text-[#1A1A1A]">
                   "{instant.say}"
                 </div>
                 <div className="mt-1.5 text-[11px] leading-snug text-[#4B5563]">

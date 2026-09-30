@@ -6,7 +6,7 @@ begin
   insert into wk_contacts(id,name,phone,desk,owner_agent_id,ai_enabled) values(lead,'Hostunico rollback test','+447700900999','sa','6b26172e-d98d-4cc4-9e22-b3b4e24624ee',false);
   insert into wk_sms_messages(contact_id,direction,body,from_e164,status,created_at) values(lead,'outbound','Report fixture only','+447700900998','sent',now_at-interval '10 days');
   for phase in 0..3 loop
-    insert into sa_report_followups(contact_id,report_sent_at,sent_steps) values(lead,now_at-interval '10 days','{}')
+    insert into sa_report_followups(contact_id,report_sent_at,sent_steps) values(lead,case when phase=0 then now_at-interval '1 hour' else now_at-interval '10 days' end,'{}')
     on conflict(contact_id) do update set report_sent_at=case when phase=0 then now_at-interval '1 hour' else now_at-interval '10 days' end,
       replied_at=null,intent=null,cold_at=null,send_state='idle',sent_steps=case when phase=2 then jsonb_build_object('step1',now_at-interval '3 days') when phase=3 then jsonb_build_object('step1',now_at-interval '8 days','step2',now_at-interval '6 days') else '{}'::jsonb end;
     insert into wk_sms_messages(contact_id,direction,body,from_e164,status,created_at) values(lead,'inbound','Yes, tell me about onboarding','+447700900999','received',now_at+phase*interval '1 second');

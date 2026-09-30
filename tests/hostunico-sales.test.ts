@@ -1,9 +1,21 @@
 import { describe, it, expect } from 'vitest';
+import { hostunicoPriceCopy } from '../supabase/functions/_shared/hostunico-pricing';
 import { hostunicoInstantAnswer, HOSTUNICO_RULES } from '../supabase/functions/_shared/hostunico-sales';
 import { prepareSpareRoomImport } from '../scripts/lib/hostunico-spareroom.mjs';
 import { reportProperty, reportSms, REPORT_AHEAD } from '../api/lib/hostunico-report';
 
 describe('Hostunico sales desk', () => {
+  it('keeps VAT on its own line for both country prices without changing the billing promise', () => {
+    for (const [country, price] of [['GB', '£29'], ['US', '$29']]) {
+      const copy = hostunicoPriceCopy(country);
+      expect(copy).toContain('Management fee: 9%');
+      expect(copy).toContain('\nVAT: 20% of the management fee, added separately.\n');
+      expect(copy).toContain(price + ' a month');
+      expect(copy).toContain('current billing remains 9%');
+      expect(copy).not.toMatch(/10\.8(?:0)?\s*%/);
+      expect(copy).not.toMatch(/[\u2013\u2014]/);
+    }
+  });
   it('groups repeated numbers and repeated advertisements without dropping different properties', () => {
     const first = { Number: '07700900123', Link: 'https://www.spareroom.co.uk/flatshare/flatshare_detail.pl?flatshare_id=1234', Price: '150pw', Name: 'Property', 'Advertiser Name': 'Test' };
     const result = prepareSpareRoomImport([first, first, { ...first, Link: first.Link.replace('1234', '5678') }]);

@@ -125,7 +125,7 @@ async function main() {
   const { data: agent } = await db.from('profiles').select('id').eq('email', AGENT_EMAIL).maybeSingle()
   if (!agent) throw new Error(`no profile for ${AGENT_EMAIL}`)
   const { data: camp } = await db.from('wk_dialer_campaigns')
-    .select('id, pipeline_id').eq('name', CAMPAIGN_NAME).eq('desk', 'sa').maybeSingle()
+    .select('id, pipeline_id').eq('name', CAMPAIGN_NAME).eq('desk', 'sa').eq('is_active', true).maybeSingle()
   if (!camp) throw new Error(`no campaign ${CAMPAIGN_NAME}; apply migration 20260923000001`)
 
   const { count: pending } = await db.from('wk_dialer_queue')

@@ -88,8 +88,9 @@ describe('the script', () => {
     for (const t of tokens) expect(SCRIPT_TEXT_TOKENS as readonly string[]).toContain(t)
   })
   it('sells management, gives the fee and asks for report permission', () => {
-    expect(PAGE).toContain('10.8% including VAT')
-    expect(PAGE).toContain('9% fee plus 1.8% VAT')
+    expect(PAGE).toContain('Management fee: 9%')
+    expect(PAGE).toContain('<br>VAT: 20% of the management fee, added separately.')
+    expect(PAGE).not.toMatch(/10\.8(?:0)?\s*%/)
     expect(PAGE).toContain('whole property or a room')
     expect(PAGE).toContain('Press Send report by SMS only after they agree')
     expect(PAGE).toContain('not guaranteed income')
@@ -133,7 +134,7 @@ describe('the outcomes', () => {
 describe('the email', () => {
   const t = saEmailTemplate({ address: '8 Crump Street, Liverpool', street: 'Crump Street', city: 'Liverpool', rent: '£1,000 a month', person: 'Sam', fromName: 'Pedro' })
   it('uses the management offer and never guarantees rent', () => {
-    expect(t.body).toContain('9% management plus 1.8% VAT')
+    expect(t.body).toContain('\nVAT: 20% of the management fee, added separately.')
     expect(t.body).toContain('£29 a month from month two')
     expect(t.body).toContain('You keep your Airbnb account')
     expect(t.body).toContain('not guaranteed income')
