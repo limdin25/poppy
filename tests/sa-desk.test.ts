@@ -134,7 +134,8 @@ describe('the outcomes', () => {
 describe('the email', () => {
   const t = saEmailTemplate({ address: '8 Crump Street, Liverpool', street: 'Crump Street', city: 'Liverpool', rent: '£1,000 a month', person: 'Sam', fromName: 'Pedro' })
   it('uses the management offer and never guarantees rent', () => {
-    expect(t.body).toContain('\nVAT: 20% of the management fee, added separately.')
+    expect(t.body).toContain('9% + VAT')
+    expect(t.body).not.toMatch(/registration|current billing|pending/i)
     expect(t.body).toContain('£29 a month from month two')
     expect(t.body).toContain('You keep your Airbnb account')
     expect(t.body).toContain('not guaranteed income')

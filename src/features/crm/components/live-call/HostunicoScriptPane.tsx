@@ -1,7 +1,7 @@
 import { hostunicoPriceCopy } from '../../../../../supabase/functions/_shared/hostunico-pricing';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Pause, Play } from 'lucide-react';
-import { HOSTUNICO_ANSWERS } from '../../../../../supabase/functions/_shared/hostunico-sales';
+import { HOSTUNICO_ANSWERS, hostunicoAnswerCopy } from '../../../../../supabase/functions/_shared/hostunico-sales';
 import type { SaListing } from '../../hooks/useSaListings';
 import { hostunicoProperty } from '../../lib/hostunicoProperty';
 import CallTextSizeControls, { useCallTextSize } from './CallTextSizeControls';
@@ -63,7 +63,7 @@ export default function HostunicoScriptPane({ listing, agentName, onOpener, onMo
     </header>
     <div ref={scroll} className="min-h-0 flex-1 overflow-y-auto p-5 space-y-6" onWheel={() => setRolling(false)} onTouchStart={() => setRolling(false)}>
       {steps.map(([title, line, note], i) => <article key={title}><p style={secondaryText} className="mb-2 font-bold uppercase tracking-wide text-slate-500">{i + 1}. {title}</p><p style={{ fontSize: size }} className="whitespace-pre-line font-medium leading-relaxed text-slate-900">{line}</p><p style={secondaryText} className="mt-2 leading-relaxed text-slate-500">{note}</p>{title === 'Agree a callback' && onArrangeCallback && <button onClick={onArrangeCallback} className="mt-3 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-800">Save agreed callback</button>}</article>)}
-      <details className="rounded-xl border p-3"><summary style={headingText} className="cursor-pointer font-semibold">Quick answers, including price</summary><div className="mt-3 space-y-4">{HOSTUNICO_ANSWERS.map((a) => <div key={a.key}><b style={headingText}>{a.title}</b><p style={{ fontSize: size }} className="mt-1 whitespace-pre-line leading-relaxed">{a.key === 'price' ? hostunicoPriceCopy(country) : a.say}</p></div>)}</div></details>
+      <details className="rounded-xl border p-3"><summary style={headingText} className="cursor-pointer font-semibold">Quick answers, including price</summary><div className="mt-3 space-y-2">{HOSTUNICO_ANSWERS.map((a) => <details key={a.key} className="rounded-lg border p-2"><summary style={headingText} className="cursor-pointer font-semibold">{a.title}</summary><p style={{ fontSize: size }} className="mt-2 whitespace-pre-line leading-relaxed">{hostunicoAnswerCopy(a, country)}</p>{a.nextQuestion && <p style={{ fontSize: size }} className="mt-2 font-medium">{a.nextQuestion}</p>}</details>)}</div></details>
       <a href="https://hostunico-sales-scripts.briny-scout-0044.chatgpt.site" target="_blank" rel="noreferrer" style={secondaryText} className="block text-blue-700 underline">Open the study guide</a>
     </div>
   </section>;

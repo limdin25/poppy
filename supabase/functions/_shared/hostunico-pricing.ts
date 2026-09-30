@@ -6,6 +6,9 @@ export function hostunicoCountry(country?: string | null, phone?: string | null)
   return phone?.startsWith('+') && !phone.startsWith('+44') ? 'US' : 'GB';
 }
 export function hostunicoPriceCopy(country = 'GB') {
+  return `Our management fee is 9% + VAT. ${hostunicoSoftwareCopy(country)}`;
+}
+export function hostunicoSoftwareCopy(country = 'GB') {
   const software = hostunicoCountry(country) === 'GB' ? '£29' : '$29';
-  return `Management fee: 9% of booking revenue.\nVAT: 20% of the management fee, added separately.\nSoftware is free in month one, then ${software} a month from month two, on top of management. The fee covers booking revenue including guest-paid cleaning. Actual cleaning, platform fees and property costs are separate. VAT registration is pending; current billing remains 9% until registration is confirmed.`;
+  return `Software is free in month one, then ${software} a month from month two, on top of management.`;
 }

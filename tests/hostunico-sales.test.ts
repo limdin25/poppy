@@ -5,13 +5,12 @@ import { prepareSpareRoomImport } from '../scripts/lib/hostunico-spareroom.mjs';
 import { reportProperty, reportSms, REPORT_AHEAD } from '../api/lib/hostunico-report';
 
 describe('Hostunico sales desk', () => {
-  it('keeps VAT on its own line for both country prices without changing the billing promise', () => {
+  it('keeps spoken pricing short and country-aware without a billing rollout explanation', () => {
     for (const [country, price] of [['GB', '£29'], ['US', '$29']]) {
       const copy = hostunicoPriceCopy(country);
-      expect(copy).toContain('Management fee: 9%');
-      expect(copy).toContain('\nVAT: 20% of the management fee, added separately.\n');
+      expect(copy).toContain('9% + VAT');
       expect(copy).toContain(price + ' a month');
-      expect(copy).toContain('current billing remains 9%');
+      expect(copy).not.toMatch(/pending|registration|current billing|20%/i);
       expect(copy).not.toMatch(/10\.8(?:0)?\s*%/);
       expect(copy).not.toMatch(/[\u2013\u2014]/);
     }
