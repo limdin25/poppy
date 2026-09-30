@@ -4,11 +4,10 @@
 // appear lives in that function, not here: something of ours must have gone to
 // them before they came back, which is what keeps marketing off the strip.
 //
-// Poll + focus, no realtime. Deliberate: an inbound CALL is written by the
-// Twilio webhook under the service role, and service-role inserts do not
-// reliably reach a browser subscriber in this codebase (the same reason
-// useAwaitingReply and useNotifications both poll). A callback that appears 45
-// seconds late is fine. One that never appears is the bug we are fixing.
+// Hostunico replies use the same RPC and strip, refreshed by realtime with a
+// five-second fallback. Other desks retain their existing 45-second polling.
+// The database records a reply before classification, so scheduling stops
+// immediately even when AI classification is delayed or unavailable.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/browser';

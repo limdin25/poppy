@@ -1,4 +1,4 @@
-import { HOSTUNICO_RULES } from '../../supabase/functions/_shared/hostunico-sales.js';
+import { HOSTUNICO_RULES } from '../../supabase/functions/_shared/hostunico-rules.js';
 // Daily agent reports — 17:30 UK, every day.
 //
 // Hugo 2026-07-24: "every day at 5:30pm it gives the daily reports, they write

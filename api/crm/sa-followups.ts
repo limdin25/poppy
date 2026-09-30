@@ -20,7 +20,8 @@ export default async function handler(req: Request) {
     const caller = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { global: { headers: { Authorization: `Bearer ${jwt}` } } });
     if (!internal && !checked(await caller.rpc('wk_is_agent_or_admin'))) return json({ error: 'CRM access required.' }, 403);
     const admin = !internal && checked(await caller.rpc('wk_is_admin'));
-    const body = req.method === 'POST' ? await req.json() : {};
+    const body = (req.method === 'POST' ? await req.json() : {}) as { action?: string; config?: unknown; contact_id?: string; intent?: string; step?: string };
+    if (!body || typeof body !== 'object') return json({ error: 'A request object is required.' }, 400);
     const action = body.action || 'list';
     if (internal && action !== 'classify') return json({ error: 'Classification only.' }, 403);
     const savedConfig = checked(await db.from('sa_followup_config').select('config').eq('id', true).single()).config;
@@ -81,7 +82,7 @@ export default async function handler(req: Request) {
       }
       // This is called only by Pedro's Send button, through the existing human sender.
       const response = await fetch(`${process.env.SUPABASE_URL}/functions/v1/wk-sms-send`, { method: 'POST', headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ contact_id: lead.contact_id, campaign_id: HOSTUNICO_CAMPAIGN, channel: 'sms', body: sms }), signal: AbortSignal.timeout(20000) });
-      const sent = await response.json();
+      const sent = await response.json() as { twilio_sid?: string; status?: string };
       if (!response.ok || !sent.twilio_sid) throw new Error('Send status uncertain. Check the inbox before another attempt.');
       const now = new Date().toISOString();
       const sentSteps = { ...lead.sent_steps, [body.step]: now };

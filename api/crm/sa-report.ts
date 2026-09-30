@@ -17,7 +17,7 @@ async function remote(action: string, payload: Record<string, unknown>) {
     method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(payload), signal: AbortSignal.timeout(18000),
   });
-  const value = await r.json();
+  const value = await r.json() as { error?: string; stage: string; message: string; reportUrl?: string };
   if (!r.ok) throw new Problem(r.status, value.error || 'Hostunico could not prepare this report.');
   return value as { stage: string; message: string; reportUrl?: string };
 }
@@ -33,7 +33,8 @@ export default async function handler(req: Request): Promise<Response> {
     const allowed = check(await caller.rpc('wk_is_agent_or_admin'));
     if (!allowed) throw new Problem(403, 'CRM access required.');
     const admin = check(await caller.rpc('wk_is_admin'));
-    const body = req.method === 'POST' ? await req.json() : Object.fromEntries(new URL(req.url).searchParams);
+    const body = (req.method === 'POST' ? await req.json() : Object.fromEntries(new URL(req.url).searchParams)) as { action?: string; campaign_id?: string; contact_id?: string; listing_id?: string; country?: string; property?: unknown; replace?: boolean; permission?: boolean };
+    if (!body || typeof body !== 'object') throw new Problem(400, 'A request object is required.');
     const action = String(body.action || 'status');
     const contact = async (id: string) => {
       const c = check(await supa.from('wk_contacts').select('id,desk,owner_agent_id,do_not_call,phone,hostunico_country,custom_fields,pipeline_column_id').eq('id', id).maybeSingle());
@@ -71,7 +72,9 @@ export default async function handler(req: Request): Promise<Response> {
           const listing = check(await supa.from('sa_listings').select('id,report_property').eq('wk_contact_id', lead.contact_id).eq('source', 'spareroom').order('dealt_at', { ascending: false }).order('id').limit(1).maybeSingle());
           if (!listing || !reportProperty(listing.report_property)) { needsDetails++; return; }
           const result = await start(listing);
-          if (result.stage === 'needs_details') needsDetails++; else { prepared++; if (result.stage === 'ready') ready++; else preparing++; }
+          if (result.stage === 'needs_details') needsDetails++;
+          else if (result.stage === 'review') failed++;
+          else { prepared++; if (result.stage === 'ready') ready++; else preparing++; }
         } catch { failed++; }
       }));
       return json({ prepared, ready, preparing, needsDetails, failed, ahead: queue.length });
@@ -125,7 +128,7 @@ export default async function handler(req: Request): Promise<Response> {
       // There is deliberately no automatic retry after a provider request: a lost response could still mean sent.
       try {
         const sent = await fetch(`${process.env.SUPABASE_URL}/functions/v1/wk-sms-send`, { method: 'POST', headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ contact_id: c.id, campaign_id: HOSTUNICO_CAMPAIGN, channel: 'sms', body: sms }), signal: AbortSignal.timeout(20000) });
-        const result = await sent.json();
+        const result = await sent.json() as { twilio_sid?: string; error?: string; status?: string; message_id?: string; warning?: string };
         if (!sent.ok || !result.twilio_sid) throw new Error(result.error || 'SMS status could not be confirmed. Check the inbox before retrying.');
         check(await supa.from('sa_property_reports').update({ sms_state: result.status || 'queued', sms_sid: result.twilio_sid, sms_message_id: result.message_id ?? null }).eq('listing_id', listingId).eq('remote_id', row.remote_id));
         const { data: stage } = await supa.from('wk_pipeline_columns').select('id').eq('pipeline_id', HOSTUNICO_PIPELINE).eq('name', 'Report sent').maybeSingle();
