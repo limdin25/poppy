@@ -20,8 +20,10 @@ import { useDialerProModal } from '../layout/DialerProModalContext';
 import { toE164 } from '@/features/crm/lib/phone';
 import { supabase } from '@/integrations/supabase/browser';
 import type { Contact } from '../types';
+import { useDesk } from '../lib/DeskContext';
 
 export default function ContactsPage() {
+  const { desk } = useDesk();
   const { contacts, columns, agents: storeAgents, patchContact, upsertContact, removeContact, pushToast } = useSmsV2();
   const persist = useContactPersistence();
   const { openDialerPro } = useDialerProModal();
@@ -116,6 +118,7 @@ export default function ContactsPage() {
 
   const filtered = useMemo(() => {
     return contacts.filter((c) => {
+      if (desk === 'sa' && c.customFields?.lead_type === 'sa_agency') return false;
       if (stageFilter !== 'all' && c.pipelineColumnId !== stageFilter) return false;
       if (ownerFilter !== 'all' && c.ownerAgentId !== ownerFilter) return false;
       if (search) {
@@ -129,7 +132,7 @@ export default function ContactsPage() {
       }
       return true;
     });
-  }, [contacts, search, stageFilter, ownerFilter]);
+  }, [contacts, search, stageFilter, ownerFilter, desk]);
 
   // UI pagination — rendering 11k+ <tr> rows locks the main thread, so
   // slice to a page at a time. Search / filters run against the full
@@ -492,6 +495,7 @@ export default function ContactsPage() {
                         className="p-1.5 hover:bg-[#EEF2F8] rounded text-[#25D366]"
                         title={`WhatsApp ${c.name}`}
                         data-testid={`contacts-row-whatsapp-${c.id}`}
+                        hidden={desk === 'sa'}
                       >
                         <MessageSquare className="w-3.5 h-3.5" strokeWidth={2.4} />
                       </button>

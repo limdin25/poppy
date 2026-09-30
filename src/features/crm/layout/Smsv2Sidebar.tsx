@@ -74,6 +74,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Dashboard', path: '/admin/crm/dashboard', icon: LayoutDashboard, adminOnly: true },
   { label: 'Dialer', path: '/admin/crm/dialer-pro', icon: Radio },
   { label: 'Inbox', path: '/admin/crm/inbox', icon: MessageSquare },
+  { label: 'Report follow-ups', path: '/admin/crm/report-followups', icon: ListChecks },
   { label: 'Pipelines', path: '/admin/crm/pipelines', icon: Kanban },
   { label: 'Contacts', path: '/admin/crm/contacts', icon: Users },
   { label: 'Broadcasts', path: '/admin/crm/broadcasts', icon: Megaphone },
@@ -96,6 +97,9 @@ const HOUSES_ONLY = new Set([
   '/admin/crm/raw-leads',
   '/admin/crm/deal-process',
 ]);
+
+const SA_NAV = new Set(['Dashboard', 'Dialer', 'Inbox', 'Report follow-ups', 'Pipelines', 'Contacts', 'Reports', 'Leaderboard', 'Call history', 'Templates', 'Settings']);
+const deskLabel = (label: string, desk: string) => desk === 'sa' && label === 'Dialer' ? 'Calling room' : label;
 
 const MOBILE_TAB_ITEMS = NAV_ITEMS.filter(({ label }) =>
   ['Cockpit', 'Dialer', 'Inbox', 'Pipelines', 'Contacts'].includes(label)
@@ -151,7 +155,7 @@ export default function Smsv2Sidebar({ collapsed, onCollapse }: Smsv2SidebarProp
             )}
           >
             <Icon className="w-5 h-5" strokeWidth={1.8} />
-            <span>{label}</span>
+            <span>{deskLabel(label, desk)}</span>
           </Link>
         ))}
       </nav>
@@ -168,7 +172,7 @@ export default function Smsv2Sidebar({ collapsed, onCollapse }: Smsv2SidebarProp
     >
       <div className="flex items-center justify-between px-4 py-3 border-b border-[#E5E7EB]/60">
         {!collapsed && (
-          <span className="text-sm font-semibold text-[#1A1A1A] tracking-tight">CRM</span>
+          <span className="text-sm font-semibold text-[#1A1A1A] tracking-tight">{desk === 'sa' ? 'Hostunico' : 'CRM'}</span>
         )}
         <button
           onClick={() => onCollapse(!collapsed)}
@@ -183,6 +187,8 @@ export default function Smsv2Sidebar({ collapsed, onCollapse }: Smsv2SidebarProp
           // PR 62: hide admin-only items from agents entirely.
           .filter(({ adminOnly }) => !adminOnly || isAdminOrWorkspaceAdmin)
           .filter(({ path }) => desk === 'houses' || !HOUSES_ONLY.has(path))
+          .filter(({ label }) => desk !== 'sa' || SA_NAV.has(label))
+          .filter(({ label }) => desk === 'sa' || label !== 'Report follow-ups')
           .map(({ label, path, icon: Icon, adminOnly }) => (
           <Link
             key={path}
@@ -198,7 +204,7 @@ export default function Smsv2Sidebar({ collapsed, onCollapse }: Smsv2SidebarProp
             <Icon className="w-4 h-4 flex-shrink-0" strokeWidth={1.8} />
             {!collapsed && (
               <>
-                <span className="flex-1">{label}</span>
+                <span className="flex-1">{deskLabel(label, desk)}</span>
                 {adminOnly && (
                   <span className="text-[9px] text-[#9CA3AF] font-medium uppercase">admin</span>
                 )}
@@ -210,7 +216,7 @@ export default function Smsv2Sidebar({ collapsed, onCollapse }: Smsv2SidebarProp
 
       {!collapsed && (
         <div className="px-4 py-3 border-t border-[#E5E7EB]/60 text-[11px] text-[#9CA3AF]">
-          <span className="block">Elsie CRM</span>
+          <span className="block">{desk === 'sa' ? 'Hostunico · Serviced accommodation' : 'Elsie CRM'}</span>
         </div>
       )}
     </aside>

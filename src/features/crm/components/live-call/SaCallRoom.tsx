@@ -1,31 +1,14 @@
-// The Serviced Accommodation call room: Pedro on the phone to a letting agent
-// about a city-centre flat to rent (SA desk, Hugo 2026-09-23).
-//
-// Same three columns as the property and auction rooms, so the desks feel like
-// one tool:
-//   COL 1  who is on the phone, the next step, and the Flat tab
-//   COL 2  the SA script, filled from the flat
-//   COL 3  Coach, Email and Messages
-//
-// Its own component rather than a mode of AuctionCallRoom or PropertyCallRoom:
-// each of those reads facts that mean nothing for a rental (lots, offers,
-// ballparks, builders), one wrong prop away from Pedro's other desks.
-//
-// Outbound (DialerProPage) and inbound (LiveCallScreen) both mount this.
-
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Building2, PhoneIncoming } from 'lucide-react';
-import {
-  ResizablePanelGroup,
-  ResizablePanel,
-  ResizableHandle,
-} from '@/features/crm/ui/resizable';
-import DialerScriptPane from './DialerScriptPane';
-import DialerRightTabs from './DialerRightTabs';
+import { Building2 } from 'lucide-react';
+import HostunicoScriptPane from './HostunicoScriptPane';
+import SaReportPanel, { reportAction } from './SaReportPanel';
+import LiveTranscriptPane from './LiveTranscriptPane';
 import SaListingPane from './SaListingPane';
-import NextStepPanel from '../shared/NextStepPanel';
-import { useSaListings, saScriptTokens } from '../../hooks/useSaListings';
+import SaEmailPane from './SaEmailPane';
+import { useSaListings, gbpMonth } from '../../hooks/useSaListings';
 import type { Contact } from '../../types';
+import { supabase } from '@/integrations/supabase/browser';
+import { hostunicoCountry } from '../../../../../supabase/functions/_shared/hostunico-pricing';
 
 export interface SaCallRoomProps {
   contact: Contact | null;
@@ -41,112 +24,67 @@ export interface SaCallRoomProps {
   autoSaveId?: string;
 }
 
-export default function SaCallRoom({
-  contact,
-  contactHeader,
-  emptyState,
-  currentCallId,
-  callConnected,
-  liveDurationSec,
-  agentFirstName,
-  campaignId = null,
-  pipelineId = null,
-  direction,
-  autoSaveId,
-}: SaCallRoomProps) {
+export default function SaCallRoom({ contact, contactHeader, emptyState, currentCallId, liveDurationSec = 0, agentFirstName, campaignId, direction }: SaCallRoomProps) {
   const { listings } = useSaListings(contact?.id);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [details, setDetails] = useState(false);
+  const [opener, setOpener] = useState('');
+  const [ahead, setAhead] = useState('');
+  const [emailReport, setEmailReport] = useState<string | null>(null);
+  const [country, setCountry] = useState('GB');
+  const [countryError, setCountryError] = useState('');
+  useEffect(() => {
+    let cancelled = false;
+    setCountry(hostunicoCountry(null, contact?.phone)); setCountryError('');
+    if (contact?.id) void (supabase as any).from('wk_contacts').select('hostunico_country').eq('id', contact.id).maybeSingle().then(({ data }: any) => {
+      if (!cancelled) setCountry(hostunicoCountry(data?.hostunico_country, contact.phone));
+    });
+    return () => { cancelled = true; };
+  }, [contact?.id, contact?.phone]);
   const handleSelect = useCallback((id: string) => setSelectedId(id), []);
-  // A new agency is a different flat.
-  useEffect(() => { setSelectedId(null); }, [contact?.id]);
-
-  // Newest flat by default: it is the one this call is about.
-  const selected = useMemo(
-    () => listings.find((l) => l.id === selectedId) ?? listings[0] ?? null,
-    [listings, selectedId],
-  );
-  const nextStep = contact?.customFields?.next_step ?? null;
-
-  return (
-    <ResizablePanelGroup
-      direction="horizontal"
-      autoSaveId={autoSaveId ?? 'dialer-pro-sa-layout-v1'}
-      className="h-full"
-    >
-      <ResizablePanel defaultSize={34} minSize={18} className="bg-white border-r border-[#E5E7EB] flex flex-col overflow-hidden">
-        {contact ? (
-          <>
-            {contactHeader}
-            <NextStepPanel value={nextStep} />
-            <div className="flex items-center gap-1.5 px-4 py-2 border-b border-[#E5E7EB] text-[10px] font-bold uppercase tracking-wide text-[#9CA3AF] flex-shrink-0">
-              <Building2 className="w-3 h-3" />
-              <span>The flat</span>
-            </div>
-            <div className="min-h-0 flex-1 overflow-hidden" data-testid="dialer-sa-panel">
-              <SaListingPane
-                contactId={contact.id}
-                selectedId={selected?.id ?? null}
-                onSelect={handleSelect}
-                currentCallId={currentCallId}
-              />
-            </div>
-          </>
-        ) : (
-          emptyState ?? (
-            <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center px-6">
-              <Building2 className="w-8 h-8 text-[#E5E7EB]" />
-              <div className="text-sm font-medium text-[#9CA3AF]">No letting agent on the line</div>
-              <div className="text-xs text-[#9CA3AF]">No flats in the queue</div>
-            </div>
-          )
-        )}
-      </ResizablePanel>
-
-      <ResizableHandle withHandle />
-
-      <ResizablePanel defaultSize={40} minSize={26} className="border-r border-[#E5E7EB] overflow-hidden">
-        <div className="flex h-full flex-col">
-          {direction === 'inbound' && (
-            <div
-              className="flex items-start gap-2 border-b border-[#F0DFB0] bg-[#FFF8EC] px-3 py-2 text-[11.5px] leading-snug text-[#5a4a20]"
-              data-testid="inbound-callback-line"
-            >
-              <PhoneIncoming className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-[#8a6d1a]" />
-              <span>
-                <b>They rang you.</b> Thank them for calling back, then ask what the landlord said.
-              </span>
-            </div>
-          )}
-          <div className="min-h-0 flex-1">
-            <DialerScriptPane
-              key={selected?.id ?? 'no-flat'}
-              contact={contact}
-              scriptKey="sa_call"
-              extraTokens={saScriptTokens(selected)}
-            />
-          </div>
-        </div>
-      </ResizablePanel>
-
-      <ResizableHandle withHandle />
-
-      <ResizablePanel defaultSize={26} minSize={16} className="overflow-hidden">
-        <DialerRightTabs
-          contactId={contact?.id ?? undefined}
-          contactName={contact?.name}
-          contactPhone={contact?.phone}
-          contactEmail={contact?.email}
-          ownerName={contact?.customFields?.owner_name}
-          agentFirstName={agentFirstName}
-          campaignId={campaignId}
-          pipelineId={pipelineId}
-          currentCallId={currentCallId}
-          callConnected={callConnected}
-          liveDurationSec={liveDurationSec}
-          saCall
-          saListing={selected}
-        />
-      </ResizablePanel>
-    </ResizablePanelGroup>
-  );
+  useEffect(() => { setSelectedId(null); setDetails(false); }, [contact?.id]);
+  const selected = useMemo(() => listings.find((l) => l.id === selectedId) ?? listings[0] ?? null, [listings, selectedId]);
+  useEffect(() => { setEmailReport(null); }, [contact?.id, selected?.id]);
+  useEffect(() => {
+    if (!campaignId || campaignId !== '5d9657f9-d9b4-4e27-a2d1-83db80867f92') return;
+    let cancelled = false;
+    let running = false;
+    async function prepare() {
+      if (running) return;
+      running = true;
+      try {
+        const result = await reportAction('prepare_queue', { campaign_id: campaignId, contact_id: contact?.id });
+        if (!cancelled) setAhead(`${result.ready} reports ready ahead${result.preparing ? `, ${result.preparing} preparing` : ''}${result.needsDetails ? `, ${result.needsDetails} need property details` : ''}${result.failed ? `, ${result.failed} could not be prepared` : ''}`);
+      } catch (e) { if (!cancelled) setAhead(e instanceof Error ? e.message : 'Could not prepare reports ahead.'); }
+      finally { running = false; }
+    }
+    void prepare();
+    const timer = window.setInterval(() => void prepare(), 45000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [campaignId, contact?.id]);
+  if (!contact) return <div className="flex h-full items-center justify-center text-slate-500">{emptyState || 'Choose a lead to start calling.'}</div>;
+  return <div className="flex h-full min-h-0 flex-col bg-slate-50" data-testid="dialer-sa-panel">
+    <header className="shrink-0 border-b bg-white p-3 space-y-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0"><p className="text-sm font-semibold">{contact.name} <span className="ml-2 font-normal text-slate-500">{contact.phone}</span></p><p className="text-xs text-slate-500">{selected ? [selected.address, gbpMonth(selected.rentPcm)].filter(Boolean).join(' · ') : 'Choose a property'}</p></div>
+        <button onClick={() => setDetails(!details)} aria-expanded={details} className="flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium"><Building2 size={14} />{details ? 'Close details' : `Property, notes and outcome${listings.length > 1 ? ` (${listings.length})` : ''}`}</button>
+      </div>
+      {listings.length > 1 && <select aria-label="Property on this call" value={selected?.id || ''} onChange={(e) => setSelectedId(e.target.value)} className="h-9 w-full rounded-lg border bg-white px-2 text-xs">{listings.map((l) => <option key={l.id} value={l.id}>{l.address} · {gbpMonth(l.rentPcm)}</option>)}</select>}
+      {direction === 'inbound' && <p className="text-xs text-blue-700">They called back. Thank them, check which property they mean, then choose the right script.</p>}
+      <label className="flex items-center gap-2 text-xs text-slate-600">Lead country<select aria-label="Lead country for pricing" value={country === 'GB' ? 'GB' : 'US'} className="rounded-lg border bg-white px-3 py-2" onChange={async (e) => {
+        const next = e.target.value;
+        if (!selected) return;
+        try { await reportAction('country', { listing_id: selected.id, country: next }); setCountry(next); setCountryError(''); } catch { setCountryError('Country was not saved. Please try again.'); }
+      }}><option value="GB">United Kingdom (software £29/month)</option><option value="US">Outside UK (software $29/month)</option></select></label>
+      {countryError && <p role="alert" className="text-xs text-red-700">{countryError}</p>}
+      <SaReportPanel key={selected?.id || 'none'} listing={selected} phone={contact.phone} onEmail={setEmailReport} />
+      {ahead && <p className="text-[11px] text-slate-500" role="status">{ahead}</p>}
+    </header>
+    <div className="relative min-h-0 flex-1 grid grid-cols-1 lg:grid-cols-2 overflow-y-auto lg:overflow-hidden">
+      <div className="min-h-[360px] lg:min-h-0 border-r"><HostunicoScriptPane listing={selected} agentName={agentFirstName} onOpener={setOpener} country={country} /></div>
+      <section className="min-h-[340px] lg:min-h-0 flex flex-col bg-white" aria-label="Live AI coach"><h2 className="border-b p-3 font-semibold">Live coach <span className="ml-2 text-xs font-normal text-slate-500">Listen, answer, pause</span></h2><div className="min-h-0 flex-1"><LiveTranscriptPane key={currentCallId || contact.id} durationSec={liveDurationSec} contactId={contact.id} callId={currentCallId} agentFirstName={agentFirstName} hostunicoCountry={country} isSaCall propertyOpener={opener} /></div></section>
+      {details && <section aria-label="Property details and outcome" className="absolute inset-y-0 right-0 z-20 flex w-full max-w-md flex-col border-l bg-white shadow-xl"><div className="flex items-center justify-between border-b p-3"><h2 className="font-semibold">Property and next step</h2><button onClick={() => setDetails(false)} className="rounded-lg border px-3 py-1.5 text-xs">Close</button></div><div className="overflow-y-auto min-h-0">{contactHeader}<SaListingPane contactId={contact.id} selectedId={selected?.id ?? null} onSelect={handleSelect} currentCallId={currentCallId} /></div></section>}
+      {emailReport && <section aria-label="Email property report" className="absolute inset-y-0 right-0 z-30 flex w-full max-w-md flex-col border-l bg-white shadow-xl"><div className="flex items-center justify-between border-b p-3"><h2 className="font-semibold">Email the report</h2><button onClick={() => setEmailReport(null)} className="rounded-lg border px-3 py-1.5 text-xs">Close</button></div><div className="min-h-0 flex-1"><SaEmailPane key={selected?.id} contactId={contact.id} contactEmail={contact.email} listing={selected} agentFirstName={agentFirstName} reportUrl={emailReport} country={country} /></div></section>}
+    </div>
+  </div>;
 }

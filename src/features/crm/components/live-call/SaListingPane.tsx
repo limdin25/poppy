@@ -15,13 +15,16 @@ import { useState } from 'react';
 import { BedDouble, ExternalLink, Home, ImageOff } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/browser';
 import { availableText, gbpMonth, useSaListings, type SaListing } from '../../hooks/useSaListings';
+import FollowupPromptModal from '../followups/FollowupPromptModal';
+import { useSmsV2 } from '../../store/SmsV2Store';
 
 /** What Pedro can press. Mirrors OUTCOMES in api/crm/sa-outcome.ts. */
 export const SA_OUTCOMES = [
-  { key: 'yes_in_principle', label: 'Yes in principle', hint: 'goes to Hugo' },
-  { key: 'checking_with_landlord', label: 'Checking with the landlord' },
-  { key: 'said_no', label: 'Said no' },
-  { key: 'no_company_lets', label: 'Never do company lets' },
+  { key: 'report_requested', label: 'Wants the report' },
+  { key: 'review_booked', label: 'Arrange review call' },
+  { key: 'onboarding', label: 'Ready for onboarding' },
+  { key: 'not_interested', label: 'Not interested' },
+  { key: 'do_not_contact', label: 'Do not contact' },
   { key: 'already_let', label: 'Already let' },
   { key: 'no_answer', label: 'No answer' },
 ] as const;
@@ -91,6 +94,7 @@ export default function SaListingPane({ contactId, selectedId, onSelect, current
         <SaListingDetail
           key={selected.id}
           listing={selected}
+          contactId={contactId}
           currentCallId={currentCallId ?? null}
           onSaved={() => void refetch()}
         />
@@ -109,7 +113,10 @@ function Fact({ k, v, strong }: { k: string; v: React.ReactNode; strong?: boolea
   );
 }
 
-function SaListingDetail({ listing: l, currentCallId, onSaved }: { listing: SaListing; currentCallId: string | null; onSaved: () => void }) {
+function SaListingDetail({ listing: l, contactId, currentCallId, onSaved }: { listing: SaListing; contactId: string; currentCallId: string | null; onSaved: () => void }) {
+  const { columns } = useSmsV2();
+  const [followupOpen, setFollowupOpen] = useState(false);
+  const reviewColumn = columns.find((c) => c.name === 'Review call booked');
   const [person, setPerson] = useState('');
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState<string | null>(null);
@@ -132,7 +139,7 @@ function SaListingDetail({ listing: l, currentCallId, onSaved }: { listing: SaLi
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || `failed (${res.status})`);
-      setSaved(json.board_warning || (outcome === 'yes_in_principle' ? 'Saved and sent to Hugo' : 'Saved'));
+      setSaved(json.board_warning || 'Saved');
       setNote('');
       onSaved();
     } catch (e) {
@@ -180,7 +187,7 @@ function SaListingDetail({ listing: l, currentCallId, onSaved }: { listing: SaLi
           <Fact k="City" v={[l.city, l.outcode].filter(Boolean).join(', ')} />
           <Fact k="Available" v={availableText(l.letAvailableDate)} />
           <Fact k="Listed" v={listed} />
-          <Fact k="Agency" v={l.agency} />
+          <Fact k="Advertiser" v={l.agency} />
         </div>
         {l.summary && <p className="mt-2 text-[11.5px] leading-snug text-[#6B7280]">{l.summary}</p>}
         {l.listingUrl && (
@@ -209,7 +216,7 @@ function SaListingDetail({ listing: l, currentCallId, onSaved }: { listing: SaLi
         <textarea
           value={note}
           onChange={(e) => setNote(e.target.value)}
-          placeholder="What they said: yes in principle? any conditions (lease, building, mortgage)? when to ring back?"
+          placeholder="What did they say? Property details, questions, missing setup items and agreed next step."
           rows={3}
           data-testid="sa-outcome-note"
           className="w-full rounded-[7px] border border-[#E5E7EB] px-2 py-1.5 text-[12.5px]"
@@ -220,10 +227,15 @@ function SaListingDetail({ listing: l, currentCallId, onSaved }: { listing: SaLi
               key={o.key}
               type="button"
               disabled={saving !== null}
-              onClick={() => void save(o.key)}
+              onClick={() => {
+                if (o.key === 'review_booked') {
+                  if (!reviewColumn) { setSaveError('The review-call stage has not loaded. Please refresh.'); return; }
+                  setFollowupOpen(true);
+                } else void save(o.key);
+              }}
               data-testid={`sa-outcome-${o.key}`}
               className={`rounded-[7px] px-2.5 py-1.5 text-[11.5px] font-bold transition-colors ${
-                o.key === 'yes_in_principle' ? 'bg-[#1A1A1A] text-white hover:bg-black' : 'border border-[#E5E7EB] text-[#1A1A1A] hover:bg-[#FAFAF8]'
+                o.key === 'report_requested' ? 'bg-[#1A1A1A] text-white hover:bg-black' : 'border border-[#E5E7EB] text-[#1A1A1A] hover:bg-[#FAFAF8]'
               } disabled:opacity-50`}
             >
               {saving === o.key ? 'Saving...' : o.label}
@@ -232,6 +244,7 @@ function SaListingDetail({ listing: l, currentCallId, onSaved }: { listing: SaLi
         </div>
         {saved && <div className="text-[11.5px] text-[#166534]">{saved}</div>}
         {saveError && <div className="text-[11.5px] text-[#B91C1C]">{saveError}</div>}
+        {reviewColumn && <FollowupPromptModal open={followupOpen} onOpenChange={setFollowupOpen} contactId={contactId} contactName={l.agency} columnId={reviewColumn.id} columnName="Review call booked" callId={currentCallId} initialNote={note || `Review the Hostunico report for ${l.address}`} onSaved={() => { setFollowupOpen(false); void save('review_booked'); }} />}
       </div>
     </div>
   );

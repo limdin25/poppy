@@ -86,7 +86,7 @@ export function scriptForContactFields(
   if (fields?.lead_type === 'auctioneer') return 'auction_call';
   // A letting agency on the Serviced Accommodation desk (2026-09-23), stamped
   // by scripts/sa-scrape-and-assign.mjs.
-  if (fields?.lead_type === 'sa_agency') return 'sa_call';
+  if (fields?.lead_type === 'sa_agency' || fields?.lead_type === 'hostunico_owner') return 'sa_call';
   return null;
 }
 

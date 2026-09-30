@@ -417,6 +417,17 @@ serve(async (req: Request) => {
         );
       }
 
+      // Classify and flag only. The database has already stopped any report schedule.
+      const { data: hostunicoContact } = await supa.from('wk_contacts').select('desk').eq('id', contactId).maybeSingle();
+      if (!msgErr && hostunicoContact?.desk === 'sa') {
+        try {
+          await fetch(`${APP_URL}/api/crm/sa-followups`, {
+            method: 'POST', headers: { Authorization: `Bearer ${SITE_REPLY_KEY}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'classify', contact_id: contactId }), signal: AbortSignal.timeout(8000),
+          });
+        } catch { console.warn('[wk-sms-incoming] Hostunico classification deferred to the CRM'); }
+      }
+
       // 3. Bump wk_contacts.last_contact_at.
       await supa
         .from('wk_contacts')
@@ -747,7 +758,7 @@ serve(async (req: Request) => {
       //    refusal (the AI would cheerfully pitch someone who just said no,
       //    which is the exact mistake of 2026-08-06), and when the site demo
       //    already answered this message with the link they asked for.
-      if (!msgErr && !optOut && !refused && !siteHandled) {
+      if (!msgErr && !optOut && !refused && !siteHandled && hostunicoContact?.desk !== 'sa') {
         try {
           // heypubli contacts have their OWN reply brain (heypubli's /api/funnel/reply,
           // deterministic + tested). Enqueueing Elsie's AI here as well means two brains

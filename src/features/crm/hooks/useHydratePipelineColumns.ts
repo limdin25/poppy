@@ -95,7 +95,8 @@ export function useHydratePipelineColumns(): void {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data: deskPipes } = await (supabase.from('wk_pipelines' as any) as any)
         .select('id')
-        .eq('desk', desk);
+        .eq('desk', desk)
+        .eq('is_active', true);
       if (cancelled) return;
       const pipelineIds = ((deskPipes ?? []) as Array<{ id: string }>).map((p) => p.id);
       if (pipelineIds.length === 0) return;

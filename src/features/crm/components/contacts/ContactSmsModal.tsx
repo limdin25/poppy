@@ -28,6 +28,7 @@ import type { NextStepBrief } from '../../../../../api/lib/next-step-brief';
 import type { BranchEmail } from '../../../../../api/lib/branch-email-match';
 import { cn } from '@/core/lib/cn';
 import { supabase } from '@/integrations/supabase/browser';
+import { useDesk } from '../../lib/DeskContext';
 import { useSmsV2 } from '../../store/SmsV2Store';
 import { useContactPersistence } from '../../hooks/useContactPersistence';
 import { interpolateTemplate } from '../../lib/interpolateTemplate';
@@ -61,6 +62,7 @@ interface FromsTable {
 }
 
 interface Template {
+  desk?: string;
   id: string;
   name: string;
   body_md: string;
@@ -163,6 +165,7 @@ export default function ContactSmsModal({
   defaultChannel = null,
   deal = null,
 }: Props) {
+  const { desk } = useDesk();
   const { pushToast, columns, patchContact } = useSmsV2();
   const persist = useContactPersistence();
   // PR 80 safety: channel starts UNSELECTED — agent must consciously pick
@@ -170,7 +173,7 @@ export default function ContactSmsModal({
   // on the wrong channel.
   // PR 83: when the parent passes a defaultChannel (e.g. clicking the
   // WhatsApp icon on a contact row), open with that channel pre-selected.
-  const [channel, setChannel] = useState<Channel | null>(defaultChannel);
+  const [channel, setChannel] = useState<Channel | null>(desk === 'sa' && defaultChannel === 'whatsapp' ? null : defaultChannel);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [emailFroms, setEmailFroms] = useState<EmailFromRow[]>([]);
   const [selectedFromId, setSelectedFromId] = useState<string>('');
@@ -221,9 +224,9 @@ export default function ContactSmsModal({
       try {
         const { data } = await (supabase as unknown as TemplatesTable)
           .from('wk_sms_templates')
-          .select('id, name, body_md, move_to_stage_id, channel, subject, attachment_url')
+          .select('id, name, body_md, move_to_stage_id, channel, subject, attachment_url, desk')
           .order('name', { ascending: true });
-        if (!cancelled && data) setTemplates(data);
+        if (!cancelled && data) setTemplates(data.filter((t) => (t.desk || 'houses') === (desk === 'sa' ? 'sa' : 'houses')));
       } catch {
         // RLS / missing column — render with no templates.
       } finally {
@@ -267,9 +270,9 @@ export default function ContactSmsModal({
       setToEmail(contact.email ?? '');
       setRecentSendCount(0);
       setShowSentBanner(false);
-      setChannel(defaultChannel);
+      setChannel(desk === 'sa' && defaultChannel === 'whatsapp' ? null : defaultChannel);
     }
-  }, [contact, defaultChannel]);
+  }, [contact, defaultChannel, desk]);
 
   useEffect(() => {
     setSelectedTemplateId('');
@@ -447,6 +450,7 @@ export default function ContactSmsModal({
     const tpl = filteredTemplates.find((t) => t.id === id);
     if (!tpl) return;
     const expanded = interpolateTemplate(tpl.body_md, {
+      country: contact?.customFields?.hostunico_country, phone: contact?.phone,
       firstName,
       agentFirstName,
     });
@@ -697,7 +701,7 @@ export default function ContactSmsModal({
               )}
               data-testid="contact-sms-modal-channel-picker"
             >
-              {(['sms', 'whatsapp', 'email'] as const).map((c) => (
+              {(['sms', 'whatsapp', 'email'] as const).filter((c) => desk !== 'sa' || c !== 'whatsapp').map((c) => (
                 <button
                   key={c}
                   role="radio"

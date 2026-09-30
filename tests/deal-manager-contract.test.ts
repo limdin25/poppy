@@ -8,7 +8,7 @@
 // the brief, log what was refused, carry on. Never an error page, never a
 // blank card.
 
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { buildDealState, type DealStateInput } from '../api/lib/deal-state'
 import {
   validateVerdict, fallbackVerdict, allowedActions, baselineAttention,
@@ -16,6 +16,9 @@ import {
 } from '../api/lib/deal-manager-contract'
 
 const NOW = new Date('2026-08-14T18:00:00Z')
+// The scenario is in August. Keep the real-time guard on that same clock.
+beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(NOW) })
+afterEach(() => vi.useRealTimers())
 const hoursAgo = (h: number) => new Date(NOW.getTime() - h * 3_600_000).toISOString()
 
 const stateWith = (over: Partial<DealStateInput> = {}) => buildDealState({

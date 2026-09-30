@@ -51,6 +51,7 @@ import { useContactPersistence } from '../hooks/useContactPersistence';
 import { signCallRecording, useCalls } from '../hooks/useCalls';
 import CallTranscriptModal from '../components/calls/CallTranscriptModal';
 import { useSmsTemplates } from '../hooks/useSmsTemplates';
+import { useDesk } from '../lib/DeskContext';
 import { useCurrentAgent } from '../hooks/useCurrentAgent';
 import { interpolateTemplate } from '../lib/interpolateTemplate';
 import { prefillTemplateVars } from '../lib/waTemplates';
@@ -203,6 +204,7 @@ function ChannelGlyph({
 }
 
 export default function InboxPage() {
+  const { desk } = useDesk();
   const { contacts, columns: storeColumns, patchContact, upsertContact, pushToast } = useSmsV2();
   const persist = useContactPersistence();
   const demoMode = useDemoMode();
@@ -1053,6 +1055,7 @@ export default function InboxPage() {
     const tpl = allTemplates.find((t) => t.id === id);
     if (!tpl) return;
     const expandedBody = interpolateTemplate(tpl.body_md, {
+      country: activeContact?.customFields?.hostunico_country, phone: activeContact?.phone,
       firstName: contactFirstName,
       agentFirstName,
     });
@@ -1233,7 +1236,7 @@ export default function InboxPage() {
     <>
     <div className="h-full flex">
       {/* Pane 1 — list */}
-      <aside data-testid="inbox-list" className="w-[280px] bg-white border-r border-[#E5E7EB] flex flex-col">
+      <aside data-testid="inbox-list" className="w-[320px] max-w-[45vw] shrink-0 bg-white border-r border-[#E5E7EB] flex flex-col min-w-0">
         <div className="px-3 py-2.5 border-b border-[#E5E7EB] space-y-2">
           <div className="relative">
             <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-[#9CA3AF]" />
@@ -1293,18 +1296,18 @@ export default function InboxPage() {
               );
             };
             // Sideways scroll is a safety net only; both rows fit at 280px.
-            const rowCls = 'flex gap-1 flex-nowrap overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden';
+            const rowCls = 'flex flex-wrap gap-1.5';
             return (
               <>
-                <div className={rowCls}>{STATE_FILTERS.map(pill)}</div>
-                <div className={rowCls}>{SOURCE_FILTERS.map(pill)}</div>
+                <div className={rowCls}>{STATE_FILTERS.filter((f) => desk !== 'sa' || !['onboarded', 'drafts'].includes(f)).map(pill)}</div>
+                <div className={rowCls}>{SOURCE_FILTERS.filter((f) => desk !== 'sa' || f !== 'whatsapp').map(pill)}</div>
               </>
             );
           })()}
           {/* One quiet status row: is the AI answering this inbox (left), and
               the campaign scope (right, only once campaigns exist). Fixed
               height so the async pill never shifts the rows above/below. */}
-          <div className="h-[24px] flex items-center justify-between gap-1.5">
+          <div className="flex flex-col gap-2 min-w-0">
             <div className="flex items-center gap-1.5 min-w-0">
               {aiStatus.loaded && (
                 <>
@@ -1347,14 +1350,15 @@ export default function InboxPage() {
               )}
             </div>
             {(campaignOptions.length > 0 || propertyOptions.length > 0 || emailMailboxes.length >= 2) && (
-              <div className="flex items-center gap-1 min-w-0">
+              <div className="grid grid-cols-1 gap-2 min-w-0">
                 {emailMailboxes.length >= 2 && (
                   <select
                     data-testid="inbox-mailbox-filter"
                     value={mailboxFilter}
                     onChange={(e) => setMailboxFilter(e.target.value)}
                     title="Show only threads on this mailbox"
-                    className="text-[10.5px] bg-[#F3F3EE] border-none rounded-full px-1.5 py-[3px] text-[#374151] font-medium max-w-[130px] truncate focus:outline-none focus:ring-1 focus:ring-[#3C5A87]"
+                    aria-label="Filter by mailbox"
+                    className="w-full min-w-0 h-9 text-xs bg-white border border-slate-200 rounded-lg px-2 text-slate-700 focus:ring-2 focus:ring-blue-200"
                   >
                     <option value="all">All mailboxes</option>
                     {emailMailboxes.map((m) => (
@@ -1366,12 +1370,12 @@ export default function InboxPage() {
                 )}
                 {(campaignOptions.length > 0 || propertyOptions.length > 0) && (
                   <>
-                    <Megaphone style={{ width: 11, height: 11 }} className="text-[#9CA3AF] flex-shrink-0" />
                     <select
                       data-testid="inbox-campaign-filter"
                       value={campaignFilter}
                       onChange={(e) => setCampaignFilter(e.target.value)}
-                      className="text-[10.5px] bg-[#F3F3EE] border-none rounded-full px-1.5 py-[3px] text-[#374151] font-medium max-w-[150px] truncate focus:outline-none focus:ring-1 focus:ring-[#3C5A87]"
+                      aria-label="Filter by campaign"
+                      className="w-full min-w-0 h-9 text-xs bg-white border border-slate-200 rounded-lg px-2 text-slate-700 focus:ring-2 focus:ring-blue-200"
                     >
                       <option value="all">All conversations</option>
                       {propertyOptions.length > 0 && (
@@ -2194,7 +2198,7 @@ export default function InboxPage() {
                     : 'border-[#E5E5E5]'
                 )}
               >
-                {(['sms', 'whatsapp', 'email'] as const).map((c) => (
+                {(['sms', 'whatsapp', 'email'] as const).filter((c) => desk !== 'sa' || c !== 'whatsapp').map((c) => (
                   <button
                     key={c}
                     type="button"

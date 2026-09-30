@@ -12,6 +12,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/browser';
+import { useDesk } from '../lib/DeskContext';
 
 export type TemplateChannel = 'sms' | 'whatsapp' | 'email';
 
@@ -72,6 +73,7 @@ interface RawCampaignRow {
 }
 
 export function useSmsTemplates(opts: UseSmsTemplatesOpts = {}) {
+  const { desk } = useDesk();
   const { campaignId = null } = opts;
   const [items, setItems] = useState<SmsTemplate[]>([]);
   const [loading, setLoading] = useState(true);
@@ -82,6 +84,7 @@ export function useSmsTemplates(opts: UseSmsTemplatesOpts = {}) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const wsRes = await (supabase.from('wk_sms_templates' as any) as any)
         .select('id, name, body_md, is_global, owner_agent_id, move_to_stage_id, channel, subject, attachment_url, created_at, updated_at')
+        .eq('desk', desk === 'sa' ? 'sa' : 'houses')
         .order('name', { ascending: true });
 
       let merged: SmsTemplate[] = ((wsRes.data ?? []) as RawWorkspaceRow[]).map(
@@ -129,7 +132,7 @@ export function useSmsTemplates(opts: UseSmsTemplatesOpts = {}) {
     } finally {
       setLoading(false);
     }
-  }, [campaignId]);
+  }, [campaignId, desk]);
 
   useEffect(() => {
     let cancelled = false;
@@ -174,7 +177,7 @@ export function useSmsTemplates(opts: UseSmsTemplatesOpts = {}) {
 
   const add = useCallback(
     async (row: TemplateInsert) => {
-      const payload: Record<string, unknown> = { ...row };
+      const payload: Record<string, unknown> = { ...row, ...(campaignId ? {} : { desk: desk === 'sa' ? 'sa' : 'houses' }) };
       if (campaignId) {
         payload.campaign_id = campaignId;
         delete payload.is_global;
@@ -195,7 +198,7 @@ export function useSmsTemplates(opts: UseSmsTemplatesOpts = {}) {
       await reload();
       return data;
     },
-    [campaignId, targetTable, reload]
+    [campaignId, targetTable, reload, desk]
   );
 
   const patch = useCallback(

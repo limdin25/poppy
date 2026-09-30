@@ -42,7 +42,11 @@ async function getApiKey(provider: Provider): Promise<string> {
     .select('value')
     .eq('key', db)
     .single();
-  const val = data?.value || '';
+  // The live CRM coach predates platform_settings and keeps its OpenAI key here.
+  const { data: coachKey } = provider === 'openai' && !data?.value
+    ? await supabase.from('wk_ai_settings').select('openai_api_key').limit(1).maybeSingle()
+    : { data: null };
+  const val = data?.value || coachKey?.openai_api_key || '';
   keyCache[db] = { value: val, ts: Date.now() };
   return val;
 }
@@ -153,7 +157,7 @@ export async function callLLM(
    *  edge ceiling into a 504. `thinkingBudget` caps the thinking portion
    *  (must be under maxTokens, so the answer always has room). Omit to keep a
    *  caller's existing behaviour byte for byte. */
-  opts?: { thinkingBudget?: number },
+  opts?: { thinkingBudget?: number; allowProviderFallback?: boolean; reasoningEffort?: 'none' | 'low' | 'medium' | 'high'; jsonOutput?: boolean; timeoutMs?: number },
 ): Promise<string> {
   let resolvedModel = normalizeModel(model);
   let provider = getProvider(resolvedModel);
@@ -161,7 +165,7 @@ export async function callLLM(
 
   // No key for the chosen provider (e.g. a grok model with no xAI key) →
   // fall back to the default Claude model if we have an Anthropic key.
-  if (!apiKey && provider !== 'anthropic') {
+  if (!apiKey && provider !== 'anthropic' && opts?.allowProviderFallback !== false) {
     const anth = await getApiKey('anthropic');
     if (anth) { provider = 'anthropic'; resolvedModel = DEFAULT_MODEL; apiKey = anth; }
   }
@@ -219,6 +223,7 @@ export async function callLLM(
   const callChat = (extra: Record<string, unknown>) =>
     fetch(`${getBaseUrl(provider)}/v1/chat/completions`, {
       method: 'POST',
+      ...(opts?.timeoutMs ? { signal: AbortSignal.timeout(opts.timeoutMs) } : {}),
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`,
@@ -230,7 +235,10 @@ export async function callLLM(
         // Anthropic branch above. Headroom keeps the answer alive; the VPS
         // learnt this on qwen3.7 the hard way (empty answers that look like
         // blindness).
-        max_tokens: provider === 'openrouter' ? maxTokens + 4096 : maxTokens,
+        ...(provider === 'openai' && /^gpt-5/.test(resolvedModel)
+          ? { max_completion_tokens: maxTokens, ...(opts?.reasoningEffort ? { reasoning_effort: opts.reasoningEffort } : {}) }
+          : { max_tokens: provider === 'openrouter' ? maxTokens + 4096 : maxTokens }),
+        ...(opts?.jsonOutput && provider === 'openai' ? { response_format: { type: 'json_object' } } : {}),
         // Reasoning OFF by default: measured 19 Aug on the brain-sized
         // prompt, DeepSeek v4 pro takes 32s thinking and 4.7s not, and the
         // edge routes have a ~25s ceiling. The deterministic contract around

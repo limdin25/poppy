@@ -20,6 +20,7 @@ export interface SaListing {
   outcode: string | null;
   address: string;
   rentPcm: number | null;
+  sourcePrice?: string | null;
   bedrooms: number | null;
   bathrooms: number | null;
   propertyType: string | null;
@@ -43,6 +44,7 @@ interface Row {
   outcode: string | null;
   address: string | null;
   rent_pcm: number | string | null;
+  source_price?: string | null;
   bedrooms: number | null;
   bathrooms: number | null;
   property_type: string | null;
@@ -68,6 +70,7 @@ export function rowToSaListing(r: Row): SaListing {
     outcode: r.outcode,
     address: r.address ?? '',
     rentPcm: Number.isFinite(rent) ? rent : null,
+    sourcePrice: r.source_price ?? null,
     bedrooms: r.bedrooms,
     bathrooms: r.bathrooms,
     propertyType: r.property_type,
@@ -152,9 +155,10 @@ export function useSaListings(contactId: string | null | undefined) {
     queryFn: async (): Promise<SaListing[]> => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error } = await (supabase.from('sa_listings' as any) as any)
-        .select('id, rightmove_id, agency, agency_phone, city, outcode, address, rent_pcm, bedrooms, bathrooms, property_type, summary, listing_url, photo_urls, first_listed_at, let_available_date, dealt_at, outcome, outcome_note, outcome_at')
+        .select('id, rightmove_id, agency, agency_phone, city, outcode, address, rent_pcm, source_price, bedrooms, bathrooms, property_type, summary, listing_url, photo_urls, first_listed_at, let_available_date, dealt_at, outcome, outcome_note, outcome_at')
         .eq('wk_contact_id', contactId)
-        .order('dealt_at', { ascending: false });
+        .order('dealt_at', { ascending: false })
+        .order('id');
       if (error) throw new Error(error.message);
       return ((data ?? []) as Row[]).map(rowToSaListing);
     },

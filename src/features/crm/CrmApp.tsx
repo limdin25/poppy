@@ -10,6 +10,7 @@ const InboxPage = lazy(() => import('./pages/InboxPage'))
 const CallsPage = lazy(() => import('./pages/CallsPage'))
 const PastCallScreen = lazy(() => import('./pages/PastCallScreen'))
 const TemplatesPage = lazy(() => import('./pages/TemplatesPage'))
+const HostunicoFollowupsPage = lazy(() => import('./pages/HostunicoFollowupsPage'))
 const DealProcessPage = lazy(() => import('./pages/DealProcessPage'))
 const DealCockpitPage = lazy(() => import('./pages/DealCockpitPage'))
 const RawLeadsPage = lazy(() => import('./pages/RawLeadsPage'))
@@ -55,6 +56,7 @@ export default function CrmApp() {
             <Route path="calls" element={<CallsPage />} />
             <Route path="calls/:callId" element={<PastCallScreen />} />
             <Route path="templates" element={<TemplatesPage />} />
+            <Route path="report-followups" element={<HostunicoFollowupsPage />} />
             {/* The property deal process, step by step. Its own page under
                 Templates in the menu (Hugo 2026-08-12), not a tab inside it. */}
             <Route path="cockpit" element={<DealCockpitPage />} />

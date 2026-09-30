@@ -14,6 +14,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/browser';
 import type { Callback, CallbackKind } from '../lib/callbackList';
 import { useDesk } from '../lib/DeskContext';
+import { followupAction } from './useHostunicoFollowups';
 
 interface RpcRow {
   contact_id: string;
@@ -54,6 +55,7 @@ export function useCallbacks(enabled = true): {
     setReady(true);
     if (err) { setError(err.message); return; }
     setError(null);
+    const { data: sequences } = desk === 'sa' ? await (supabase as any).from('sa_report_followups').select('contact_id,intent,reason,confidence').not('replied_at', 'is', null) : { data: [] };
     setItems(((data ?? []) as RpcRow[]).map((r) => ({
       contactId: r.contact_id,
       name: r.contact_name ?? '',
@@ -63,6 +65,7 @@ export function useCallbacks(enabled = true): {
       cameBackAt: r.came_back_at,
       missed: Boolean(r.missed),
       preview: String(r.preview ?? ''),
+      ...((sequences ?? []).find((s: { contact_id: string }) => s.contact_id === r.contact_id) ?? {}),
     })));
   }, [enabled, desk]);
 
@@ -74,11 +77,27 @@ export function useCallbacks(enabled = true): {
 
   useEffect(() => {
     if (!enabled) return;
-    const t = setInterval(() => { void load(); }, POLL_MS);
+    const t = setInterval(() => { void load(); }, desk === 'sa' ? 5000 : POLL_MS);
     const onFocus = () => { void load(); };
     window.addEventListener('focus', onFocus);
     return () => { clearInterval(t); window.removeEventListener('focus', onFocus); };
-  }, [enabled, load]);
+  }, [enabled, load, desk]);
+
+  useEffect(() => {
+    if (!enabled || desk !== 'sa') return;
+    let classifying = false;
+    const refresh = async () => {
+      void load();
+      if (classifying) return;
+      classifying = true;
+      try { await followupAction('classify'); await load(); } catch { /* The recorded neutral flag remains visible. */ }
+      finally { classifying = false; }
+    };
+    void refresh();
+    const channel = supabase.channel('hostunico-priority-replies').on('postgres_changes', { event: '*', schema: 'public', table: 'sa_report_followups' }, () => void refresh()).subscribe();
+    const retry = window.setInterval(() => void refresh(), 30000);
+    return () => { void supabase.removeChannel(channel); window.clearInterval(retry); };
+  }, [enabled, desk, load]);
 
   useEffect(() => {
     let cancelled = false;

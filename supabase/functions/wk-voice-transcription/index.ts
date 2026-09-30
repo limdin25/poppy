@@ -20,6 +20,7 @@
 //
 // AUTH: Twilio HMAC-SHA1 signature. URL is public (verify_jwt = false).
 
+import { HOSTUNICO_STAGES, HOSTUNICO_RULES, HOSTUNICO_ANSWERS } from '../_shared/hostunico-sales.ts';
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 import {
@@ -1124,154 +1125,14 @@ const AUCTION_OBJECTIONS: CoachFact[] = [
 // reference gated on isSaCall, and the Elsie knowledge base REPLACED.
 // ---------------------------------------------------------------------------
 
-const SA_STAGE_ORDER = [
-  'Is it still available',
-  'Who we are',
-  'Would they say yes',
-  'Anything stopping it',
-  'Email and next step',
-];
-
-const SA_AGENT_SCRIPT_MD = `# Ringing a letting agent about a company let for serviced accommodation
-
-We are the middleman. We do not take the flat. We work with serviced
-accommodation companies who want city-centre flats on a company let. The call
-wants ONE thing: a yes in principle, from the agent or the landlord. Hugo then
-brings the company and the company signs with the landlord. NO NEGOTIATION:
-the company pays the asking rent.
-
-## 1. Is it still available
-"Hi, I'm calling about the flat you have on (the street in THIS LEAD). Is it still available?"
-
-## 2. Who we are
-"It's Pedro from Unico. We work with serviced accommodation companies who are looking for flats in the city centre on a company let, 3 to 5 years, and this one fits."
-"For the landlord it's simple: the full asking rent, paid every month by one company, whether the flat is booked or not. The company furnishes it, has it cleaned after every stay and looks after it, and there are no empty months between tenants."
-
-## 3. Would they say yes
-"Would you, or the landlord, be open to that in principle?"
-If they must ask the landlord: "Of course. When will you speak to them? I'll ring you back then."
-
-## 4. Anything stopping it
-"Is there anything that would stop it? A lease that says no short stays, rules in the building, or a mortgage that needs the lender's OK?"
-
-## 5. Email and next step
-"What's the best email for you? I'll send the details now."
-"Once you confirm, we'll introduce the company and they'll arrange everything from there."
-`;
-
-const SA_SCRIPT_PROMPT = [
-  'This call is an agent ringing a LETTING AGENT about a city-centre flat that is advertised TO RENT. The person on the phone is a letting agent (sometimes the landlord). They are not a sales lead.',
-  '',
-  'WE ARE THE MIDDLEMAN. We do NOT take the flat. We work with serviced accommodation companies who rent city-centre flats on a company let of 3 to 5 years. The whole call wants ONE thing: a YES IN PRINCIPLE, from the agent or the landlord, that the flat could be let to one of those companies. A yes from the agent counts as much as a yes from the landlord. Hugo then introduces the company, and the company signs with the landlord.',
-  '',
-  'THE FIVE BEATS, forward-only order:',
-  '1. Is it still available',
-  '2. Who we are (Pedro from Unico, we work with serviced accommodation companies; full asking rent every month, booked or not; furnished, cleaned after every stay; no empty months)',
-  '3. Would they say yes (would you, or the landlord, be open to that in principle?)',
-  '4. Anything stopping it (lease, building rules, mortgage)',
-  '5. Email and next step (send the details now; we introduce the company)',
-  '',
-  'THE HARD RULES.',
-  'NO NEGOTIATION. The company pays the asking rent. If they ask for more, or for our offer, coach: "The company pays the asking rent, there\'s nothing to negotiate on our side. Is the landlord open to it at that?"',
-  'The agent NEVER says "we\'ll take it", never agrees a start date, a contract length beyond "3 to 5 years", or a viewing time. The company arranges those.',
-  'The agent never names an operator company. If asked who: "We work with a few operators. Once you\'re open in principle, we introduce the one that fits."',
-  'If they ask whether we are a middleman: yes, honestly. "We find the flats and introduce the company. The contract is between the landlord and the company, and the company pays us, so it costs the landlord nothing."',
-  '',
-  'WHEN THEY SAY YES IN PRINCIPLE, bank it: coach him to repeat it back, get their name and whether they are the agent or the landlord, get the email, and send the email from the Email tab while they are on the phone.',
-  'WHEN THEY MUST ASK THE LANDLORD: get the day they will speak to them, their name and email, and agree to ring back then.',
-  'A LEASE, BUILDING OR MORTGAGE QUESTION is not a no: the company deals with consents. Only a flat the lease or the building flatly forbids is a no.',
-  '',
-  'NEVER MENTION: Google reviews, ratings, websites, video, subscriptions, or anything about the Elsie product. Never mention buying a house, offers on houses, auctions or builders. If a card would, emit STAY_ON_SCRIPT.',
-  'NEVER INVENT a fact about the flat, the company, Hugo or the money, and never give legal advice. If it is not in THIS LEAD, coach him to ask or to say Hugo will call them.',
-].join('\n');
-
-const SA_CALL_CONTEXT = [
-  '=== THIS CALL IS ABOUT A COMPANY LET FOR SERVICED ACCOMMODATION ===',
-  'The person on the phone is a LETTING AGENT (or the landlord) with a flat advertised to rent. We are the middleman: we introduce a serviced accommodation company, we do not take the flat. The goal is a yes in principle. No negotiation: the company pays the asking rent.',
-  'Five beats: still available, who we are, would they say yes, anything stopping it, email and next step.',
-  'The KNOWLEDGE BASE on this call is the letting-agent objection list. Answer with the approved line from it, never a new argument.',
-].join('\n');
-
-const SA_OBJECTIONS: CoachFact[] = [
-  {
-    key: 'sa_is_it_airbnb',
-    label: 'They ask if it is Airbnb',
-    value: 'Say: "It\'s serviced accommodation run by a professional company: contractors, business travellers, people relocating, and longer stays too. The landlord deals with one company on one contract, and the rent comes in every month."',
-    keywords: ['airbnb', 'holiday let', 'short let', 'party', 'parties', 'booking.com'],
-  },
-  {
-    key: 'sa_why_not_tenant',
-    label: 'Why not a normal tenant',
-    value: 'Say: "The landlord still gets the full rent, but from a company, on a longer contract, with no gaps between tenants and the flat kept to a hotel standard."',
-    keywords: ['normal tenant', 'regular tenant', 'why would', 'what\'s the benefit', 'what is the benefit', 'why should'],
-  },
-  {
-    key: 'sa_who_is_company',
-    label: 'Who is the company / are you a middleman',
-    value: 'Say: "That\'s right, we find the flats and introduce the company. The contract is between the landlord and the company, and the company pays us, so it costs the landlord nothing. Once you\'re open in principle, we introduce the one that fits." Never name a company.',
-    keywords: ['which company', 'who is the company', 'middleman', 'sourcer', 'sourcing', 'who pays you', 'your fee', 'agent fee'],
-  },
-  {
-    key: 'sa_pay_more',
-    label: 'They ask us to pay more or make an offer',
-    value: 'Say: "The company pays the asking rent, there\'s nothing to negotiate on our side. Is the landlord open to it at that?" No negotiation, ever.',
-    keywords: ['pay more', 'above asking', 'your offer', 'best offer', 'what would you pay', 'lower the rent', 'discount'],
-  },
-  {
-    key: 'sa_ask_landlord',
-    label: 'They have to ask the landlord',
-    value: 'Say: "Of course. When will you speak to them? I\'ll ring you back then, and I\'ll email you the details now so you have them in front of you." Get the day, the name and the email.',
-    keywords: ['ask the landlord', 'check with the landlord', 'speak to the landlord', 'landlord decides', 'not my decision', 'run it by'],
-  },
-  {
-    key: 'sa_no_company_lets',
-    label: 'We don\'t do company lets',
-    value: 'Say: "No problem, thanks for telling me. Is that for every landlord you look after, or just this one?" Every landlord: mark Never do company lets.',
-    keywords: ['don\'t do company', 'no company lets', 'not company lets', 'only private tenants', 'no companies'],
-  },
-  {
-    key: 'sa_send_email',
-    label: 'Just send me an email',
-    value: 'Say: "Of course, what\'s the address? I\'ll send it now while you\'re on. And roughly, do you think the landlord would be open to it?" Send it from the Email tab.',
-    keywords: ['send me an email', 'email me', 'send an email', 'put it in writing', 'email over'],
-  },
-  {
-    key: 'sa_building_rules',
-    label: 'The building or lease does not allow short lets',
-    value: 'Say: "Understood. Could you check the lease for us? And if this one can\'t, is there another flat in the centre where it could work?"',
-    keywords: ['lease', 'head lease', 'building', 'management company', 'freeholder', 'not allowed', 'doesn\'t allow', 'no short lets'],
-  },
-  {
-    key: 'sa_local_rules',
-    label: 'Council rules, the London 90 nights, a Scottish licence',
-    value: 'Say: "The company knows the local rules and works within them, that\'s their job. In London that means the 90 night limit, and they mix short stays with longer ones. Where a licence is needed, the company gets it." Nothing legal beyond that; Hugo will call them.',
-    keywords: ['90 nights', '90 days', 'ninety', 'licence', 'license', 'planning', 'council', 'permission', 'regulations'],
-  },
-  {
-    key: 'sa_mortgage_insurance',
-    label: 'Mortgage or insurance',
-    value: 'Say: "The company sets it up properly: it carries the right insurance and works with the landlord on the lender\'s consent."',
-    keywords: ['mortgage', 'lender', 'insurance', 'insured', 'consent to let'],
-  },
-  {
-    key: 'sa_damage_bills',
-    label: 'Damage, bills, references',
-    value: 'Say: "The company is responsible for the flat for the whole let, pays the bills and the council tax, and goes through your normal referencing and deposit like any tenant."',
-    keywords: ['damage', 'wear and tear', 'bills', 'council tax', 'references', 'referencing', 'deposit', 'guarantor'],
-  },
-  {
-    key: 'sa_move_in_viewing',
-    label: 'When can they move in / view it',
-    value: 'Say: "The company will arrange that with you directly once you\'re open in principle, including seeing the flat." Never give a date.',
-    keywords: ['move in', 'start date', 'when can they', 'viewing', 'view it', 'come and see'],
-  },
-  {
-    key: 'sa_who_is_calling',
-    label: 'They ask who is calling',
-    value: 'Say: "It\'s Pedro from Unico. We work with serviced accommodation companies and find them flats." ONLY if pressed: "Full name\'s Ulinc Unico Group Limited, company number 11197856, registered office 483 Green Lanes, London, N13 4BS."',
-    keywords: ['who\'s calling', 'who is calling', 'what company', 'who do you work for', 'who is this'],
-  },
-];
+const SA_STAGE_ORDER = HOSTUNICO_STAGES;
+const SA_AGENT_SCRIPT_MD = HOSTUNICO_RULES;
+const SA_SCRIPT_PROMPT = HOSTUNICO_RULES;
+const SA_CALL_CONTEXT = HOSTUNICO_RULES;
+const SA_OBJECTIONS: CoachFact[] = HOSTUNICO_ANSWERS.map((answer) => ({
+  key: answer.key, label: answer.title, value: answer.say,
+  keywords: answer.match.source.split('|').map((word) => word.replace(/[^a-zA-Z ]/g, '').trim()).filter(Boolean),
+}));
 
 const PROPERTY_CALL_CONTEXT = [
   '=== THIS CALL IS ABOUT BUYING A HOUSE ===',
@@ -2710,7 +2571,13 @@ serve(async (req: Request) => {
           const contactFirstName =
             ownerName.split(/\s+/)[0] || contactName.split(/\s+/)[0] || 'the caller';
           const leadFactLines: string[] = [];
-          if (cf.lead_type === 'sa_agency') {
+          if (isSaCall) {
+            leadFactLines.push(`Contact: ${contactName}. Hostunico management sales.`);
+            leadFactLines.push(`Lead pricing country: ${cf.hostunico_country || 'GB'}. Software from month two: ${!cf.hostunico_country || cf.hostunico_country === 'GB' ? 'GBP 29' : 'USD 29'} per month. Software month one is free. This country overrides generic example answers.`);
+            leadFactLines.push(`Source: ${cf.source || 'confirm with the caller'}. Advertiser type: ${cf.advertiser_type || 'unknown'}.`);
+            leadFactLines.push(`Next step: ${cf.next_step || 'Offer the property report'}.`);
+            leadFactLines.push('There may be several properties for this contact. Use only property facts actually confirmed in this call. Never assume which property is selected or that a report was sent.');
+          } else if (cf.lead_type === 'sa_agency') {
             // A LETTING AGENT on the Serviced Accommodation desk. The flat is
             // written onto the contact by scripts/sa-scrape-and-assign.mjs.
             const f = (k: string) => (cf[k] ?? '').trim();
@@ -2814,7 +2681,7 @@ serve(async (req: Request) => {
           // key collision; workspace facts that aren't overridden are
           // preserved so the model still has the full company context.
           const wsFacts = (factsRes.data ?? []) as CoachFact[];
-          const campFacts = (campaignFactsRes.data ?? []) as CoachFact[];
+          const campFacts = (isSaCall ? [] : campaignFactsRes.data ?? []) as CoachFact[];
           // A property call REPLACES the workspace knowledge base rather than
           // adding to it: every workspace fact is an Elsie product fact (price,
           // what is included, how reviews work) and all of them are wrong when
@@ -2832,7 +2699,7 @@ serve(async (req: Request) => {
 
           const layers = {
             stylePrompt:
-              dbStyle.trim().length > 0
+              isSaCall ? 'Be calm and direct. Give one short, natural line Pedro can say now. Answer the question first and pause. No filler or sales pressure.' : dbStyle.trim().length > 0
                 ? dbStyle
                 : dbScript.trim().length > 0
                   ? '' // script set, style empty — let the in-fn DEFAULT_STYLE_PROMPT apply

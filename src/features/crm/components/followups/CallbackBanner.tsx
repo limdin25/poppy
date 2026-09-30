@@ -155,7 +155,7 @@ export default function CallbackBanner() {
                 <button
                   onClick={() => navigate(`/admin/crm/inbox?contact=${c.contactId}`)}
                   className="text-[12px] font-semibold text-[#1A1A1A] hover:underline truncate text-left"
-                  title={c.preview}
+                    title={c.reason ? `${c.reason} (${Math.round((c.confidence || 0) * 100)}% confidence)` : c.preview}
                 >
                   {displayName(c)}
                 </button>
@@ -177,6 +177,7 @@ export default function CallbackBanner() {
                     {c.preview}
                   </span>
                 )}
+                {c.intent && <span title={c.reason} className="text-[10px] text-slate-500">{Math.round((c.confidence || 0) * 100)}%</span>}
                 <div className="ml-auto flex items-center gap-1 flex-shrink-0">
                   <button
                     onClick={() => openDialerPro(c.contactId)}

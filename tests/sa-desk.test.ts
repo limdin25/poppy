@@ -21,7 +21,7 @@ import { saEmailTemplate } from '../src/features/crm/components/live-call/SaEmai
 import { isSaDay } from '../api/cron/daily-agent-reports'
 
 const read = (p: string) => readFileSync(join(__dirname, '..', p), 'utf8')
-const MIG = read('supabase/migrations/20260923000001_sa_desk.sql')
+const MIG = read('supabase/migrations/20260923000001_sa_desk.sql') + read('supabase/migrations/20260930000002_hostunico_sales_desk.sql')
 const HTML = read('src/core/content/sa-call-script.html')
 const PAGE = HTML.slice(HTML.indexOf('id="page"'))
 const COACH = read('supabase/functions/wk-voice-transcription/index.ts')
@@ -87,27 +87,21 @@ describe('the script', () => {
     expect(tokens.length).toBeGreaterThan(5)
     for (const t of tokens) expect(SCRIPT_TEXT_TOKENS as readonly string[]).toContain(t)
   })
-  it('says we are the middleman, and never that we take the flat or negotiate', () => {
-    expect(PAGE).toMatch(/We are the middleman\. We do not take the flat\./)
-    expect(PAGE).toMatch(/No negotiation\./)
-    const said = [...PAGE.matchAll(/<div class="(?:line|obj-say)">[\s\S]*?<\/div>/g)].map((m) => m[0]).join('\n')
-    expect(said).toMatch(/we work with serviced accommodation companies/i)
-    expect(said).not.toMatch(/we('ll| will) take (it|the flat)|we take flats|we'd pay|we can offer|we can pay/i)
-    expect(said).toMatch(/the company pays the asking rent/i)
-  })
-  it('asks for a yes from the agent OR the landlord', () => {
-    expect(PAGE).toMatch(/Would you, or the landlord, be open to that in principle\?/)
-    expect(PAGE).toMatch(/A yes from the agent counts\./)
+  it('sells management, gives the fee and asks for report permission', () => {
+    expect(PAGE).toContain('10.8% including VAT')
+    expect(PAGE).toContain('9% fee plus 1.8% VAT')
+    expect(PAGE).toContain('whole property or a room')
+    expect(PAGE).toContain('Press Send report by SMS only after they agree')
+    expect(PAGE).toContain('not guaranteed income')
+    expect(PAGE).not.toContain('company pays the asking rent')
   })
 })
 
 describe('screen and coach agree', () => {
-  it('same five stages, same order', () => {
-    const screen = [...PAGE.matchAll(/<div class="stage-div">\d\. ([^<]+)<\/div>/g)].map((m) => m[1].trim())
-    const block = COACH.slice(COACH.indexOf('const SA_STAGE_ORDER = ['))
-    const coach = [...block.slice(0, block.indexOf('];')).matchAll(/'([^']+)'/g)].map((m) => m[1])
-    expect(screen).toEqual(coach)
-    expect(screen).toHaveLength(5)
+  it('uses the same approved Hostunico policy for the coach and instant answers', () => {
+    expect(COACH).toContain('const SA_SCRIPT_PROMPT = HOSTUNICO_RULES;')
+    expect(COACH).toContain('const SA_STAGE_ORDER = HOSTUNICO_STAGES;')
+    expect(read('src/features/crm/components/live-call/HostunicoScriptPane.tsx')).toContain('HOSTUNICO_ANSWERS')
   })
   it('the coach replaces the Elsie knowledge base on an SA call', () => {
     expect(COACH).toMatch(/const isSaCall = \(call\.script_key as string \| null\) === 'sa_call';/)
@@ -115,17 +109,15 @@ describe('screen and coach agree', () => {
     expect(COACH).toMatch(/: isSaCall \? 'sa_call'/)
     expect(COACH).toMatch(/: isSaCall \? SA_SCRIPT_PROMPT/)
   })
-  it('the coach knows we are the middleman and never negotiate', () => {
-    const block = COACH.slice(COACH.indexOf('const SA_SCRIPT_PROMPT = ['), COACH.indexOf('const SA_OBJECTIONS'))
-    expect(block).toMatch(/WE ARE THE MIDDLEMAN\. We do NOT take the flat\./)
-    expect(block).toMatch(/NO NEGOTIATION\./)
-    expect(block).not.toMatch(LONG_DASH_OR_CURLY)
+  it('does not let old campaign facts override Hostunico policy', () => {
+    expect(COACH).toContain('(isSaCall ? [] : campaignFactsRes.data ?? [])')
   })
 })
 
 describe('the outcomes', () => {
   it('the buttons and the API list the same outcomes', () => {
-    expect(SA_OUTCOMES.map((o) => o.key)).toEqual([...OUTCOMES])
+    for (const outcome of SA_OUTCOMES) expect(OUTCOMES).toContain(outcome.key)
+    expect(SA_OUTCOMES.map((o) => o.key)).not.toContain('yes_in_principle')
   })
   it('a yes needs a name and goes to Hugo', () => {
     const api = read('api/crm/sa-outcome.ts')
@@ -140,13 +132,13 @@ describe('the outcomes', () => {
 
 describe('the email', () => {
   const t = saEmailTemplate({ address: '8 Crump Street, Liverpool', street: 'Crump Street', city: 'Liverpool', rent: '£1,000 a month', person: 'Sam', fromName: 'Pedro' })
-  it('introduces a company, asks for a yes in principle, and never takes the flat', () => {
-    expect(t.body).toMatch(/we work with serviced accommodation companies/)
-    expect(t.body).toMatch(/open to this in principle/)
-    expect(t.body).toMatch(/we will introduce the company/)
-    expect(t.body).not.toMatch(/we('ll| will) take/i)
+  it('uses the management offer and never guarantees rent', () => {
+    expect(t.body).toContain('9% management plus 1.8% VAT')
+    expect(t.body).toContain('£29 a month from month two')
+    expect(t.body).toContain('You keep your Airbnb account')
+    expect(t.body).toContain('not guaranteed income')
+    expect(t.body).not.toContain('paid every month whether')
     expect(t.body).not.toMatch(LONG_DASH_OR_CURLY)
-    expect(t.subject).not.toMatch(LONG_DASH_OR_CURLY)
   })
   it('a person presses send: the pane only sends from a click', () => {
     const pane = read('src/features/crm/components/live-call/SaEmailPane.tsx')

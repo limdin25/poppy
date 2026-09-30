@@ -1,3 +1,4 @@
+import { hostunicoPriceCopy } from '../../../../../supabase/functions/_shared/hostunico-pricing';
 // The email on a Serviced Accommodation call (Hugo, 2026-09-23).
 //
 // Letting agents nearly always say "send me an email". So Pedro asks for the
@@ -19,7 +20,7 @@ import type { SaListing } from '../../hooks/useSaListings';
 import { gbpMonth, spokenStreet } from '../../hooks/useSaListings';
 
 /** The company Pedro says on the phone (src/core/content/sa-call-script.html). */
-const COMPANY = 'Unico';
+const COMPANY = 'Hostunico';
 
 export function saEmailTemplate(opts: {
   address: string;
@@ -28,23 +29,23 @@ export function saEmailTemplate(opts: {
   rent: string;
   person?: string | null;
   fromName: string;
+  reportUrl?: string;
+  country?: string;
 }): { subject: string; body: string } {
   const hi = opts.person ? `Hi ${opts.person},` : 'Hi,';
   const where = opts.city ? ` in ${opts.city}` : '';
   return {
-    subject: `${opts.street}, company let for serviced accommodation`,
+    subject: `${opts.street}, your Hostunico property assessment`,
     body: [
       hi,
       '',
-      `Thanks for your time on the phone. As mentioned, we work with serviced accommodation companies who are looking for flats${where} on a company let of 3 to 5 years, and ${opts.address} would suit them.`,
+      `Thanks for your time on the phone about ${opts.address}${where}. Hostunico helps owners manage short stays through Airbnb.`,
       '',
-      'For the landlord that means:',
-      `- the full asking rent${opts.rent ? ` of ${opts.rent}` : ''}, paid by one company on one contract`,
-      '- rent paid every month whether the flat is booked or not',
-      '- the flat furnished, cleaned after every stay and looked after professionally',
-      '- no empty months between tenants',
+      opts.reportUrl ? `Here is your property report: ${opts.reportUrl}\n\nIt includes the estimated earnings, assumptions and costs. The figures are estimates, not guaranteed income.` : `We can prepare a report comparing estimated earnings and costs${opts.rent ? ` with the advertised rent of ${opts.rent}` : ''}. Please confirm the full postcode, whole-property bedrooms and bathrooms. The figures are estimates, not guaranteed income.`,
       '',
-      'Could you let me know if you, or the landlord, would be open to this in principle? If so, we will introduce the company and they will take it from there.',
+      hostunicoPriceCopy(opts.country),
+      '',
+      'You keep your Airbnb account. Elsie and the operations team handle guest communication and cleaning coordination. Want me to walk you through what onboarding looks like?',
       '',
       'Thanks,',
       opts.fromName,
@@ -58,11 +59,13 @@ interface Props {
   contactEmail?: string;
   agentFirstName: string;
   listing: SaListing | null;
+  reportUrl?: string;
+  country?: string;
 }
 
 const VALID = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
-export default function SaEmailPane({ contactId, contactEmail, agentFirstName, listing }: Props) {
+export default function SaEmailPane({ contactId, contactEmail, agentFirstName, listing, reportUrl, country }: Props) {
   const { pushToast, patchContact } = useSmsV2();
   const persist = useContactPersistence();
   const [email, setEmail] = useState(contactEmail ?? '');
@@ -81,10 +84,10 @@ export default function SaEmailPane({ contactId, contactEmail, agentFirstName, l
 
   useEffect(() => {
     if (touched.current) return;
-    const t = saEmailTemplate({ address, street, city: listing?.city, rent, person: person.trim() || null, fromName: agentFirstName });
+    const t = saEmailTemplate({ address, street, city: listing?.city, rent, person: person.trim() || null, fromName: agentFirstName, reportUrl, country });
     setSubject(t.subject);
     setBody(t.body);
-  }, [address, street, rent, listing?.city, person, agentFirstName]);
+  }, [address, street, rent, listing?.city, person, agentFirstName, reportUrl, country]);
 
   const valid = VALID.test(email.trim());
   const canSend = valid && !!subject.trim() && !!body.trim() && !sending && !!contactId;

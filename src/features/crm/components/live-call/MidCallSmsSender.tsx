@@ -299,6 +299,7 @@ export default function MidCallSmsSender({
     const tpl = filteredTemplates.find((t) => t.id === id);
     if (!tpl) return;
     const expanded = interpolateTemplate(tpl.body_md, {
+      country: currentContact?.customFields?.hostunico_country, phone: currentContact?.phone,
       firstName,
       agentFirstName,
     });

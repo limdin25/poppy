@@ -4,6 +4,7 @@ import { Check, ChevronDown } from 'lucide-react';
 import { cn } from '@/core/lib/cn';
 import { ACTIVE_PIPELINE } from '../../data/mockPipelines';
 import { useSmsV2 } from '../../store/SmsV2Store';
+import { useDesk } from '../../lib/DeskContext';
 
 interface Props {
   value?: string; // pipeline column id
@@ -33,6 +34,7 @@ interface Props {
  *   - md: pipeline cards / detail header
  */
 export default function StageSelector({ value, onChange, size = 'sm', className, pipelineId }: Props) {
+  const { desk } = useDesk();
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -44,15 +46,15 @@ export default function StageSelector({ value, onChange, size = 'sm', className,
   // and the stage didn't stick on reload.
   const { columns: storeCols } = useSmsV2();
   const columns = useMemo(() => {
-    const all = storeCols.length > 0 ? storeCols : ACTIVE_PIPELINE.columns;
+    const all = storeCols.length > 0 ? storeCols : desk === 'sa' ? [] : ACTIVE_PIPELINE.columns;
     if (!pipelineId) return all;
     return all.filter((c) => c.pipelineId === pipelineId);
-  }, [storeCols, pipelineId]);
+  }, [storeCols, pipelineId, desk]);
   // Always look up the current stage in the FULL list so we still
   // render a label when the contact's existing column belongs to a
   // different pipeline than the active one (UX: don't pretend the
   // contact has no stage just because the picker is scoped).
-  const allColumnsForLookup = storeCols.length > 0 ? storeCols : ACTIVE_PIPELINE.columns;
+  const allColumnsForLookup = storeCols.length > 0 ? storeCols : desk === 'sa' ? [] : ACTIVE_PIPELINE.columns;
   const current = allColumnsForLookup.find((c) => c.id === value);
 
   // Compute viewport position whenever opening or on resize/scroll.
@@ -107,10 +109,14 @@ export default function StageSelector({ value, onChange, size = 'sm', className,
       <button
         ref={triggerRef}
         type="button"
+        aria-label="Lead stage"
+        aria-expanded={open}
+        aria-haspopup="menu"
+        onKeyDown={(e) => { if (e.key === 'Escape') setOpen(false); }}
         onClick={() => setOpen((v) => !v)}
         className={cn(
           'inline-flex items-center gap-1 rounded-full font-medium border transition-colors',
-          size === 'xs'
+          desk === 'sa' ? 'min-h-9 rounded-lg px-3 py-2 text-xs' : size === 'xs'
             ? 'text-[9px] px-1.5 py-0 leading-none gap-1'
             : size === 'sm'
               ? 'text-[10px] px-2 py-0.5'
@@ -136,6 +142,8 @@ export default function StageSelector({ value, onChange, size = 'sm', className,
       {open && popoverPos && createPortal(
         <div
           ref={popoverRef}
+          role="menu"
+          onKeyDown={(e) => { if (e.key === 'Escape') { setOpen(false); triggerRef.current?.focus(); } }}
           className="fixed z-[400] min-w-[180px] max-w-[260px] max-h-[260px] overflow-y-auto bg-white border border-[#E5E7EB] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.1)] py-1"
           style={{ top: popoverPos.top, left: popoverPos.left }}
         >
@@ -143,6 +151,8 @@ export default function StageSelector({ value, onChange, size = 'sm', className,
             <button
               key={c.id}
               type="button"
+              role="menuitemradio"
+              aria-checked={c.id === value}
               onClick={() => {
                 onChange(c.id);
                 setOpen(false);

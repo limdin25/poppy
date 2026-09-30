@@ -13,6 +13,9 @@
 export type CallbackKind = 'call' | 'sms' | 'whatsapp' | 'email';
 
 export interface Callback {
+  intent?: 'positive' | 'negative' | 'neutral';
+  reason?: string;
+  confidence?: number;
   contactId: string;
   name: string;
   phone: string;
@@ -38,6 +41,7 @@ export function orderCallbacks(rows: Callback[]): Callback[] {
 
 /** What they did, in the words a person would use out loud. */
 export function actionLabel(c: Callback): string {
+  if (c.intent) return c.intent === 'positive' ? 'Call this lead' : c.intent === 'negative' ? 'Not interested' : 'Needs a human look';
   if (c.kind === 'call') return c.missed ? 'missed call' : 'called';
   if (c.kind === 'whatsapp') return 'WhatsApp';
   if (c.kind === 'email') return 'emailed';

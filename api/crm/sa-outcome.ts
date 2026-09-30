@@ -17,6 +17,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { PIPELINE_BUSINESS_ID } from '../lib/brrr.js';
 import { notifyBusinessOwner } from '../lib/notify.js';
+import { HOSTUNICO_PIPELINE } from '../lib/hostunico-report.js';
 
 export const config = { runtime: 'edge' };
 
@@ -26,11 +27,16 @@ const supabase = createClient(
 );
 
 /** Mirrors SA_OUTCOMES in src/features/crm/components/live-call/SaListingPane.tsx. */
-export const OUTCOMES = ['yes_in_principle', 'checking_with_landlord', 'said_no', 'no_company_lets', 'already_let', 'no_answer'] as const;
+export const OUTCOMES = ['report_requested', 'review_booked', 'onboarding', 'not_interested', 'do_not_contact', 'yes_in_principle', 'checking_with_landlord', 'said_no', 'no_company_lets', 'already_let', 'no_answer'] as const;
 type Outcome = (typeof OUTCOMES)[number];
 
 /** The agency card's next step after each outcome. undefined = leave it. */
 export const STEP_FOR_OUTCOME: Record<Outcome, string | undefined> = {
+  report_requested: 'Confirm property details and send the report',
+  review_booked: 'Review the property report together',
+  onboarding: 'Agree the property readiness checklist and onboarding steps',
+  not_interested: 'Not interested. Do not follow up unless invited.',
+  do_not_contact: 'Do not contact',
   yes_in_principle: 'Yes in principle, Hugo brings the company',
   checking_with_landlord: "Ring back for the landlord's answer",
   said_no: undefined,
@@ -43,11 +49,16 @@ export const STEP_FOR_OUTCOME: Record<Outcome, string | undefined> = {
  *  by migration 20260923000001. No answer is left to the dialer's own
  *  Voicemail / No pickup handling. */
 export const BOARD_COLUMN_FOR: Partial<Record<Outcome, string>> = {
+  report_requested: 'Report requested',
+  review_booked: 'Review call booked',
+  onboarding: 'Preparing to onboard',
+  not_interested: 'Not interested',
+  do_not_contact: 'Do not contact',
   yes_in_principle: 'SA: yes in principle',
   checking_with_landlord: 'SA: checking with landlord',
   said_no: 'SA: said no',
   no_company_lets: 'SA: no company lets',
-  already_let: 'SA: already let',
+  already_let: 'Not interested',
 };
 
 interface Body {
@@ -101,7 +112,19 @@ export default async function handler(req: Request): Promise<Response> {
     .single();
   if (loadErr || !flat) return Response.json({ error: 'flat not found' }, { status: 404 });
 
+  const { data: admin } = await caller.rpc('wk_is_admin');
+  const { data: owner } = await supabase.from('wk_contacts').select('owner_agent_id,desk').eq('id', flat.wk_contact_id).maybeSingle();
+  if (!owner || owner.desk !== 'sa' || (!admin && owner.owner_agent_id !== user.id)) {
+    return Response.json({ error: 'This contact is not assigned to your desk' }, { status: 403 });
+  }
+
   const nowIso = new Date().toISOString();
+  if (outcome === 'do_not_contact') {
+    const { error } = await supabase.from('wk_contacts').update({ do_not_call: true, do_not_call_at: nowIso, do_not_call_reason: 'Asked Pedro not to contact', do_not_call_source: 'agent' }).eq('id', flat.wk_contact_id);
+    if (error) return Response.json({ error: 'Could not record the contact stop. Please try again.' }, { status: 503 });
+    const { error: tagError } = await supabase.from('wk_contact_tags').upsert({ contact_id: flat.wk_contact_id, tag: 'do-not-text' }, { onConflict: 'contact_id,tag' });
+    if (tagError) return Response.json({ error: 'Calls blocked, but the message stop could not be saved. Please try again.' }, { status: 503 });
+  }
 
   // 1. The answer on the flat. Always written first: what Pedro typed is never
   //    lost, and earlier answers are kept underneath.
@@ -134,7 +157,7 @@ export default async function handler(req: Request): Promise<Response> {
         const target = BOARD_COLUMN_FOR[outcome];
         if (target) {
           const { data: board } = await supabase
-            .from('wk_pipelines').select('id').eq('desk', 'sa').limit(1).maybeSingle();
+            .from('wk_pipelines').select('id').eq('desk', 'sa').eq('id', HOSTUNICO_PIPELINE).maybeSingle();
           const { data: col } = board
             ? await supabase.from('wk_pipeline_columns').select('id')
               .eq('pipeline_id', board.id).eq('name', target).maybeSingle()

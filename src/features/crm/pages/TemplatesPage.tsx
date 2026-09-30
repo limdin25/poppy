@@ -3,6 +3,7 @@ import { MessageSquare, Mail } from 'lucide-react';
 import { cn } from '@/core/lib/cn';
 import { supabase } from '@/integrations/supabase/browser';
 import { useAuth } from '@/features/crm/lib/useCrmAuth';
+import { useDesk } from '../lib/DeskContext';
 import TemplateList from '../components/templates/TemplateList';
 import WhatsAppMetaTemplates from '../components/templates/WhatsAppMetaTemplates';
 import WhatsAppProfileCard from '../components/templates/WhatsAppProfileCard';
@@ -35,7 +36,9 @@ type TabId = (typeof TABS)[number]['id'];
 const CARD = 'bg-white border border-[#E5E7EB] rounded-2xl p-5';
 
 export default function TemplatesPage() {
+  const { desk } = useDesk();
   const [activeTab, setActiveTab] = useState<TabId>('sms');
+  useEffect(() => { if (desk === 'sa' && activeTab === 'whatsapp') setActiveTab('sms'); }, [desk, activeTab]);
   const { user, loading: authLoading, isAdmin } = useAuth();
   const [workspaceRole, setWorkspaceRole] = useState<string | null | undefined>(undefined);
 
@@ -62,7 +65,7 @@ export default function TemplatesPage() {
       <div className="bg-white border-b border-[#E5E7EB] px-6 py-4">
         <h1 className="text-[20px] font-bold text-[#1A1A1A]">Templates</h1>
         <p className="text-[12px] text-[#6B7280] mt-0.5">
-          Manage your SMS, WhatsApp, Email, and Agreement templates.
+          {desk === 'sa' ? 'Hostunico messages for reports, follow-ups and owner setup.' : 'Manage your SMS, WhatsApp and Email templates.'}
           {isAdminOrWorkspaceAdmin
             ? ' As an admin, you can edit global templates.'
             : ' Create personal templates or use global ones.'}
@@ -70,7 +73,7 @@ export default function TemplatesPage() {
       </div>
 
       <div className="flex border-b border-[#E5E7EB] bg-white px-6">
-        {TABS.map((tab) => {
+        {TABS.filter((tab) => desk !== 'sa' || tab.id !== 'whatsapp').map((tab) => {
           const Icon = tab.icon;
           const active = activeTab === tab.id;
           return (
@@ -95,6 +98,7 @@ export default function TemplatesPage() {
           unrelated things with their own Save buttons; sharing a single box
           made it look like saving the profile also saved the templates. */}
       <div className="flex-1 overflow-auto p-6">
+        {desk === 'sa' && <p className="max-w-3xl mx-auto mb-4 rounded-xl border bg-white p-4 text-sm">Sequence messages and the drafts for steps 2 and 3 are in <a href="/admin/crm/report-followups" className="text-blue-700 underline">Report follow-ups</a>. Pricing templates use the lead's selected country.</p>}
         <div className="max-w-3xl mx-auto space-y-4">
           {activeTab === 'sms' && (
             <section className={CARD}>

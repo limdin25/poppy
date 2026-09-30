@@ -15,6 +15,7 @@ import { MOCK_TRANSCRIPT, MOCK_COACH_EVENTS } from '../../data/mockTranscripts';
 import { useKillSwitch } from '../../hooks/useKillSwitch';
 import { useSmsV2 } from '../../store/SmsV2Store';
 import { instantCoachCard, type InstantCard } from '@/core/coach/instantCoach';
+import { hostunicoInstantAnswer } from '../../../../../supabase/functions/_shared/hostunico-sales';
 import { supabase } from '@/integrations/supabase/browser';
 
 interface Props {
@@ -31,6 +32,8 @@ interface Props {
    *  answers a money moment in ~200ms instead of the model path's 4.5 to 7
    *  seconds. Off by default, so no plumber call changes. */
   isPropertyCall?: boolean;
+  isSaCall?: boolean;
+  hostunicoCountry?: string;
   /** Property calls only: the first blue line of the property script for THIS
    *  call, built by PropertyCallRoom from the same facts the script pane is
    *  filled with. When set it IS the opener card. Without it the card used to
@@ -130,7 +133,7 @@ function pickFiller(): string {
   return BUYTIME_FILLERS[Math.floor(Math.random() * BUYTIME_FILLERS.length)];
 }
 
-export default function LiveTranscriptPane({ durationSec, contactId, callId, agentFirstName, isPropertyCall = false, propertyOpener }: Props) {
+export default function LiveTranscriptPane({ durationSec, contactId, callId, agentFirstName, isPropertyCall = false, isSaCall = false, hostunicoCountry = 'GB', propertyOpener }: Props) {
   const { aiCoach } = useKillSwitch();
   const store = useSmsV2();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -274,7 +277,7 @@ export default function LiveTranscriptPane({ durationSec, contactId, callId, age
           // PR 113: caller just spoke → flash a filler chip so the
           // agent has a buy-time line ready while AI generates.
           if (payload.new.speaker !== 'agent') {
-            setFiller(pickFiller());
+            setFiller(isSaCall ? null : pickFiller());
             setCallerUtteranceCount((n) => n + 1);
             // ...and, on a property call, answer the moment outright if it is
             // one we already have approved words for. The model path costs 4.5
@@ -284,6 +287,7 @@ export default function LiveTranscriptPane({ durationSec, contactId, callId, age
             if (isPropertyCall) {
               setInstant(instantCoachCard(payload.new.body ?? ''));
             }
+            if (isSaCall) setInstant(hostunicoInstantAnswer(payload.new.body ?? '', hostunicoCountry));
           }
         }
       )
@@ -332,7 +336,7 @@ export default function LiveTranscriptPane({ durationSec, contactId, callId, age
       try { supabase.removeChannel(tCh); } catch { /* ignore */ }
       try { supabase.removeChannel(cCh); } catch { /* ignore */ }
     };
-  }, [callId]);
+  }, [callId, isPropertyCall, isSaCall, hostunicoCountry]);
 
   // Use live data when callId is present. Without a callId we render an
   // empty state in production. The legacy mock fallback is only allowed
@@ -478,7 +482,7 @@ export default function LiveTranscriptPane({ durationSec, contactId, callId, age
                 in ~200ms while the model card is still 4 to 7 seconds away.
                 Sits ABOVE everything because it is the one thing on this pane
                 that is guaranteed to be about what was just said. */}
-            {instant && isPropertyCall && (useLive || allowMock) && (
+            {instant && (isPropertyCall || isSaCall) && (useLive || allowMock) && (
               <div
                 key={`instant-${callerUtteranceCount}`}
                 className="rounded-lg border border-[#2E7D43] bg-[#F0FAF3] p-3 mb-2"

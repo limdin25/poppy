@@ -26,12 +26,15 @@
 // avoid the "this is {agent_first_name}" pattern; the AI coach prompt
 // is our authority on style.
 
+import { hostunicoCountry, hostunicoPriceCopy } from '../../../../supabase/functions/_shared/hostunico-pricing';
 export interface InterpolateVars {
+  country?: string | null;
+  phone?: string | null;
   firstName?: string | null;
   agentFirstName?: string | null;
 }
 
-const PLACEHOLDER_RE = /\{\{?\s*(first_name|agent_first_name)\s*\}?\}/gi;
+const PLACEHOLDER_RE = /\{\{?\s*(first_name|agent_first_name|hostunico_price)\s*\}?\}/gi;
 
 export function interpolateTemplate(input: string, vars: InterpolateVars): string {
   const fn = (vars.firstName ?? '').trim();
@@ -41,6 +44,7 @@ export function interpolateTemplate(input: string, vars: InterpolateVars): strin
     const k = key.toLowerCase();
     if (k === 'first_name') return fn;
     if (k === 'agent_first_name') return an;
+    if (k === 'hostunico_price') return hostunicoPriceCopy(hostunicoCountry(vars.country, vars.phone));
     return '';
   });
 

@@ -1,3 +1,4 @@
+import { HOSTUNICO_RULES } from '../../supabase/functions/_shared/hostunico-sales.js';
 // Daily agent reports — 17:30 UK, every day.
 //
 // Hugo 2026-07-24: "every day at 5:30pm it gives the daily reports, they write
@@ -340,50 +341,13 @@ export function isSaDay(calls: CallRow[]): boolean {
 
 /** The SA script: the DB copy when an admin saved one, else the bundled file. */
 async function loadSaScript(): Promise<string> {
-  const { data } = await supabase
-    .from('wk_sa_call_script')
-    .select('html')
-    .eq('id', 1)
-    .maybeSingle();
-  let html = (data?.html as string | null) ?? '';
-  if (!html) {
-    try {
-      html = readFileSync(
-        join(process.cwd(), 'src', 'core', 'content', 'sa-call-script.html'),
-        'utf8',
-      );
-    } catch {
-      html = '';
-    }
-  }
-  return htmlToText(html);
+  return HOSTUNICO_RULES;
 }
 
-const SA_SYSTEM = `You write the end-of-day coaching report for a UK caller working the SERVICED ACCOMMODATION desk. They ring letting agents about city-centre flats advertised to rent. The company is Unico, the director is Hugo.
-
-WE ARE THE MIDDLEMAN. The caller never takes the flat. We work with serviced accommodation companies who rent city-centre flats on a company let of 3 to 5 years. The call wants ONE thing: a YES IN PRINCIPLE, from the agent or the landlord, that the flat could be let to one of those companies. Hugo then introduces the company.
-
-THE CALL IS FIVE BEATS: is it still available, who we are (full asking rent every month, booked or not, furnished and cleaned, no empty months), would you or the landlord be open to it in principle, is anything stopping it (lease, building rules, mortgage), and the email and next step. The score of the day is YES IN PRINCIPLE answers, with a name and an email. Next best is a landlord being asked, with a day to ring back. A pleasant call that ends without asking the yes-in-principle question has missed its point.
-
-THE HARD RULES: no negotiation (the company pays the asking rent, never haggle up or down); never say "we'll take it", never agree a start date, a contract or a viewing time; never name an operator company. Report any break plainly, with the quote.
-
-The agent reads this report themselves. Be direct and complete, and give the fix, not a telling-off. Quote their own words and name the agency so they can find the call. The statistics are given to you and are correct; never recompute them. The transcripts come from speech recognition and mangle names ("Hugo" as "Ugo", "Unico" as "Unio"); never coach anyone off a mangled name.
-
-Write in British English, plain language, second person. Never write a long dash (em or en dash) or curly quotes. Markdown, no title heading, roughly 250-400 words, in this order:
-**Today**: two or three sentences on how the day went, including pace.
-**What worked**: up to three specific things, each with a quote or an agency name.
-**The five beats**: for each, how often it was done, and where it was missed, the words used instead.
-**Fix tomorrow**: every genuine problem, most important first, each with the words to use instead.
-**Tomorrow's one thing**: one sentence.
-
-After the report, and only if the caller negotiated the rent, agreed terms or a date, named an operator, swore, was rude, or invented a fact, append this exact delimiter on its own line:
-
----FLAGS---
-
-followed by a JSON array, one object per item, and nothing else:
-[{"type":"swearing|rudeness|pressure|formal_offer|invented_fact|first_call_figure","quote":"their exact words","company":"agency name","call_id":"the call_id","why":"one sentence on why it matters"}]
-
-Emit the delimiter only when there is at least one item.`;
+const SA_SYSTEM = `You write the daily coaching report for Pedro selling Hostunico management.
+${HOSTUNICO_RULES}
+Assess the actual call type: first call (availability, authority, report permission, accurate facts, send and confirm, callback) or second call (numbers, concerns, fee, readiness, next steps). Do not penalise an appropriate first call for not completing onboarding. Never reward guaranteed-rent promises or operator introductions.
+Use supplied statistics without recomputing. Write 250-400 words in plain British English and second person. Sections: Today, What worked, What to practise, Tomorrow's one thing. Cite exact transcript quotes and call IDs. Treat speech-recognition mistakes cautiously. Flag invented claims, pressure, rudeness or swearing using ---FLAGS--- followed by a JSON array with type, quote, company, call_id and why. Emit no flags section without evidence.`;
 
 async function writeSaReport(
   agentName: string,
@@ -396,7 +360,7 @@ async function writeSaReport(
 ): Promise<string> {
   const prompt = `Agent: ${agentName}
 Date: ${dateKey}
-Business: serviced accommodation, ringing letting agents for a yes in principle to a company let.${otherCalls ? `
+Business: Hostunico property management sales, report first, readiness on the second call.${otherCalls ? `
 They also made ${otherCalls} call(s) on another desk today; those are not graded here.` : ''}
 
 STATISTICS (authoritative, do not recompute):
