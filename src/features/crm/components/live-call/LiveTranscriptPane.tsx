@@ -419,7 +419,7 @@ export default function LiveTranscriptPane({ durationSec, contactId, callId, age
     }
   }, [lines.length]);
 
-  if (isSaCall) return <HostunicoCoachView lines={liveLines} cards={liveEvents.filter((event) => event.script_section === hostunicoContext)} active={!!callId} offline={aiCoach} connected={coachConnected} opener={opener} country={hostunicoCountry} />;
+  if (isSaCall) return <HostunicoCoachView lines={liveLines} cards={liveEvents.filter((event) => event.script_section === hostunicoContext)} active={!!callId} offline={aiCoach} connected={coachConnected} opener={opener} country={hostunicoCountry} agentName={agentFirstName || 'Pedro'} />;
 
   return (
     <div className="flex flex-col h-full">

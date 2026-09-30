@@ -1,0 +1,113 @@
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { hostunicoCallerName } from '../src/features/crm/lib/hostunicoCaller';
+import CallTextSizeControls, { readCallTextSize, saveCallTextSize } from '../src/features/crm/components/live-call/CallTextSizeControls';
+import HostunicoScriptPane from '../src/features/crm/components/live-call/HostunicoScriptPane';
+import HostunicoCoachView from '../src/features/crm/components/live-call/HostunicoCoachView';
+
+function storage() {
+  const values = new Map<string, string>();
+  return { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, value); } };
+}
+const identity = {
+  signedInName: 'Hugo', isAdmin: true, loading: false,
+  viewAsId: 'pedro', viewAsName: 'Pedro Almedina', assignedAgentId: 'marr',
+  agents: new Map([['pedro', { name: 'Pedro Almedina' }], ['marr', { name: 'Marr Smith' }]]),
+};
+const coachProps = { lines: [], cards: [], active: true, offline: false, connected: true, opener: 'Hello', country: 'GB' };
+afterEach(() => vi.unstubAllGlobals());
+
+describe('Hostunico caller identity', () => {
+  it('uses Pedro when an admin views Pedro and renders that name in the opener', () => {
+    const agentName = hostunicoCallerName(identity);
+    expect(agentName).toBe('Pedro');
+    const html = renderToStaticMarkup(createElement(HostunicoScriptPane, { listing: null, agentName, onOpener: () => {} }));
+    expect(html).toContain('Pedro from Hostunico');
+    expect(html).not.toContain('Hugo from Hostunico');
+  });
+  it('uses the assigned seller outside view-as, with Pedro as the unresolved Hostunico fallback', () => {
+    expect(hostunicoCallerName({ ...identity, viewAsId: null })).toBe('Marr');
+    expect(hostunicoCallerName({ ...identity, viewAsId: null, assignedAgentId: undefined })).toBe('Pedro');
+    expect(hostunicoCallerName({ ...identity, agents: new Map() })).toBe('Pedro');
+    expect(hostunicoCallerName({ ...identity, loading: true })).toBe('Pedro');
+    expect(hostunicoCallerName({ ...identity, viewAsName: null, agents: new Map([['pedro', { name: 'pedro@example.com' }]]) })).toBe('Pedro');
+  });
+  it('keeps the signed-in seller for non-admins despite stale view-as or a different assigned owner', () => {
+    expect(hostunicoCallerName({ ...identity, isAdmin: false, signedInName: 'Maria Silva' })).toBe('Maria');
+  });
+});
+
+describe('independent script and coach reading sizes', () => {
+  it('persists each pane independently and uses its saved size when rendered again', () => {
+    const localStorage = storage();
+    vi.stubGlobal('window', { localStorage });
+    expect(readCallTextSize('script')).toBe(24);
+    expect(readCallTextSize('coach')).toBe(30);
+    saveCallTextSize('script', 28);
+    saveCallTextSize('coach', 36);
+    expect(readCallTextSize('script')).toBe(28);
+    expect(readCallTextSize('coach')).toBe(36);
+    const script = renderToStaticMarkup(createElement(HostunicoScriptPane, { listing: null, agentName: 'Pedro', onOpener: () => {} }));
+    const coach = renderToStaticMarkup(createElement(HostunicoCoachView, coachProps));
+    expect(script).toContain('font-size:28px');
+    expect(script).toContain('Increase script text size');
+    expect(coach).toContain('font-size:36px');
+    expect(coach).toContain('Decrease coach text size');
+    expect(coach).not.toContain('font-size:28px');
+  });
+  it('bounds adjustments and survives invalid or blocked storage', () => {
+    const local = storage();
+    expect(saveCallTextSize('coach', 100, local)).toBe(42);
+    expect(saveCallTextSize('script', 0, local)).toBe(18);
+    local.setItem('hostunico:script-font-size', 'not a number');
+    expect(readCallTextSize('script', local)).toBe(24);
+    const blocked = { getItem: () => { throw new Error('blocked'); }, setItem: () => { throw new Error('blocked'); } };
+    expect(readCallTextSize('coach', blocked)).toBe(30);
+    expect(saveCallTextSize('coach', 34, blocked)).toBe(34);
+    const controls = renderToStaticMarkup(createElement(CallTextSizeControls, { pane: 'coach', size: 42, onChange: () => {} }));
+    expect(controls).toMatch(/disabled="" aria-label="Increase coach text size"/);
+  });
+});
+
+describe('the next words stand apart from past speech', () => {
+  it('renders both next lines at 30px and recent Pedro speech and earlier suggestions at 12px', () => {
+    const html = renderToStaticMarkup(createElement(HostunicoCoachView, {
+      ...coachProps,
+      lines: [{ id: 'spoken', speaker: 'agent', body: 'I can help with that.', ts: '1' }],
+      cards: [{ id: 'old', body: 'SAY: Earlier advice.', ts: '1' }, { id: 'new', body: 'SAY: You keep your account.\nASK: When is it available?', ts: '2' }],
+    }));
+    expect(html).toContain('Pedro just said');
+    expect(html).toMatch(/text-xs[^>]*>I can help with that\./);
+    expect(html).toMatch(/font-size:30px[^>]*data-testid="hostunico-next-line"[^>]*>You keep your account\./);
+    expect(html).toMatch(/font-size:30px[^>]*data-testid="hostunico-next-question"[^>]*>When is it available\?/);
+    expect(html).toMatch(/text-xs[^>]*>Earlier advice\./);
+  });
+  it('never promotes a stale suggestion after the lead speaks again', () => {
+    const html = renderToStaticMarkup(createElement(HostunicoCoachView, {
+      ...coachProps,
+      lines: [{ id: 'lead', speaker: 'caller', body: 'The flat is available next week.', ts: '3' }],
+      cards: [{ id: 'old', body: 'SAY: Old advice.\nASK: Old question?', ts: '2' }],
+    }));
+    const current = html.split('data-testid="hostunico-current-answer"')[1].split('</section>')[0];
+    expect(current).toContain('Your next line is coming.');
+    expect(current).not.toContain('Old advice');
+    expect(current).not.toContain('Old question');
+    expect(html).toContain('Earlier suggestions (1)');
+  });
+  it('keeps instant answers current and does not read a streaming placeholder aloud', () => {
+    const html = renderToStaticMarkup(createElement(HostunicoCoachView, {
+      ...coachProps,
+      lines: [{ id: 'lead', speaker: 'caller', body: 'Not interested', ts: '3' }],
+      cards: [{ id: 'old', body: 'SAY: Let me send it.', ts: '2' }],
+    }));
+    expect(html.split('data-testid="hostunico-current-answer"')[1].split('</section>')[0]).not.toContain('Let me send it');
+    const streaming = renderToStaticMarkup(createElement(HostunicoCoachView, {
+      ...coachProps,
+      lines: [{ id: 'lead', speaker: 'caller', body: 'It is furnished.', ts: '1' }],
+      cards: [{ id: 'new', body: '...', ts: '2', status: 'streaming' }],
+    }));
+    expect(streaming).toContain('Listening and preparing');
+    expect(streaming).toContain('Your next line is coming.');
+  });
+});

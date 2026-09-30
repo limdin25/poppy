@@ -10,6 +10,10 @@ import { hostunicoProperty } from '../../lib/hostunicoProperty';
 import type { Contact } from '../../types';
 import { supabase } from '@/integrations/supabase/browser';
 import { hostunicoCountry } from '../../../../../supabase/functions/_shared/hostunico-pricing';
+import { useAuth } from '../../lib/useCrmAuth';
+import { useViewAs } from '../../lib/ViewAsContext';
+import { useAgentDirectory } from '../../hooks/useAgentDirectory';
+import { hostunicoCallerName } from '../../lib/hostunicoCaller';
 
 export interface SaCallRoomProps {
   contact: Contact | null; contactHeader?: ReactNode; emptyState?: ReactNode;
@@ -21,6 +25,10 @@ export interface SaCallRoomProps {
 }
 
 export default function SaCallRoom({ contact, contactHeader, emptyState, currentCallId, callConnected, liveDurationSec = 0, agentFirstName, campaignId, direction, onControlsMount, onEndCall }: SaCallRoomProps) {
+  const { isAdmin, loading } = useAuth();
+  const { viewAsId, viewAsName } = useViewAs();
+  const { byId } = useAgentDirectory();
+  const callerName = hostunicoCallerName({ signedInName: agentFirstName, isAdmin, loading, viewAsId, viewAsName, assignedAgentId: contact?.ownerAgentId, agents: byId });
   const { listings } = useSaListings(contact?.id);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
@@ -111,14 +119,14 @@ export default function SaCallRoom({ contact, contactHeader, emptyState, current
         </div>}
       </aside>
       <div className="grid min-h-0 min-w-0 flex-1 grid-cols-1 overflow-y-auto md:grid-cols-2 md:overflow-hidden" data-testid="hostunico-focus-columns">
-        <div className="min-h-[440px] min-w-0 border-r md:min-h-0"><HostunicoScriptPane key={contact?.id || 'no-contact'} listing={selected} agentName={agentFirstName} onOpener={setOpener} onMode={setMode} country={country} /></div>
+        <div className="min-h-[440px] min-w-0 border-r md:min-h-0"><HostunicoScriptPane key={contact?.id || 'no-contact'} listing={selected} agentName={callerName} onOpener={setOpener} onMode={setMode} country={country} /></div>
         <section className="flex min-h-[440px] min-w-0 flex-col bg-white md:min-h-0" aria-label="Live AI coach">
           {direction === 'inbound' && <p className="border-b bg-blue-50 p-2 text-xs text-blue-700">They called back. Confirm which property they mean.</p>}
           {contextError && <p role="alert" className="bg-amber-50 p-2 text-xs text-amber-900">{contextError}</p>}
-          <div className="min-h-0 flex-1">{contact ? <LiveTranscriptPane key={currentCallId || contact.id} durationSec={liveDurationSec} contactId={contact.id} callId={currentCallId} agentFirstName={agentFirstName} hostunicoCountry={country} hostunicoContext={`${selected?.id || ''}:${mode}:${country}`} isSaCall propertyOpener={opener} /> : <div className="p-5 text-sm text-slate-500">{emptyState || 'Choose a lead to start. The live coach appears here.'}</div>}</div>
+          <div className="min-h-0 flex-1">{contact ? <LiveTranscriptPane key={currentCallId || contact.id} durationSec={liveDurationSec} contactId={contact.id} callId={currentCallId} agentFirstName={callerName} hostunicoCountry={country} hostunicoContext={`${selected?.id || ''}:${mode}:${country}`} isSaCall propertyOpener={opener} /> : <div className="p-5 text-sm text-slate-500">{emptyState || 'Choose a lead to start. The live coach appears here.'}</div>}</div>
         </section>
       </div>
-      {emailReport && contact && <section aria-label="Email property report" className="absolute inset-y-0 left-0 z-30 flex w-full max-w-md flex-col border-r bg-white shadow-xl"><div className="flex items-center justify-between border-b p-3"><h2 className="font-semibold">Email the report</h2><button onClick={() => setEmailReport(null)} className="rounded-lg border px-3 py-1.5 text-xs">Close email</button></div><div className="min-h-0 flex-1"><SaEmailPane key={selected?.id} contactId={contact.id} contactEmail={contact.email} listing={selected} agentFirstName={agentFirstName} reportUrl={emailReport} country={country} /></div></section>}
+      {emailReport && contact && <section aria-label="Email property report" className="absolute inset-y-0 left-0 z-30 flex w-full max-w-md flex-col border-r bg-white shadow-xl"><div className="flex items-center justify-between border-b p-3"><h2 className="font-semibold">Email the report</h2><button onClick={() => setEmailReport(null)} className="rounded-lg border px-3 py-1.5 text-xs">Close email</button></div><div className="min-h-0 flex-1"><SaEmailPane key={selected?.id} contactId={contact.id} contactEmail={contact.email} listing={selected} agentFirstName={callerName} reportUrl={emailReport} country={country} /></div></section>}
     </div>
   </div>;
 }

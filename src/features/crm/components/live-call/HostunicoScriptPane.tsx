@@ -3,11 +3,13 @@ import { useEffect, useRef, useState } from 'react';
 import { HOSTUNICO_ANSWERS } from '../../../../../supabase/functions/_shared/hostunico-sales';
 import type { SaListing } from '../../hooks/useSaListings';
 import { hostunicoProperty } from '../../lib/hostunicoProperty';
+import CallTextSizeControls, { useCallTextSize } from './CallTextSizeControls';
 
 type Mode = 'spareroom' | 'facebook' | 'followup';
 export default function HostunicoScriptPane({ listing, agentName, onOpener, onMode, country = 'GB' }: { onMode?: (mode: Mode) => void; country?: string; listing: SaListing | null; agentName: string; onOpener: (line: string) => void }) {
   const [mode, setMode] = useState<Mode>('spareroom');
   const [rolling, setRolling] = useState(false);
+  const { size, changeSize } = useCallTextSize('script');
   const scroll = useRef<HTMLDivElement>(null);
   const property = hostunicoProperty(listing);
   const { place } = property;
@@ -45,11 +47,12 @@ export default function HostunicoScriptPane({ listing, agentName, onOpener, onMo
   return <section className="flex h-full min-h-0 flex-col bg-white" aria-label="Hostunico sales script">
     <header className="border-b p-3 space-y-3">
       <div className="flex items-center justify-between gap-2"><h2 className="font-semibold">Your script</h2><button className="rounded-lg border px-3 py-1.5 text-xs" onClick={() => setRolling(!rolling)} aria-pressed={rolling}>{rolling ? 'Pause scrolling' : 'Auto-scroll'}</button></div>
+      <CallTextSizeControls pane="script" size={size} onChange={changeSize} />
       <div className="flex flex-wrap gap-1" aria-label="Choose the call script">{(['spareroom', 'facebook', 'followup'] as const).map((m) => <button key={m} onClick={() => setMode(m)} aria-pressed={mode === m} className={`rounded-lg px-3 py-2 text-xs font-semibold ${mode === m ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600'}`}>{m === 'spareroom' ? '1 · SpareRoom' : m === 'facebook' ? '1 · Facebook' : '2 · Review report'}</button>)}</div>
     </header>
     <div ref={scroll} className="min-h-0 flex-1 overflow-y-auto p-5 space-y-6" onWheel={() => setRolling(false)} onTouchStart={() => setRolling(false)}>
-      {steps.map(([title, line, note], i) => <article key={title}><p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">{i + 1}. {title}</p><p className="whitespace-pre-line text-[19px] font-medium leading-relaxed text-slate-900">{line}</p><p className="mt-2 text-xs leading-relaxed text-slate-500">{note}</p></article>)}
-      <details className="rounded-xl border p-3"><summary className="cursor-pointer font-semibold text-sm">Quick answers, including price</summary><div className="mt-3 space-y-4">{HOSTUNICO_ANSWERS.map((a) => <div key={a.key}><b className="text-sm">{a.title}</b><p className="mt-1 whitespace-pre-line text-sm leading-relaxed">{a.key === 'price' ? hostunicoPriceCopy(country) : a.say}</p></div>)}</div></details>
+      {steps.map(([title, line, note], i) => <article key={title}><p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">{i + 1}. {title}</p><p style={{ fontSize: size }} className="whitespace-pre-line font-medium leading-relaxed text-slate-900">{line}</p><p className="mt-2 text-xs leading-relaxed text-slate-500">{note}</p></article>)}
+      <details className="rounded-xl border p-3"><summary className="cursor-pointer font-semibold text-sm">Quick answers, including price</summary><div className="mt-3 space-y-4">{HOSTUNICO_ANSWERS.map((a) => <div key={a.key}><b className="text-sm">{a.title}</b><p style={{ fontSize: size }} className="mt-1 whitespace-pre-line leading-relaxed">{a.key === 'price' ? hostunicoPriceCopy(country) : a.say}</p></div>)}</div></details>
       <a href="https://hostunico-sales-scripts.briny-scout-0044.chatgpt.site" target="_blank" rel="noreferrer" className="block text-xs text-blue-700 underline">Open the study guide</a>
     </div>
   </section>;
