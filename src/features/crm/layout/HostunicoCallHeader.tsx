@@ -24,8 +24,8 @@ export default function HostunicoCallHeader() {
     return () => { document.removeEventListener('mousedown', closeOutside); document.removeEventListener('keydown', closeEscape); };
   }, []);
   return <header data-testid="hostunico-crm-toolbar" className="relative z-[101] flex h-11 shrink-0 items-center gap-2 border-b bg-white px-2 sm:px-3">
-    <Link to="/admin/crm/dialer-pro?script=sa_call" className="shrink-0 text-sm font-extrabold tracking-tight">Hostunico</Link>
-    <div className="shrink-0 [&_button]:text-xs [&_button]:px-1.5"><ViewAsSelector /></div>
+    <Link to="/admin/crm/dialer-pro?script=sa_call" className="hidden shrink-0 text-sm font-extrabold tracking-tight sm:block">Hostunico</Link>
+    <div className="shrink-0 [&>div>button]:text-xs [&>div>button]:px-1.5 [&>div>button>span]:hidden md:[&>div>button>span]:inline"><ViewAsSelector /></div>
     <CallbackBanner compact />
     <FollowupBanner compact />
     <details ref={menu} className="relative shrink-0">

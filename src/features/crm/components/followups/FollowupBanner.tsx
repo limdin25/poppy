@@ -122,7 +122,7 @@ export default function FollowupBanner({ compact = false }: { compact?: boolean 
       </div>}
 
       {open && (
-        <div className={compact ? 'absolute right-0 top-full z-[180] mt-2 max-h-[60vh] w-[min(680px,90vw)] space-y-1 overflow-y-auto rounded-xl border bg-white p-2 shadow-xl' : 'max-w-[1280px] mx-auto mt-2 space-y-1 max-h-[260px] overflow-y-auto pr-1'}>
+        <div className={compact ? 'fixed inset-x-3 top-11 z-[180] mt-2 max-h-[60vh] space-y-1 overflow-y-auto rounded-xl border bg-white p-2 shadow-xl sm:absolute sm:left-auto sm:right-0 sm:top-full sm:w-[min(680px,90vw)]' : 'max-w-[1280px] mx-auto mt-2 space-y-1 max-h-[260px] overflow-y-auto pr-1'}>
           {due.map((f) => {
             const contact = contacts.find((c) => c.id === f.contact_id);
             const displayName = contact?.name || f.contact_name || f.contact_phone || 'Unknown contact';

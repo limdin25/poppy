@@ -111,7 +111,7 @@ export default function CallbackBanner({ compact = false }: { compact?: boolean 
       className={cn(compact ? 'relative min-w-0 flex-1 rounded-lg border' : 'px-4 py-1.5 flex-shrink-0 relative z-10 border-b', skin.bar)}
     >
       {compact ? <button type="button" onClick={() => setOpen((v) => !v)} disabled={!items.length} aria-expanded={open} data-testid="callback-banner-toggle" title={items.length ? headline(items) : 'No replies waiting'} className={cn('flex h-8 w-full min-w-0 items-center gap-2 px-2 text-left text-xs', skin.ink)}>
-        <Inbox className="h-3.5 w-3.5 shrink-0" /><span role="status" className="shrink-0 font-semibold">{ready ? `Replies ${items.length}` : 'Checking'}</span>
+        <Inbox className="h-3.5 w-3.5 shrink-0" /><span role="status" className="shrink-0 font-semibold">{ready ? <><span className="sr-only sm:not-sr-only">Replies </span>{items.length}</> : 'Checking'}</span>
         {ordered[0] && <span className="truncate font-medium">{displayName(ordered[0])} · {actionLabel(ordered[0])}</span>}
         {!!items.length && <ChevronDown className="ml-auto h-3.5 w-3.5 shrink-0" />}
       </button> : <div className="flex items-center gap-2 max-w-[1280px] mx-auto">
@@ -149,7 +149,7 @@ export default function CallbackBanner({ compact = false }: { compact?: boolean 
       </div>}
 
       {open && (
-        <div className={compact ? 'absolute right-0 top-full z-[180] mt-2 max-h-[60vh] w-[min(680px,90vw)] space-y-1 overflow-y-auto rounded-xl border bg-white p-2 shadow-xl' : 'max-w-[1280px] mx-auto mt-2 space-y-1 max-h-[280px] overflow-y-auto pr-1'}>
+        <div className={compact ? 'fixed inset-x-3 top-11 z-[180] mt-2 max-h-[60vh] space-y-1 overflow-y-auto rounded-xl border bg-white p-2 shadow-xl sm:absolute sm:left-auto sm:right-0 sm:top-full sm:w-[min(680px,90vw)]' : 'max-w-[1280px] mx-auto mt-2 space-y-1 max-h-[280px] overflow-y-auto pr-1'}>
           {ordered.map((c) => {
             const isMissed = c.kind === 'call' && c.missed;
             const who = whoLabel(c);
