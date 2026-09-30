@@ -68,6 +68,24 @@ describe('independent script and coach reading sizes', () => {
     const controls = renderToStaticMarkup(createElement(CallTextSizeControls, { pane: 'coach', size: 42, onChange: () => {} }));
     expect(controls).toMatch(/disabled="" aria-label="Increase coach text size"/);
   });
+  it('enlarges notes, recent speech and history proportionally while keeping the next line dominant', () => {
+    vi.stubGlobal('window', { localStorage: storage() });
+    saveCallTextSize('script', 36);
+    saveCallTextSize('coach', 42);
+    const script = renderToStaticMarkup(createElement(HostunicoScriptPane, { listing: null, agentName: 'Pedro', onOpener: () => {} }));
+    const coach = renderToStaticMarkup(createElement(HostunicoCoachView, {
+      ...coachProps,
+      lines: [{ id: 'spoken', speaker: 'agent', body: 'I can help with that.', ts: '1' }],
+      cards: [{ id: 'old', body: 'Earlier advice.', ts: '1' }, { id: 'new', body: 'SAY: The next answer.\nASK: The next question?', ts: '2' }],
+    }));
+    expect(script).toMatch(/font-size:18px[^>]*>Wait for the answer\./);
+    expect(script).toMatch(/font-size:18px[^>]*>1\. Start here/);
+    expect(coach).toMatch(/font-size:17px[^>]*>I can help with that\./);
+    expect(coach).toMatch(/font-size:17px[^>]*>Earlier advice\./);
+    expect(coach).toMatch(/font-size:15px[^>]*>Then ask/);
+    expect(coach).toMatch(/font-size:42px[^>]*>The next answer\./);
+    expect(coach).toMatch(/font-size:42px[^>]*>The next question\?/);
+  });
 });
 
 describe('the next words stand apart from past speech', () => {
