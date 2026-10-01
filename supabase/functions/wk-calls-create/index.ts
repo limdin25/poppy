@@ -16,6 +16,7 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
+import { isHostunicoAdminTestCall } from '../_shared/hostunico-test-call.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -177,13 +178,16 @@ serve(async (req: Request) => {
     // and DialPad sends synthetic ids like "manual-1714567890000").
     const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     let resolvedContactId: string | null = null;
+    let resolvedContact: { phone: string | null; desk: string; custom_fields: Record<string, unknown> | null } | null = null;
+    let isAdminCaller = false;
     if (contactId && UUID_RE.test(contactId)) {
       const { data: contact } = await supa
         .from('wk_contacts')
-        .select('id')
+        .select('id,phone,desk,custom_fields')
         .eq('id', contactId)
         .maybeSingle();
       resolvedContactId = contact?.id ?? null;
+      resolvedContact = contact ?? null;
     }
 
     // One-agent-per-lead lock (2026-07-28): mirrors wk-sms-send. Once ANY
@@ -201,7 +205,7 @@ serve(async (req: Request) => {
         .select('workspace_role')
         .eq('id', agentId)
         .maybeSingle();
-      const isAdminCaller = !!adminRow || callerProfile?.workspace_role === 'admin';
+      isAdminCaller = !!adminRow || callerProfile?.workspace_role === 'admin';
       if (!isAdminCaller && callerProfile?.workspace_role === 'agent') {
         const { data: lockedAgent } = await supa.rpc('wk_contact_locked_agent', { p_contact: resolvedContactId });
         if (lockedAgent && lockedAgent !== agentId) {
@@ -215,7 +219,7 @@ serve(async (req: Request) => {
 
     if (scriptKey === 'sa_call' && campaignId === '5d9657f9-d9b4-4e27-a2d1-83db80867f92') {
       const eligible = resolvedContactId ? await supa.from('sa_listings').select('id').eq('wk_contact_id', resolvedContactId).eq('hostunico_call_eligible', true).limit(1) : { data: [], error: null };
-      if (eligible.error || !eligible.data?.length) return jsonResponse(200, { allowed: false, reason: 'This lead has no verified whole-property studio or one-bedroom home in the current calling queue.' });
+      if (eligible.error || (!eligible.data?.length && !isHostunicoAdminTestCall(isAdminCaller, resolvedContact, phone))) return jsonResponse(200, { allowed: false, reason: 'This lead has no verified whole-property studio or one-bedroom home in the current calling queue.' });
     }
 
     // Live AI coach gate — workspace-level toggle in wk_ai_settings. We mint
