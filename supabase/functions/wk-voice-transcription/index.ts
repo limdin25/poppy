@@ -2136,7 +2136,7 @@ serve(async (req: Request) => {
           // old desk's sequential script/profile lookups on every spoken turn.
           if (call.script_key === 'sa_call') {
             const [recent, contactResult] = await Promise.all([
-              supa.from('wk_live_transcripts').select('speaker,body,ts').eq('call_id', call.id).order('ts', { ascending: false }).limit(8),
+              supa.from('wk_live_transcripts').select('speaker,body,ts').eq('call_id', call.id).order('ts', { ascending: false }).limit(24),
               supa.from('wk_contacts').select('name,phone,hostunico_sms_phone,hostunico_country,custom_fields').eq('id', call.contact_id).maybeSingle(),
             ]);
             if (recent.error || contactResult.error) throw new Error('Hostunico coach context unavailable');
