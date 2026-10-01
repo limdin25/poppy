@@ -8,6 +8,11 @@ const pitch: HostunicoReportPitch = { monthly: '£2,400', rent: '£1,000', diffe
 const render = (reportPitch?: HostunicoReportPitch | null) => renderToStaticMarkup(createElement(HostunicoScriptPane, { listing: null, agentName: 'Pedro', onOpener: () => {}, reportPitch }));
 
 describe('first-call report comparison', () => {
+  it('offers the ready initial report without passing a rent-matching target off as researched earnings', () => {
+    const copy = hostunicoReportHook({ ...pitch, planning: true });
+    expect(copy).toContain("I've put together an initial report");
+    expect(copy).not.toMatch(/could make around|when it is ready|£2,400/);
+  });
   it('uses actual supplied figures in a short spoken pitch', () => {
     const copy = hostunicoReportHook(pitch);
     expect(copy).toContain("it shows you could make around £2,400 a month, compared with the £1,000 you're asking");

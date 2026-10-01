@@ -99,7 +99,7 @@ export default function SaReportPanel({ listing, phone, contactId, contactEmail,
   const canText = !!savedMobile && mobile === savedMobile && report?.smsBlocked === false;
   return <section className="rounded-xl border border-slate-200 bg-white p-3" aria-label="Property report">
     <div className="flex flex-wrap items-center gap-3 justify-between">
-      <div><h2 className="text-sm font-semibold">{area ? 'Area estimate' : 'Property report'}</h2><p className="text-xs text-slate-500" role="status">{report?.stage === 'ready' ? area ? 'Area estimate ready. Confirm the assumptions.' : 'Report ready' : report?.message || 'Checking report...'}</p></div>
+      <div><h2 className="text-sm font-semibold">{report?.reportPitch?.planning ? 'Initial property report' : area ? 'Area estimate' : 'Property report'}</h2><p className="text-xs text-slate-500" role="status">{report?.message || (report?.stage === 'ready' ? 'Report ready to send' : 'Checking report...')}</p></div>
       <div className="flex flex-wrap items-center gap-2">
         {report?.stage === 'review' && !alreadySent && <button disabled={busy} onClick={() => void act('retry')} className="rounded-lg border px-3 py-2 text-xs font-medium">Retry research</button>}
         {report?.reportUrl && <a href={`${report.reportUrl}?preview=1`} target="_blank" rel="noreferrer" className="rounded-lg border px-3 py-2 text-xs font-medium">Preview report</a>}

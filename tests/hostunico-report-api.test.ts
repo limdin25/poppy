@@ -75,6 +75,18 @@ describe('human report sends', () => {
     const send = vi.mocked(fetch).mock.calls.find(([url]) => String(url).endsWith('/wk-sms-send'))!;
     expect(JSON.parse(String(send[1]?.body)).body).toBe(preview.smsDraft);
   });
+  it('keeps a ready report and exact SMS available when the research service is down', async () => {
+    fixture.tables.sa_property_reports[0].created_at = new Date().toISOString();
+    fixture.tables.sa_property_reports[0].report_pitch = { monthly: '£2,100' };
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.includes('crm-estimates')) throw new Error('Research timeout');
+      fixture.smsRequests++;
+      return Response.json({ twilio_sid: 'sent-manually', status: 'queued' });
+    }));
+    expect(await (await handler(request('status'))).json()).toMatchObject({ stage: 'ready', smsDraft: expect.stringContaining('/r/A1b2C') });
+    expect((await handler(request('send_sms', { permission: true }))).status).toBe(200);
+    expect(fixture.smsRequests).toBe(1);
+  });
   it('shows an existing text opt-out and blocks before claiming a send', async () => {
     fixture.tables.wk_contact_tags = [{ contact_id: 'contact', tag: 'do-not-text' }];
     expect(await (await handler(request('status'))).json()).toMatchObject({ smsBlocked: true, contactBlocked: false });
@@ -82,11 +94,11 @@ describe('human report sends', () => {
     expect(fixture.tables.sa_property_reports[0].sms_state).toBe('unsent');
     expect(fixture.smsRequests).toBe(0);
   });
-  it('prepares ten leads in five bounded requests without sending messages', async () => {
+  it('fills twenty ready reports even when four earlier candidates cannot prepare, without sending messages', async () => {
     const campaign = '5d9657f9-d9b4-4e27-a2d1-83db80867f92';
     const property = { postcode: 'E14', bedrooms: 1, bathrooms: 1, wholeProperty: true, areaEstimate: true };
     fixture.tables.wk_campaign_agents = [{ campaign_id: campaign, agent_id: 'pedro' }];
-    fixture.tables.wk_contacts = Array.from({ length: 10 }, (_, i) => ({ id: `lead-${i}`, desk: 'sa', owner_agent_id: 'pedro', do_not_call: false, phone: '+447700900123' }));
+    fixture.tables.wk_contacts = Array.from({ length: 24 }, (_, i) => ({ id: `lead-${i}`, desk: 'sa', owner_agent_id: 'pedro', do_not_call: false, phone: '+447700900123' }));
     fixture.tables.wk_dialer_queue = fixture.tables.wk_contacts.map((contact) => ({ campaign_id: campaign, contact_id: contact.id, status: 'pending', scheduled_for: null, wk_contacts: contact }));
     fixture.tables.sa_listings = fixture.tables.wk_contacts.map((contact, i) => ({ id: `${i}`.padStart(36, '0'), wk_contact_id: contact.id, source: 'spareroom', hostunico_call_eligible: true, report_property: property, rent_pcm: 1000, source_price: '£1000 pcm' }));
     fixture.tables.sa_property_reports = [];
@@ -98,18 +110,33 @@ describe('human report sends', () => {
       started.push(JSON.parse(String(init.body)).id);
       maxInFlight = Math.max(maxInFlight, ++inFlight);
       await Promise.resolve(); inFlight--;
+      if (Number(JSON.parse(String(init.body)).id) < 4) throw new Error('Temporary provider issue');
       return Response.json({ stage: 'ready', message: 'Ready', reportUrl: 'https://hostunico.com/r/A1b2C' });
     }));
-    for (let offset = 0; offset < 10; offset += 2) {
+    let totalReady = 0;
+    for (let offset = 0; offset < 24; offset += 2) {
       const response = await handler(request('prepare_queue', { campaign_id: campaign, offset }));
       expect(response.status).toBe(200);
-      expect(await response.json()).toMatchObject({ prepared: 2, ready: 2, ahead: 10, nextOffset: offset === 8 ? null : offset + 2 });
+      const result = await response.json();
+      expect(result).toMatchObject({ ready: offset < 4 ? 0 : 2, failed: offset < 4 ? 2 : 0, target: 20, ahead: 24, nextOffset: offset === 22 ? null : offset + 2 });
+      totalReady += result.ready;
       expect(started).toHaveLength(offset + 2);
     }
-    expect(new Set(started).size).toBe(10);
+    expect(totalReady).toBe(20);
+    expect(new Set(started).size).toBe(24);
     expect(maxInFlight).toBeLessThanOrEqual(2);
     expect(fixture.smsRequests).toBe(0);
-    expect((await handler(request('prepare_queue', { campaign_id: campaign, offset: 10 }))).status).toBe(400);
+    expect((await handler(request('prepare_queue', { campaign_id: campaign, offset: 100 }))).status).toBe(400);
+  });
+  it('repairs the current failed report on opening it, with no retry click or outbound message', async () => {
+    fixture.tables.sa_listings[0].report_property = { postcode: 'M22', bedrooms: 1, bathrooms: 1, wholeProperty: true, areaEstimate: true, advertisedRentPcm: 1000 };
+    Object.assign(fixture.tables.sa_property_reports[0], { state: 'review', created_at: new Date().toISOString(), report_url: null });
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      expect(url).toContain('crm-estimates/start');
+      return Response.json({ stage: 'ready', reportUrl: 'https://hostunico.com/r/N3w22', reportPitch: { planning: true, monthly: '£1,000' } });
+    }));
+    expect(await (await handler(request('status'))).json()).toMatchObject({ stage: 'ready', reportUrl: 'https://hostunico.com/r/N3w22', smsDraft: expect.stringContaining('/r/N3w22') });
+    expect(fixture.smsRequests).toBe(0);
   });
   it('shows report activity only to the assigned agent, including read-only access after opt-out', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {

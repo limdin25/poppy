@@ -35,6 +35,7 @@ import { interpolateTemplate } from '../../lib/interpolateTemplate';
 import FollowupPromptModal from '../followups/FollowupPromptModal';
 import { needsProofOfFunds } from '../../../../../api/lib/proof-of-funds';
 import type { Contact } from '../../types';
+import HostunicoReportButton from './HostunicoReportButton';
 
 type Channel = 'sms' | 'whatsapp' | 'email';
 
@@ -667,6 +668,7 @@ export default function ContactSmsModal({
         onClick={(e) => e.stopPropagation()}
       >
         <header className="px-5 py-3 border-b border-[#E5E7EB] flex items-center justify-between">
+          {desk === 'sa' && <HostunicoReportButton contact={contact} />}
           <div className="flex items-center gap-2">
             <ChannelIcon className="w-4 h-4 text-[#3C5A87]" />
             <h2 className="text-[14px] font-semibold text-[#1A1A1A]">

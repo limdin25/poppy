@@ -85,6 +85,7 @@ export default function SaCallRoom({ contact, contactHeader, emptyState, current
           if (cancelled) break;
           for (const key of Object.keys(totals) as (keyof typeof totals)[]) totals[key] += Number(result[key]) || 0;
           offset = result.nextOffset ?? null;
+          if (totals.ready >= (result.target || 20)) offset = null;
           setAhead(`${totals.ready} ready ahead${totals.preparing ? `, ${totals.preparing} preparing` : ''}${totals.needsDetails ? `, ${totals.needsDetails} need details` : ''}${totals.failed ? `, ${totals.failed} need review` : ''}${offset !== null ? ', checking next reports' : ''}`);
         }
       } catch { if (!cancelled) setAhead('Reports ahead could not refresh.'); }

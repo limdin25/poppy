@@ -34,6 +34,7 @@ import { useDemoMode } from '../lib/useDemoMode';
 import { formatRelativeTime, formatTimeOnly, formatDuration, formatDateTime } from '../data/helpers';
 import StageSelector from '../components/shared/StageSelector';
 import EditContactModal from '../components/contacts/EditContactModal';
+import HostunicoReportButton from '../components/contacts/HostunicoReportButton';
 import EditableName from '../components/contacts/EditableName';
 import FollowupPromptModal from '../components/followups/FollowupPromptModal';
 import { useSmsV2 } from '../store/SmsV2Store';
@@ -1874,6 +1875,7 @@ export default function InboxPage() {
           {/* A builder saying yes in this thread is confirmed with one press,
               which books them on the property and moves the branch card to
               Viewing booked. Renders nothing on non-builder threads. */}
+          {desk === 'sa' && <HostunicoReportButton contact={activeContact} />}
           {activeContact.customFields?.lead_type === 'builder' && (
             <BuilderConfirmInboxButton contactId={activeContact.id} />
           )}

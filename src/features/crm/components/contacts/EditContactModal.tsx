@@ -9,6 +9,7 @@ import NextStepCard from '@/core/property/NextStepCard';
 import type { NextStepBrief } from '../../../../../api/lib/next-step-brief';
 import { orderedStep, type DealOrder } from '../../lib/dealOrder';
 import { normalizeContactEmail } from '../../hooks/useContactPersistence';
+import HostunicoReportButton from './HostunicoReportButton';
 
 interface Props {
   contact: Contact | null;
@@ -125,6 +126,7 @@ export default function EditContactModal({
         </div>
 
         <div className="p-5 space-y-4 overflow-y-auto">
+          {contact.customFields?.lead_type === 'hostunico_owner' && <HostunicoReportButton contact={contact} />}
           {/* THE DEAL, first thing on the screen. Hugo's pinned note, then what
               to do next, then what is in the way and how sure we are. Read
               only: the brief is rewritten after every call and the pinned note

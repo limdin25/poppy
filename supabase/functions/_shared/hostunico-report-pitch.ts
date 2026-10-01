@@ -1,6 +1,7 @@
 import { reportRecipientQuestion } from './hostunico-phone.ts';
 
 export type HostunicoReportPitch = {
+  planning?: boolean;
   monthly: string;
   rent: string | null;
   difference: string | null;
@@ -19,6 +20,7 @@ export function hostunicoReportRecipient(phone?: string, savedMobile?: string | 
 }
 
 export function hostunicoReportHook(pitch?: HostunicoReportPitch | null): string {
+  if (pitch?.planning) return "We partner with landlords for short-term lets through Airbnb, and we run the entire process. I've put together an initial report comparing your asking rent with what short lets would need to bring in. Would you like me to send it so you can have a look?";
   if (!pitch?.monthly.trim()) {
     return 'We partner with landlords for short-term lets through Airbnb, and we run the entire process. I can put together a report showing what your property could make. Would you like me to prepare that and send it when it is ready?';
   }

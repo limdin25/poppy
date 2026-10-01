@@ -7,6 +7,7 @@ import { useImpersonatedAgentId } from '@/features/crm/lib/ViewAsContext';
 import { useDesk, type Desk } from '@/features/crm/lib/DeskContext';
 import { signCallRecording } from '@/features/crm/hooks/useCalls';
 import CallTranscriptModal from '@/features/crm/components/calls/CallTranscriptModal';
+import HostunicoReportButton from '../../components/contacts/HostunicoReportButton';
 
 const PAGE_SIZE = 25;
 
@@ -25,6 +26,7 @@ interface CallRow {
   contactOwner: string | null;
   contactWebsite: string | null;
   contactPhone: string | null;
+  customFields?: Record<string, string>;
   direction: string;
   status: string;
   startedAt: string | null;
@@ -83,6 +85,7 @@ async function fetchPage(pageParam: number, impAgentId: string | null, desk: Des
       contactOwner: (contact?.cf?.owner_name || '').trim() || null,
       contactWebsite: (contact?.cf?.website || '').trim() || null,
       contactPhone: contact?.phone ?? null,
+      customFields: contact?.cf ?? {},
       direction: r.direction,
       status: r.status,
       startedAt: r.started_at,
@@ -204,6 +207,7 @@ export default function CallHistoryPro({ onCountChange, onEditContact, onRedial 
             {call.contactId && <AgentChip agentId={call.contactOwnerAgentId} size="xs" />}
             <div className="text-[10px] text-[#9CA3AF] tabular-nums">{formatDuration(call.durationSec)} · {formatDate(call.startedAt)}</div>
           </div>
+          {desk === 'sa' && call.contactId && <HostunicoReportButton contact={{ id: call.contactId, name: call.contactName, phone: call.contactPhone, customFields: call.customFields }} />}
           {call.contactId && onRedial && (
             <button
               onClick={() => onRedial(call.contactId!)}

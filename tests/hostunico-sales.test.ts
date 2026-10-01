@@ -34,7 +34,7 @@ describe('Hostunico sales desk', () => {
     const p = { postcode: 'M1 5QA', bedrooms: 2, bathrooms: 1, wholeProperty: true };
     expect(reportProperty(p)).toEqual(p);
     for (const bad of [{ ...p, postcode: 'M1' }, { ...p, bathrooms: null }, { ...p, wholeProperty: false }, { ...p, bedrooms: 0 }, { ...p, bedrooms: '2' }]) expect(reportProperty(bad)).toBeNull();
-    expect(REPORT_AHEAD).toBe(10);
+    expect(REPORT_AHEAD).toBe(20);
   });
   it('shares the report in one conversational text', () => {
     const url = 'https://hostunico.com/r/A1b2C';

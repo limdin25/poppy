@@ -34,6 +34,7 @@ import BallparkModal from '../components/deals/BallparkModal';
 import DealFactsBlock from '../components/deals/DealFactsBlock';
 import { callModeForStep } from '../lib/nextStep';
 import { useDesk } from '../lib/DeskContext';
+import HostunicoReportButton from '../components/contacts/HostunicoReportButton';
 
 const PIPELINE_LS_KEY = 'crm_pipelines_selected_id';
 
@@ -559,9 +560,10 @@ export default function PipelinesPage() {
                         })()}
                         {/* Action buttons — visible on hover */}
                         <div
-                          className="flex gap-0.5 mt-2 opacity-0 group-hover:opacity-100 transition-opacity"
+                          className={`flex flex-wrap gap-0.5 mt-2 ${desk === 'sa' ? '' : 'opacity-0 group-hover:opacity-100'} transition-opacity`}
                           onClick={(e) => e.stopPropagation()}
                         >
+                          {desk === 'sa' && <HostunicoReportButton contact={c} />}
                           <button
                             onClick={(e) => { e.stopPropagation(); openDialerPro(c.id, { pipelineColumnId: col.id }); }}
                             className="p-1 rounded hover:bg-[#EEF2F8] text-[#3C5A87]"
@@ -576,13 +578,13 @@ export default function PipelinesPage() {
                           >
                             <MessageSquare className="w-3.5 h-3.5" />
                           </button>
-                          <button
+                          {desk !== 'sa' && <button
                             onClick={(e) => { e.stopPropagation(); setSmsChannel('whatsapp'); setSmsTo(c); }}
                             className="p-1 rounded hover:bg-[#EEF2F8] text-[#25D366]"
                             title="WhatsApp"
                           >
                             <MessageSquare className="w-3.5 h-3.5" strokeWidth={2.4} />
-                          </button>
+                          </button>}
                           <button
                             onClick={(e) => { e.stopPropagation(); setSmsChannel('email'); setSmsTo(c); }}
                             className="p-1 rounded hover:bg-[#DBEAFE] text-[#3B82F6]"

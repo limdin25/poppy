@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { HOSTUNICO_CAMPAIGN, HOSTUNICO_PIPELINE, REPORT_AHEAD, reportProperty, reportSms } from '../lib/hostunico-report.js';
+import { HOSTUNICO_CAMPAIGN, HOSTUNICO_PIPELINE, REPORT_AHEAD, REPORT_SCAN_LIMIT, cachedReportReady, reportProperty, reportSms } from '../lib/hostunico-report.js';
 import { hostunicoCountry } from '../../supabase/functions/_shared/hostunico-pricing.js';
 import { reportPhone, reportPhoneKind } from '../../supabase/functions/_shared/hostunico-phone.js';
 
@@ -52,28 +52,34 @@ export default async function handler(req: Request): Promise<Response> {
       const token = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
       check(await supa.from('sa_property_reports').upsert({ listing_id: listing.id, access_token: token, property }, { onConflict: 'listing_id', ignoreDuplicates: true }));
       const row = check(await supa.from('sa_property_reports').select('*').eq('listing_id', listing.id).single());
+      if (cachedReportReady(row) && row.report_pitch && !row.report_pitch.planning && Date.now() - Date.parse(row.updated_at) < 300000) {
+        return { stage: 'ready', message: row.message, reportUrl: row.report_url, reportPitch: row.report_pitch };
+      }
       const leadListing = check(await supa.from('sa_listings').select('wk_contact_id,address,listing_url,photo_urls,property_type,rent_pcm,source_price,hostunico_call_eligible').eq('id', listing.id).single());
       const lead = await contact(leadListing.wk_contact_id);
-      const result = await remote('start', { id: row.remote_id, token: row.access_token, property: row.property, country: hostunicoCountry(lead.hostunico_country, lead.phone), listing: reportListing(leadListing) });
+      const result = await remote('start', { id: row.remote_id, token: row.access_token, property: row.property, country: hostunicoCountry(lead.hostunico_country, lead.phone), listing: reportListing(leadListing) }).catch((error) => {
+        if (cachedReportReady(row)) return { stage: 'ready', message: row.message, reportUrl: row.report_url, reportPitch: row.report_pitch };
+        throw error;
+      });
       check(await supa.from('sa_property_reports').update({ state: result.stage, message: result.message, report_url: result.reportUrl ?? null, report_pitch: result.stage === 'ready' ? result.reportPitch ?? null : null, updated_at: new Date().toISOString() }).eq('listing_id', listing.id).eq('remote_id', row.remote_id));
       return result;
     };
     if (action === 'prepare_queue' && req.method === 'POST') {
       if (body.campaign_id !== HOSTUNICO_CAMPAIGN) throw new Problem(400, 'Choose the Hostunico calling campaign.');
       const offset = body.offset ?? 0;
-      if (!Number.isInteger(offset) || offset < 0 || offset >= REPORT_AHEAD || offset % 2 !== 0) throw new Problem(400, 'Invalid report batch.');
+      if (!Number.isInteger(offset) || offset < 0 || offset >= REPORT_SCAN_LIMIT || offset % 2 !== 0) throw new Problem(400, 'Invalid report batch.');
       const membership = check(await supa.from('wk_campaign_agents').select('agent_id').eq('campaign_id', HOSTUNICO_CAMPAIGN).eq('agent_id', auth.user.id).maybeSingle());
       if (!admin && !membership) throw new Problem(403, 'Campaign access required.');
       const now = new Date().toISOString();
       let q = supa.from('wk_dialer_queue').select('contact_id,wk_contacts!inner(id,desk,owner_agent_id,do_not_call)').eq('campaign_id', HOSTUNICO_CAMPAIGN)
         .eq('status', 'pending').eq('wk_contacts.desk', 'sa').eq('wk_contacts.do_not_call', false)
-        .or(`scheduled_for.is.null,scheduled_for.lte.${now}`).order('priority', { ascending: false }).order('scheduled_for', { ascending: true, nullsFirst: true }).order('attempts').order('created_at').limit(REPORT_AHEAD);
+        .or(`scheduled_for.is.null,scheduled_for.lte.${now}`).order('priority', { ascending: false }).order('scheduled_for', { ascending: true, nullsFirst: true }).order('attempts').order('created_at').order('id').limit(REPORT_SCAN_LIMIT);
       if (!admin) q = q.eq('wk_contacts.owner_agent_id', auth.user.id);
       if (body.contact_id) q = q.neq('contact_id', body.contact_id);
       const queue = check(await q);
       let prepared = 0, ready = 0, preparing = 0, needsDetails = 0, failed = 0;
       // One pair per request stays below the edge response deadline. The desk
-      // continues through all ten, updating progress after each pair.
+      // continues until twenty reports are ready, going past unavailable leads.
       await Promise.all(queue.slice(offset, offset + 2).map(async (lead) => {
         try {
           const listing = check(await supa.from('sa_listings').select('id,report_property').eq('wk_contact_id', lead.contact_id).eq('source', 'spareroom').eq('hostunico_call_eligible', true).order('dealt_at', { ascending: false }).order('id').limit(1).maybeSingle());
@@ -84,7 +90,7 @@ export default async function handler(req: Request): Promise<Response> {
           else { prepared++; if (result.stage === 'ready') ready++; else preparing++; }
         } catch { failed++; }
       }));
-      return json({ prepared, ready, preparing, needsDetails, failed, ahead: queue.length, nextOffset: offset + 2 < queue.length ? offset + 2 : null });
+      return json({ prepared, ready, preparing, needsDetails, failed, ahead: queue.length, target: REPORT_AHEAD, nextOffset: offset + 2 < queue.length ? offset + 2 : null });
     }
     const listingId = String(body.listing_id ?? '');
     if (!/^[0-9a-f-]{36}$/i.test(listingId)) throw new Problem(400, 'Choose a property.');
@@ -139,6 +145,10 @@ export default async function handler(req: Request): Promise<Response> {
       check(await supa.from('sa_listings').update({ report_property: property }).eq('id', listingId));
       return json(await start({ ...listing, report_property: property }));
     }
+    if (action === 'status' && (!row || row.state !== 'ready') && reportProperty(listing.report_property) && !c.do_not_call) {
+      await start(listing);
+      row = check(await supa.from('sa_property_reports').select('*').eq('listing_id', listingId).single());
+    }
     if (!row) return json({ ...sendingPolicy, stage: 'needs_details', message: 'Confirm property details to prepare this report.', property: reportProperty(listing.report_property), mobile: c.hostunico_sms_phone || (reportPhoneKind(c.phone) === 'mobile' ? reportPhone(c.phone) : '') });
     if (action === 'retry' && req.method === 'POST') {
       if (row.state !== 'review' || row.sms_state !== 'unsent') throw new Problem(409, 'Only an unfinished, unsent report can be retried.');
@@ -151,10 +161,13 @@ export default async function handler(req: Request): Promise<Response> {
       check(await supa.from('sa_property_reports').update({ received_at: new Date().toISOString() }).eq('listing_id', listingId).eq('remote_id', row.remote_id));
       return json({ ok: true });
     }
-    if (row.state !== 'ready' || !row.report_pitch || !/^https:\/\/hostunico\.com\/r\/[A-Za-z0-9]{5}$/.test(row.report_url || '') || action === 'send_sms' || Date.now() - Date.parse(row.created_at) >= 29 * 86400000) {
-      const result = await remote('status', { id: row.remote_id, token: row.access_token, listing: reportListing(listing) });
+    if (!cachedReportReady(row) || (action === 'status' && (!row.report_pitch || (row.report_pitch.planning && Date.now() - Date.parse(row.updated_at || '') > 45000)))) {
+      const result = await remote('status', { id: row.remote_id, token: row.access_token, listing: reportListing(listing) }).catch((error) => {
+        if (cachedReportReady(row)) return { stage: 'ready', message: row.message, reportUrl: row.report_url, reportPitch: row.report_pitch };
+        throw error;
+      });
       const pitch = result.stage === 'ready' ? result.reportPitch ?? null : null;
-      check(await supa.from('sa_property_reports').update({ state: result.stage, message: result.message, report_url: result.reportUrl ?? null, report_pitch: pitch }).eq('listing_id', listingId).eq('remote_id', row.remote_id));
+      check(await supa.from('sa_property_reports').update({ state: result.stage, message: result.message, report_url: result.reportUrl ?? null, report_pitch: pitch, updated_at: new Date().toISOString() }).eq('listing_id', listingId).eq('remote_id', row.remote_id));
       row = { ...row, state: result.stage, message: result.message, report_url: result.reportUrl ?? null, report_pitch: pitch };
     }
     if (action === 'send_sms' && req.method === 'POST') {

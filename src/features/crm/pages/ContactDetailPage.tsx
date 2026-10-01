@@ -37,6 +37,7 @@ import { useDialerProModal } from '../layout/DialerProModalContext';
 import type { Contact } from '../types';
 import { useDesk } from '../lib/DeskContext';
 import { signCallRecording } from '../hooks/useCalls';
+import HostunicoReportButton from '../components/contacts/HostunicoReportButton';
 
 export default function ContactDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -158,6 +159,7 @@ export default function ContactDetailPage() {
           <div className="text-[13px] text-[#6B7280] tabular-nums">{contact.phone}</div>
         </div>
         <div className="flex gap-2">
+          {isHostunico && <HostunicoReportButton contact={contact} />}
           <button
             onClick={() => setEditing(contact)}
             className="flex items-center gap-1.5 border border-[#E5E7EB] bg-white text-[#1A1A1A] text-[13px] font-medium px-4 py-2 rounded-[10px] hover:bg-[#F3F3EE]"

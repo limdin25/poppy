@@ -35,6 +35,7 @@ import { useSmsV2 } from '../store/SmsV2Store';
 import { useContactPersistence } from '../hooks/useContactPersistence';
 import { useDemoMode } from '../lib/useDemoMode';
 import type { CallRecord, Contact } from '../types';
+import HostunicoReportButton from '../components/contacts/HostunicoReportButton';
 
 const STATUS_ICON = {
   inbound: <PhoneIncoming className="w-3.5 h-3.5 text-[#3C5A87]" />,
@@ -443,7 +444,7 @@ export default function CallsPage() {
                         </button>
                       )}
                     </td>
-                    <td className="px-2 py-2.5 text-[#6B7280]">{agent?.name ?? '—'}</td>
+                    <td className="px-2 py-2.5 text-[#6B7280]">{agent?.name ?? 'Unknown'}{contact?.customFields?.lead_type === 'hostunico_owner' && <div className="mt-1"><HostunicoReportButton contact={contact} /></div>}</td>
                     <td className="px-2 py-2.5">
                       <span className="text-[11px] font-medium capitalize text-[#6B7280]">
                         {c.status}
