@@ -74,7 +74,8 @@ class HistoryTests(unittest.TestCase):
             if table == 'wk_contacts':
                 return [{'id': 'existing', 'desk': self.desk, 'owner_agent_id': 'pedro', 'do_not_call': self.opted_out}]
             if table == 'sa_listings':
-                return [{'id': 'property', 'wk_contact_id': 'existing', 'rent_pcm': 650, 'source_price': '£650 pcm'}]
+                return [{'id': 'property', 'wk_contact_id': 'existing', 'rent_pcm': 650, 'source_price': '£650 pcm',
+                         'photo_urls': ['existing-photo'], 'report_property': {'postcode': 'LS1'}, 'hostunico_call_eligible': True}]
             if table == 'wk_dialer_queue':
                 return [{'id': 'done-queue'}] if self.queue else []
             if table == 'wk_calls':
@@ -107,6 +108,24 @@ class HistoryTests(unittest.TestCase):
         with self.assertRaisesRegex(module.Rejected, 'listing_contact_conflict'):
             module.import_property(api, self.item(), 'pedro', 'new-lead')
         self.assertEqual(api.writes, [])
+
+    def test_missing_old_photo_and_report_inputs_are_repaired_from_the_verified_advert(self):
+        api = self.Api()
+        original = api.db
+        def db(table, *args, **kwargs):
+            result = original(table, *args, **kwargs)
+            if table == 'sa_listings' and kwargs.get('body') is None:
+                result[0].update(photo_urls=[], report_property=None, hostunico_call_eligible=False)
+            return result
+        api.db = db
+        item = module.screen(ScreeningTests().row(), advert())
+        module.import_property(api, item, 'pedro', 'new-lead')
+        self.assertEqual(len(api.writes), 1)
+        table, patch = api.writes[0]
+        self.assertEqual(table, 'sa_listings')
+        self.assertEqual(patch['photo_urls'], item['photos'])
+        self.assertEqual(patch['report_property']['postcode'], 'LS1')
+        self.assertTrue(patch['report_property']['areaEstimate'])
 
 
 if __name__ == '__main__':

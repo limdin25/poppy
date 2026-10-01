@@ -186,7 +186,7 @@ class Api:
 
 
 def import_property(api, item, owner, stage):
-    listing = api.db('sa_listings', {'select': 'id,wk_contact_id,rent_pcm,source_price',
+    listing = api.db('sa_listings', {'select': 'id,wk_contact_id,rent_pcm,source_price,photo_urls,report_property,hostunico_call_eligible',
                                    'rightmove_id': 'eq.spareroom:' + item['advert_id']})
     existing = api.db('wk_contacts', {'select': 'id,desk,owner_agent_id,do_not_call',
                                      'or': '(phone.eq.' + item['phone'] + ',hostunico_sms_phone.eq.' + item['phone'] + ')'})
@@ -221,6 +221,21 @@ def import_property(api, item, owner, stage):
             'hostunico_eligibility_note': 'Live whole studio/one-bedroom flat, asking price and actual photo verified.',
             'summary': 'Whole flat verified from the live advert. Confirm availability, authority, full postcode and bathroom count. Area report assumptions are unconfirmed.',
             'dealt_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())})
+    else:
+        # Earlier imports can lack source evidence. Repair missing fields using
+        # this verified live page, while preserving confirmed property inputs.
+        patch = {}
+        if not listing[0].get('photo_urls'):
+            patch['photo_urls'] = item['photos']
+        if not listing[0].get('report_property'):
+            patch['report_property'] = {'postcode': item['outcode'], 'areaLabel': item['location'],
+                                        'bedrooms': 1, 'bathrooms': 1, 'wholeProperty': True,
+                                        'areaEstimate': True, 'advertisedRentPcm': item['rent_pcm']}
+        if not listing[0].get('hostunico_call_eligible'):
+            patch['hostunico_call_eligible'] = True
+            patch['hostunico_eligibility_note'] = 'Live whole studio/one-bedroom flat, asking price and actual photo verified.'
+        if patch:
+            api.db('sa_listings', {'id': 'eq.' + listing[0]['id']}, body=patch, method='PATCH')
     # Preserve every existing queue row, including skipped, missed and done.
     queue = api.db('wk_dialer_queue', {'select': 'id', 'campaign_id': 'eq.' + CAMPAIGN,
                                      'contact_id': 'eq.' + contact_id})
