@@ -1,5 +1,8 @@
 import importlib.util
+import json
 from pathlib import Path
+import sqlite3
+import tempfile
 import unittest
 
 spec = importlib.util.spec_from_file_location('city_supply', Path(__file__).parents[1] / 'scripts/hostunico-city-supply.py')
@@ -126,6 +129,29 @@ class HistoryTests(unittest.TestCase):
         self.assertEqual(patch['photo_urls'], item['photos'])
         self.assertEqual(patch['report_property']['postcode'], 'LS1')
         self.assertTrue(patch['report_property']['areaEstimate'])
+
+
+class RunSelectionTests(unittest.TestCase):
+    def test_added_city_runs_are_read_from_config_without_importing_unrelated_runs(self):
+        db = sqlite3.connect(':memory:')
+        db.row_factory = sqlite3.Row
+        db.execute('create table runs (id integer, label text, location text, status text, file_name text)')
+        for run_id in (9, 10, 20, 21, 22):
+            db.execute('insert into runs values (?, ?, ?, ?, ?)',
+                       (run_id, 'Pedro tomorrow - Hull 40 miles', 'Hull', 'done', 'city.csv'))
+        with tempfile.TemporaryDirectory() as directory:
+            ops = Path(directory)
+            self.assertEqual([r['id'] for r in module.supply_runs(db, ops)], [10, 20])
+            (ops / 'supply-runs.json').write_text(json.dumps([10, 20, 21]))
+            self.assertEqual([r['id'] for r in module.supply_runs(db, ops)], [10, 20, 21])
+
+    def test_invalid_run_config_is_rejected_instead_of_widening_import_scope(self):
+        with tempfile.TemporaryDirectory() as directory:
+            ops = Path(directory)
+            for config in ([], ['21'], [True], [0], {'runs': [21]}):
+                (ops / 'supply-runs.json').write_text(json.dumps(config))
+                with self.assertRaises(ValueError):
+                    module.supply_runs(sqlite3.connect(':memory:'), ops)
 
 
 if __name__ == '__main__':

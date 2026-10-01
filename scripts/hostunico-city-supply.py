@@ -279,6 +279,15 @@ def sync_report(api, listing_id, create=True):
     return value['stage'] == 'ready' and bool(value.get('reportPitch')) and not value['reportPitch'].get('planning')
 
 
+def supply_runs(db, ops):
+    config = ops / 'supply-runs.json'
+    ids = json.loads(config.read_text()) if config.exists() else list(range(10, 21))
+    if not isinstance(ids, list) or not ids or any(type(x) is not int or x <= 0 for x in ids):
+        raise ValueError('Supply run config must contain positive integer run IDs')
+    slots = ','.join('?' for _ in ids)
+    return db.execute('select id,label,location,status,file_name from runs where id in (' + slots + ') order by id', ids).fetchall()
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--home', default='/opt/spareroom')
@@ -310,7 +319,7 @@ def main():
     while time.time() < STOP_AT:
         db = sqlite3.connect(home / 'data/spareroom.db')
         db.row_factory = sqlite3.Row
-        runs = db.execute('select id,label,location,status,file_name from runs where id between 10 and 20 order by id').fetchall()
+        runs = supply_runs(db, ops)
         db.close()
         candidates = {}
         for run in runs:
