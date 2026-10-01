@@ -66,6 +66,22 @@ beforeEach(() => {
   }));
 });
 describe('human report sends', () => {
+  it('previews the exact SMS before Pedro sends, with the current short link', async () => {
+    const preview = await (await handler(request('status'))).json();
+    expect(preview.smsDraft).toContain('https://hostunico.com/r/A1b2C');
+    expect(preview.smsBlocked).toBe(false);
+    expect(fixture.smsRequests).toBe(0);
+    await handler(request('send_sms', { permission: true }));
+    const send = vi.mocked(fetch).mock.calls.find(([url]) => String(url).endsWith('/wk-sms-send'))!;
+    expect(JSON.parse(String(send[1]?.body)).body).toBe(preview.smsDraft);
+  });
+  it('shows an existing text opt-out and blocks before claiming a send', async () => {
+    fixture.tables.wk_contact_tags = [{ contact_id: 'contact', tag: 'do-not-text' }];
+    expect(await (await handler(request('status'))).json()).toMatchObject({ smsBlocked: true, contactBlocked: false });
+    expect((await handler(request('send_sms', { permission: true }))).status).toBe(409);
+    expect(fixture.tables.sa_property_reports[0].sms_state).toBe('unsent');
+    expect(fixture.smsRequests).toBe(0);
+  });
   it('prepares ten leads in five bounded requests without sending messages', async () => {
     const campaign = '5d9657f9-d9b4-4e27-a2d1-83db80867f92';
     const property = { postcode: 'E14', bedrooms: 1, bathrooms: 1, wholeProperty: true, areaEstimate: true };

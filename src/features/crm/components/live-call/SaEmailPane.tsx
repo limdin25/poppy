@@ -1,4 +1,3 @@
-import { hostunicoPriceCopy } from '../../../../../supabase/functions/_shared/hostunico-pricing';
 // The email on a Serviced Accommodation call (Hugo, 2026-09-23).
 //
 // Letting agents nearly always say "send me an email". So Pedro asks for the
@@ -6,10 +5,8 @@ import { hostunicoPriceCopy } from '../../../../../supabase/functions/_shared/ho
 // phone. A PERSON presses send, every time: nothing on this desk texts or
 // emails anybody by itself.
 //
-// WE ARE THE MIDDLEMAN. The email says we work with serviced accommodation
-// companies and asks for a yes in principle from the agent or the landlord. It
-// never says "we will take the flat", never agrees a rent, and never names a
-// start date.
+// The current property's browser report is linked in the draft. Pedro reviews
+// the address and text before sending. No attachment or automatic follow-up.
 
 import { useEffect, useRef, useState } from 'react';
 import { Check, Loader2, Mail, Send, AlertTriangle } from 'lucide-react';
@@ -39,13 +36,11 @@ export function saEmailTemplate(opts: {
     body: [
       hi,
       '',
-      `Thanks for your time on the phone about ${opts.address}${where}. Hostunico helps owners manage short stays through Airbnb.`,
+      `Thanks for your time on the phone about ${opts.address}${where}.`,
       '',
       opts.reportUrl ? `Here is your property report: ${opts.reportUrl}\n\nIt includes the estimated earnings, assumptions and costs. The figures are estimates, not guaranteed income.` : `We can prepare a report comparing estimated earnings and costs${opts.rent ? ` with the advertised rent of ${opts.rent}` : ''}. Please confirm the full postcode, whole-property bedrooms and bathrooms. The figures are estimates, not guaranteed income.`,
       '',
-      hostunicoPriceCopy(opts.country),
-      '',
-      'You keep your Airbnb account. Elsie and the operations team handle guest communication and cleaning coordination. Want me to walk you through what onboarding looks like?',
+      'Want me to walk you through what onboarding looks like?',
       '',
       'Thanks,',
       opts.fromName,
@@ -61,11 +56,14 @@ interface Props {
   listing: SaListing | null;
   reportUrl?: string;
   country?: string;
+  requireReport?: boolean;
+  blocked?: boolean;
+  onSent?: () => void;
 }
 
 const VALID = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
-export default function SaEmailPane({ contactId, contactEmail, agentFirstName, listing, reportUrl, country }: Props) {
+export default function SaEmailPane({ contactId, contactEmail, agentFirstName, listing, reportUrl, country, requireReport = false, blocked = false, onSent }: Props) {
   const { pushToast, patchContact } = useSmsV2();
   const persist = useContactPersistence();
   const [email, setEmail] = useState(contactEmail ?? '');
@@ -78,7 +76,7 @@ export default function SaEmailPane({ contactId, contactEmail, agentFirstName, l
   // Once he types in the email itself, nothing overwrites him.
   const touched = useRef(false);
 
-  const address = listing?.address || 'the flat';
+  const address = listing?.address || 'your property';
   const street = spokenStreet(listing?.address) || address;
   const rent = gbpMonth(listing?.rentPcm);
 
@@ -90,7 +88,8 @@ export default function SaEmailPane({ contactId, contactEmail, agentFirstName, l
   }, [address, street, rent, listing?.city, person, agentFirstName, reportUrl, country]);
 
   const valid = VALID.test(email.trim());
-  const canSend = valid && !!subject.trim() && !!body.trim() && !sending && !!contactId;
+  const reportAttached = !!reportUrl && body.includes(reportUrl);
+  const canSend = valid && !!subject.trim() && !!body.trim() && !sending && !sent && !blocked && !!contactId && (!requireReport || reportAttached);
 
   async function send() {
     if (!canSend || !contactId) return;
@@ -100,7 +99,7 @@ export default function SaEmailPane({ contactId, contactEmail, agentFirstName, l
       const clean = email.trim().toLowerCase();
       const fn = supabase.functions as unknown as {
         invoke: (n: string, o: { body: Record<string, unknown> }) => Promise<{
-          data: { error?: string } | null; error: { message: string } | null;
+          data: { error?: string; warning?: string } | null; error: { message: string } | null;
         }>;
       };
       const { data, error } = await fn.invoke('wk-email-send', {
@@ -113,6 +112,8 @@ export default function SaEmailPane({ contactId, contactEmail, agentFirstName, l
         return;
       }
       setSent(true);
+      onSent?.();
+      if (data?.warning) setNote('Email submitted, but its inbox record could not be saved. Check delivery before sending again.');
       pushToast('Email sent', 'success');
       // Remember the address. Best effort: the email has gone either way.
       patchContact(contactId, { email: clean });
@@ -143,7 +144,8 @@ export default function SaEmailPane({ contactId, contactEmail, agentFirstName, l
           <input
             value={email}
             onChange={(e) => { setEmail(e.target.value); setSent(false); }}
-            placeholder="name@agency.co.uk"
+            placeholder="Their email address"
+            type="email"
             spellCheck={false}
             autoCapitalize="off"
             data-testid="sa-email-address"
@@ -180,7 +182,7 @@ export default function SaEmailPane({ contactId, contactEmail, agentFirstName, l
         <textarea
           value={body}
           onChange={(e) => { touched.current = true; setBody(e.target.value); }}
-          rows={14}
+          rows={10}
           data-testid="sa-email-body"
           className="min-h-[200px] flex-1 w-full resize-y rounded border border-[#E5E7EB] px-2 py-1.5 text-[12px] leading-relaxed text-[#1A1A1A] focus:border-[#3C5A87] focus:outline-none"
         />
@@ -193,8 +195,9 @@ export default function SaEmailPane({ contactId, contactEmail, agentFirstName, l
           {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : sent ? <Check className="h-3.5 w-3.5" /> : <Send className="h-3.5 w-3.5" />}
           {sending ? 'Sending' : sent ? 'Sent, ask them to confirm it landed' : 'Send it now'}
         </button>
+        {requireReport && !reportAttached && <p className="text-xs text-amber-800">The ready report link must be included before sending.</p>}
         {!contactId && (
-          <p className="text-center text-[10.5px] text-[#9CA3AF]">No agency on screen yet. This is the email that will go out.</p>
+          <p className="text-center text-[10.5px] text-[#9CA3AF]">Choose a contact before sending.</p>
         )}
       </div>
     </div>

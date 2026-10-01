@@ -191,7 +191,7 @@ async function handleSendSms(
     // wk_contacts is the source of truth for the smsv2 / live-call surface.
     supabase
       .from('wk_contacts' as never)
-      .select('phone, name')
+      .select('phone, name, desk')
       .eq('id', contactId)
       .maybeSingle(),
     agentId
@@ -203,7 +203,11 @@ async function handleSendSms(
       : Promise.resolve({ data: null, error: null }),
   ]);
 
-  const contactRow = contactRes.data as { phone?: string; name?: string } | null;
+  const contactRow = contactRes.data as { phone?: string; name?: string; desk?: string } | null;
+  if (contactRow?.desk === 'sa') {
+    console.log('[wk-jobs-worker] Hostunico SMS job skipped: manual sending only');
+    return;
+  }
   if (!contactRow?.phone) {
     throw new Error(`send_sms: contact ${contactId} has no phone number`);
   }

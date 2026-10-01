@@ -4,7 +4,6 @@ import HostunicoScriptPane from './HostunicoScriptPane';
 import SaReportPanel, { reportAction } from './SaReportPanel';
 import LiveTranscriptPane from './LiveTranscriptPane';
 import SaListingPane from './SaListingPane';
-import SaEmailPane from './SaEmailPane';
 import { useSaListings } from '../../hooks/useSaListings';
 import { hostunicoProperty } from '../../lib/hostunicoProperty';
 import type { Contact } from '../../types';
@@ -37,7 +36,6 @@ export default function SaCallRoom({ contact, contactHeader, emptyState, current
   const [opener, setOpener] = useState('');
   const [mode, setMode] = useState('spareroom');
   const [ahead, setAhead] = useState('');
-  const [emailReport, setEmailReport] = useState<string | null>(null);
   const [country, setCountry] = useState('GB');
   const [pitchSnapshot, setPitchSnapshot] = useState<{ listingId: string; country: string; value: HostunicoReportPitch | null } | null>(null);
   const receivePitch = useCallback((listingId: string, country: string, value: HostunicoReportPitch | null) => setPitchSnapshot({ listingId, country, value }), []);
@@ -60,7 +58,6 @@ export default function SaCallRoom({ contact, contactHeader, emptyState, current
   const selected = useMemo(() => listings.find((l) => l.id === selectedId) ?? listings[0] ?? null, [listings, selectedId]);
   const facts = hostunicoProperty(selected);
   const reviewRequested = !!selected && reviewRequest?.listingId === selected.id && reviewRequest.contactId === contact?.id;
-  useEffect(() => { setEmailReport(null); }, [contact?.id, selected?.id]);
   useEffect(() => {
     if (!selected) return;
     let cancelled = false;
@@ -110,7 +107,8 @@ export default function SaCallRoom({ contact, contactHeader, emptyState, current
               {selected?.summary && <details><summary className="cursor-pointer text-xs font-medium">Read advert description</summary><p className="mt-2 whitespace-pre-line text-xs leading-relaxed text-slate-600">{selected.summary}</p></details>}
             </div>
           </section>
-          <SaReportPanel key={`${selected?.id || 'none'}:${country}`} listing={selected} phone={contact.phone} country={country} onReportPitch={receivePitch} onReportMobile={receiveMobile} onEmail={(url) => { setEmailReport(url); setCollapsed(false); }} />
+          {contact.customFields?.hostunico_internal_test && <p className="rounded-lg bg-amber-50 p-2 text-xs text-amber-900">Internal rehearsal. These example property details are for testing this call.</p>}
+          <SaReportPanel key={`${contact.id}:${selected?.id || 'none'}:${country}`} listing={selected} phone={contact.phone} country={country} contactId={contact.id} contactEmail={contact.email} agentName={callerName} onReportPitch={receivePitch} onReportMobile={receiveMobile} />
           {ahead && <p className="text-[11px] text-slate-500" role="status">{ahead}</p>}
           <details className="rounded-xl border bg-white p-3"><summary className="cursor-pointer text-xs font-semibold">Lead country and pricing</summary><label className="mt-2 block text-xs text-slate-600">Lead country<select aria-label="Lead country for pricing" value={country === 'GB' ? 'GB' : 'US'} className="mt-1 w-full rounded-lg border bg-white px-2 py-2" onChange={async (e) => {
             const next = e.target.value;
@@ -131,7 +129,6 @@ export default function SaCallRoom({ contact, contactHeader, emptyState, current
           <div className="min-h-0 flex-1">{contact ? <LiveTranscriptPane key={currentCallId || contact.id} durationSec={liveDurationSec} contactId={contact.id} callId={currentCallId} agentFirstName={callerName} hostunicoCountry={country} hostunicoContext={`${selected?.id || ''}:${mode}:${country}`} hostunicoPhone={contact.phone} hostunicoReportMobile={mobileSnapshot?.listingId === selected?.id ? mobileSnapshot?.mobile : null} isSaCall propertyOpener={opener} /> : <div className="p-5 text-sm text-slate-500">{emptyState || 'Choose a lead to start. The live coach appears here.'}</div>}</div>
         </section>
       </div>
-      {emailReport && contact && <section aria-label="Email property report" className="absolute inset-y-0 left-0 z-30 flex w-full max-w-md flex-col border-r bg-white shadow-xl"><div className="flex items-center justify-between border-b p-3"><h2 className="font-semibold">Email the report</h2><button onClick={() => setEmailReport(null)} className="rounded-lg border px-3 py-1.5 text-xs">Close email</button></div><div className="min-h-0 flex-1"><SaEmailPane key={selected?.id} contactId={contact.id} contactEmail={contact.email} listing={selected} agentFirstName={callerName} reportUrl={emailReport} country={country} /></div></section>}
     </div>
   </div>;
 }

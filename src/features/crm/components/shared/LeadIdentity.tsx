@@ -70,7 +70,8 @@ export function isPropertyLead(
     // An auction office on the Auction desk: property, not an Elsie lead.
     || customFields?.lead_type === 'auctioneer'
     // A letting agent on the Serviced Accommodation desk (2026-09-23).
-    || customFields?.lead_type === 'sa_agency';
+    || customFields?.lead_type === 'sa_agency'
+    || customFields?.lead_type === 'hostunico_owner';
 }
 
 /** The person to ask for, from either place it can be recorded. */

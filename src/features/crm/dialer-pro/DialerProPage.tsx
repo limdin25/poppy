@@ -869,13 +869,13 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
       </div>
       <div className="flex items-center gap-2 mt-0.5">
         <span className="text-[12px] text-[#6B7280] tabular-nums">{contact.phone}</span>
-        <CalcChip calcAt={funnel?.calcAt} count={funnel?.calcCount} />
+        {!isSaCall && <CalcChip calcAt={funnel?.calcAt} count={funnel?.calcCount} />}
         <AgentChip agentId={contact.ownerAgentId} size="xs" className="ml-auto" />
       </div>
       {!isLive && !state.currentLead && (
         <div className="text-[10px] text-[#9CA3AF] mt-1">Next in queue</div>
       )}
-      <div className="mt-2"><ContactMetaCompact contact={contact} /></div>
+      <div className="mt-2"><ContactMetaCompact contact={contact} isHostunico={isSaCall} /></div>
     </div>
   ) : null;
 

@@ -2,7 +2,7 @@ import { HOSTUNICO_ANSWERS, hostunicoAnswerCopy } from './hostunico-answer-bank.
 
 export const HOSTUNICO_JEV_MODEL = 'jev-1.13.0';
 export const HOSTUNICO_JEV_CONFIDENCE = 0.9;
-const fastAnswers = HOSTUNICO_ANSWERS.filter((answer) => answer.key !== 'report');
+const fastAnswers = HOSTUNICO_ANSWERS.filter((answer) => !['report', 'service'].includes(answer.key));
 
 export function hostunicoJevRequest(latestCaller: string, transcript: { speaker: string; body: string }[], country = 'GB') {
   return {

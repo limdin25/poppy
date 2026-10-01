@@ -21,7 +21,7 @@ export default function HostunicoScriptPane({ listing, agentName, onOpener, onMo
   const opener = mode === 'spareroom'
     ? `Hi, this is ${agentName || 'Pedro'} here. I saw your ${property.description} in ${place}${rent} on SpareRoom. Is it still available?`
     : mode === 'facebook'
-      ? `Hi, this is ${agentName || 'Pedro'} here. You enquired about managing your property through Airbnb. Is the property still available?`
+      ? `Hi, this is ${agentName || 'Pedro'} here. You enquired about partnering with us for short-term lets through Airbnb. Is the property still available?`
       : `Hi, this is ${agentName || 'Pedro'} here. We spoke about your property and I sent you the earnings report. Have you had a chance to look at it?`;
   useEffect(() => { onOpener(opener); }, [opener, onOpener]);
   useEffect(() => { onMode?.(mode); }, [mode, onMode]);
@@ -46,7 +46,6 @@ export default function HostunicoScriptPane({ listing, agentName, onOpener, onMo
     ['Ask for one minute, then pause', hostunicoReportIntroduction(), 'Wait for their answer before explaining the service or giving figures. If asked who you are with, say Hostunico. Do not claim to be looking for a place to rent. If they are busy, briefly offer to send the earnings report instead. Respect a no.'],
     ['If yes, explain why and give the comparison', hostunicoReportHook(reportPitch), 'Use this report\'s figures. Keep it conversational, then pause for their answer. The report contains the detail; answer questions if they ask.'],
     ['After yes, confirm where to send it', hostunicoReportRecipient(phone, reportMobile), 'This line follows the current contact and saved report mobile. Confirm that they can receive texts. For a different number, enter and save their confirmed mobile in Send report. Read it back. If they prefer email, use Email instead.'],
-    ['Optional details after permission', 'Before I send it, when would the property be available for guests?', 'If useful, also ask whether they are the owner or managing it for the owner. Confirm only missing report facts, such as full postcode and bathrooms. Do not repeat answers already given or delay sending if they are busy.'],
     ['Send the report', 'I will send that over now.', 'Check the recipient, advert photo and correct report, then press Send report by SMS yourself. Tick permission only after they agree. If the report is preparing, say you will send it when ready.'],
     ['After the send succeeds', 'I have sent the report link. Could you check if you have received it?', 'Use this line only after a successful manual send. Record receipt. The report has one invitation: Want me to walk you through what onboarding looks like?'],
     ['Agree a callback', 'Would tomorrow work for a quick call to talk through the report?', 'If yes, ask: What time suits you? Confirm the day, UK time and number. If tomorrow does not work, ask which day does. Save only the time they actually agree to in Review call booked. This creates a reminder for Pedro, not an automatic call or text.'],

@@ -48,10 +48,8 @@ describe('Hostunico sales desk', () => {
     expect(hostunicoInstantAnswer('Who manages the cleaner?')?.say).toContain('operations team');
     expect(hostunicoInstantAnswer('It has two bedrooms')).toBeNull();
     expect(hostunicoInstantAnswer('Who are you with?')?.say).toContain('Hostunico');
-    expect(hostunicoInstantAnswer('Send the report', 'GB', { phone: '+447700900123' })?.nextQuestion).toBe('Can I text it to this number?');
-    expect(hostunicoInstantAnswer('Send the report', 'GB', { phone: '+442079460123' })?.nextQuestion).toContain('What mobile number');
-    expect(hostunicoInstantAnswer('Send the report', 'GB', { phone: '+442079460123', mobile: '+447700900456' })?.nextQuestion).toContain('0456');
-    expect(hostunicoInstantAnswer('Send the report by email', 'GB', { phone: '+447700900123' })?.nextQuestion).toContain('What email address');
+    expect(hostunicoInstantAnswer('Send the report', 'GB', { phone: '+447700900123' })).toBeNull();
+    expect(hostunicoInstantAnswer('Send the report by email', 'GB', { phone: '+442079460123' })).toBeNull();
     expect(HOSTUNICO_RULES).toContain('No WhatsApp');
     expect(HOSTUNICO_RULES).toContain('Only say it has been sent after');
   });

@@ -94,7 +94,7 @@ describe('the script', () => {
     expect(PAGE).toContain('Have you got one minute for me to explain why I called?')
     expect(PAGE).not.toMatch(/10\.8(?:0)?\s*%/)
     expect(PAGE).toContain('When would it be ready to let?')
-    expect(PAGE).toContain('Press Send report by SMS only after they agree')
+    expect(PAGE).toContain('press Send report only after they agree')
     expect(PAGE).toContain('not guaranteed income')
     expect(PAGE).not.toContain('company pays the asking rent')
   })
@@ -134,12 +134,13 @@ describe('the outcomes', () => {
 })
 
 describe('the email', () => {
-  const t = saEmailTemplate({ address: '8 Crump Street, Liverpool', street: 'Crump Street', city: 'Liverpool', rent: '£1,000 a month', person: 'Sam', fromName: 'Pedro' })
+  const t = saEmailTemplate({ address: '8 Crump Street, Liverpool', street: 'Crump Street', city: 'Liverpool', rent: '£1,000 a month', person: 'Sam', fromName: 'Pedro', reportUrl: 'https://hostunico.com/r/A1b2C' })
   it('uses the management offer and never guarantees rent', () => {
-    expect(t.body).toContain('9% + VAT')
+    expect(t.body).toContain('Here is your property report: https://hostunico.com/r/A1b2C')
     expect(t.body).not.toMatch(/registration|current billing|pending/i)
-    expect(t.body).toContain('£29 a month from month two')
-    expect(t.body).toContain('You keep your Airbnb account')
+    expect(t.body).not.toMatch(/VAT|£29|software/)
+    expect(t.body.match(/\?/g)).toHaveLength(1)
+    expect(t.body).toContain('Want me to walk you through what onboarding looks like?')
     expect(t.body).toContain('not guaranteed income')
     expect(t.body).not.toContain('paid every month whether')
     expect(t.body).not.toMatch(LONG_DASH_OR_CURLY)

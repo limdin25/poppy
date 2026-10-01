@@ -224,7 +224,7 @@ describe('the inbound call is a real call', () => {
 
   it('files it as a property call when the caller is an estate agent', () => {
     // An auction office files as an auction call (Auction desk, 2026-09-18).
-    expect(TWIML).toMatch(/script_key: contactIsEstateAgent \? 'property_call' : contactIsAuctioneer \? 'auction_call' : null/)
+    expect(TWIML).toMatch(/script_key: route\.desk === 'sa' \? 'sa_call' : contactIsEstateAgent \? 'property_call' : contactIsAuctioneer \? 'auction_call' : null/)
     expect(TWIML).toMatch(/contactIsEstateAgent = leadType === 'estate_agent'/)
     expect(TWIML).toMatch(/const leadType = \(contactRow\.custom_fields as Record<string, unknown> \| null\)\?\.lead_type/)
   })

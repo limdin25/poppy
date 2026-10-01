@@ -53,7 +53,7 @@ export default function SaListingPane({ contactId, selectedId, onSelect, current
   if (loading) return <div className="p-4 text-[12px] text-[#9CA3AF]">Loading the flat...</div>;
   if (error) return <div className="p-4 text-[12px] text-[#B91C1C]">Could not load the flat: {error}</div>;
   if (listings.length === 0) {
-    return <div className="p-4 text-[12px] text-[#9CA3AF]">No flat on file for this agency.</div>;
+    return <div className="p-4 text-[12px] text-[#9CA3AF]">No eligible property is attached to this contact.</div>;
   }
 
   // Earlier flats from this agency, with what they said. The newest is the one
@@ -63,7 +63,7 @@ export default function SaListingPane({ contactId, selectedId, onSelect, current
     <div className="h-full overflow-y-auto" data-testid="sa-listing-pane">
       {earlier.length > 0 && (
         <div className="mx-3 mt-3 rounded-[10px] border border-[#F0DFB0] bg-[#FFF8EC] px-3 py-2 text-[11.5px] text-[#5a4a20]" data-testid="sa-agency-history">
-          <b>You have rung this agency before.</b>
+          <b>Previous calls about this property.</b>
           {earlier.slice(0, 3).map((l) => (
             <div key={l.id} className="mt-0.5">
               {shortDate(l.outcomeAt ?? l.dealtAt)}, {l.address.split(',')[0]}: {SA_OUTCOME_LABEL[l.outcome ?? ''] ?? l.outcome}

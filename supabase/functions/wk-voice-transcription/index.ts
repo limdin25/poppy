@@ -23,6 +23,9 @@
 import { HOSTUNICO_STAGES, HOSTUNICO_RULES, HOSTUNICO_ANSWERS, hostunicoInstantAnswer } from '../_shared/hostunico-sales.ts';
 import { HOSTUNICO_COACH_PROMPT, cleanHostunicoCoach } from '../_shared/hostunico-coach.ts';
 import { reportPhoneKind } from '../_shared/hostunico-phone.ts';
+import { hostunicoReportDelivery } from '../_shared/hostunico-report-delivery.ts';
+import { hostunicoReportHook } from '../_shared/hostunico-report-pitch.ts';
+import { hostunicoCallStep } from '../_shared/hostunico-call-step.ts';
 import { raceHostunicoCoach, selectHostunicoJevAnswer } from '../_shared/hostunico-jev.ts';
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
@@ -2161,12 +2164,18 @@ serve(async (req: Request) => {
                 const output = await raceHostunicoCoach({
                   fast: (signal) => selectHostunicoJevAnswer({ apiKey: Deno.env.get('TYPESAFE_API_KEY') || '', latestCaller: transcriptText, transcript, country: contact?.hostunico_country || 'GB', signal }),
                   generate: async (onChunk, signal) => {
-                    const [listing, report] = await Promise.all([
+                    const [listing, report, messages] = await Promise.all([
                       listingId ? supa.from('sa_listings').select('address,city,bedrooms,bathrooms,property_type,rent_pcm,source_price,report_property').eq('id', listingId).eq('wk_contact_id', call.contact_id).maybeSingle() : Promise.resolve({ data: null }),
-                      listingId ? supa.from('sa_property_reports').select('state,sms_state,received_at,report_pitch').eq('listing_id', listingId).maybeSingle() : Promise.resolve({ data: null }),
+                      listingId ? supa.from('sa_property_reports').select('state,sms_state,received_at,report_pitch,report_url').eq('listing_id', listingId).maybeSingle() : Promise.resolve({ data: null }),
+                      supa.from('wk_sms_messages').select('body,status,channel,created_at').eq('contact_id', call.contact_id).eq('direction', 'outbound').order('created_at', { ascending: false }).limit(20),
                     ]);
                     if (signal.aborted || aborted) return null;
-                    const generated = await streamCoachInternal({ apiKey: openaiKey, model: (ai.live_coach_model as string) || 'gpt-5.4-mini', hostunico: true, signal, systemMessages: [HOSTUNICO_COACH_PROMPT], userMsg: JSON.stringify({ lead: contact?.name, country: contact?.hostunico_country || 'GB', recipient: { callingNumberType: reportPhoneKind(contact?.phone), confirmedMobile: contact?.hostunico_sms_phone || null }, mode: fields.hostunico_script_mode || 'spareroom', advertisedProperty: listing.data, report: report.data, transcript, latestCaller: transcriptText }), onChunk, isAborted: () => aborted || signal.aborted });
+                    const reportContext = report.data ? { ...report.data, latestDelivery: hostunicoReportDelivery(report.data.report_url, messages.data || []) } : null;
+                    const mode = fields.hostunico_script_mode || 'spareroom';
+                    const scripted = hostunicoCallStep({ mode, latestCaller: transcriptText, transcript, report: reportContext });
+                    if (scripted) { onChunk(scripted, true); return scripted; }
+                    const approvedOpening = hostunicoReportHook(report.data?.state === 'ready' ? report.data.report_pitch : null);
+                    const generated = await streamCoachInternal({ apiKey: openaiKey, model: (ai.live_coach_model as string) || 'gpt-5.4-mini', hostunico: true, signal, systemMessages: [HOSTUNICO_COACH_PROMPT], userMsg: JSON.stringify({ lead: contact?.name, country: contact?.hostunico_country || 'GB', recipient: { callingNumberType: reportPhoneKind(contact?.phone), confirmedMobile: contact?.hostunico_sms_phone || null }, mode, advertisedProperty: listing.data, report: reportContext, approvedOpening, transcript, latestCaller: transcriptText }), onChunk, isAborted: () => aborted || signal.aborted });
                     return generated?.body || null;
                   },
                   onChunk: (text, first) => { if (first) log('Hostunico first words'); writer.schedule(text); },

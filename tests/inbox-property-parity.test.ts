@@ -79,7 +79,7 @@ describe('the property templates reach the inbox compose box', () => {
   })
 
   it('only on a house thread', () => {
-    expect(INBOX).toContain('if (!activeIsProperty) return []')
+    expect(INBOX).toContain("if (!activeIsProperty || desk === 'sa') return []")
   })
 
   it('puts the property ones FIRST, because those are the ones that apply', () => {

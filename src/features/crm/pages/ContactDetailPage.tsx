@@ -35,6 +35,8 @@ import { useContactPersistence } from '../hooks/useContactPersistence';
 import { useDemoMode } from '../lib/useDemoMode';
 import { useDialerProModal } from '../layout/DialerProModalContext';
 import type { Contact } from '../types';
+import { useDesk } from '../lib/DeskContext';
+import { signCallRecording } from '../hooks/useCalls';
 
 export default function ContactDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -44,6 +46,9 @@ export default function ContactDetailPage() {
   const { getContact, patchContact, upsertContact, pushToast } = useSmsV2();
   const { openDialerPro } = useDialerProModal();
   const contact = getContact(id ?? '');
+  const { desk } = useDesk();
+  const isHostunico = desk === 'sa' || contact?.customFields?.lead_type === 'hostunico_owner';
+  const [playback, setPlayback] = useState<{ contactId: string; callId: string; url: string | null; loading: boolean } | null>(null);
   // Same batched hook the inbox uses, with a list of one. useMemo on the id
   // so a re-render never rebuilds the array and re-fires the query.
   const funnelIds = useMemo(() => (id ? [id] : []), [id]);
@@ -184,7 +189,7 @@ export default function ContactDetailPage() {
                 Owner
               </div>
               <AgentChip agentId={contact.ownerAgentId} size="sm" className="text-[13px]" />
-              <CalcChip calcAt={funnel?.calcAt} count={funnel?.calcCount} variant="full" />
+              {!isHostunico && <CalcChip calcAt={funnel?.calcAt} count={funnel?.calcCount} variant="full" />}
             </div>
             {contact.email && (
               <div>
@@ -205,8 +210,8 @@ export default function ContactDetailPage() {
               />
               <StageMoveChip contact={contact} size="sm" className="mt-1" />
             </div>
-            <ContactAiToggle contactId={contact.id} />
-            <ContactFollowupScheduler contactId={contact.id} />
+            {!isHostunico && <><ContactAiToggle contactId={contact.id} /><ContactFollowupScheduler contactId={contact.id} /></>}
+            {isHostunico && <Link to="/admin/crm/report-followups" className="block text-xs text-blue-700">Report follow-ups, Pedro sends manually</Link>}
             <div>
               <div className="text-[10px] uppercase tracking-wide text-[#9CA3AF] font-semibold">
                 Tags
@@ -304,10 +309,16 @@ export default function ContactDetailPage() {
                   · {formatDuration(c.durationSec)} · {formatPence(c.costPence)}
                 </div>
                 {c.recordingUrl && (
-                  <button className="mt-1 text-[11px] flex items-center gap-1 text-[#3C5A87] hover:underline">
+                  <button onClick={async () => {
+                    if (playback?.contactId === contact.id && playback.callId === c.id) { setPlayback(null); return; }
+                    setPlayback({ contactId: contact.id, callId: c.id, url: null, loading: true });
+                    const url = /^https?:\/\//i.test(c.recordingUrl!) ? c.recordingUrl! : await signCallRecording(c.recordingUrl!);
+                    setPlayback((current) => current?.contactId === contact.id && current.callId === c.id ? { ...current, url, loading: false } : current);
+                  }} className="mt-1 text-[11px] flex items-center gap-1 text-[#3C5A87] hover:underline">
                     <Play className="w-3 h-3" /> Play recording
                   </button>
                 )}
+                {playback?.contactId === contact.id && playback.callId === c.id && (playback.url ? <audio controls autoPlay src={playback.url} className="mt-2 h-9 w-full" /> : <p className="mt-2 text-xs text-slate-500">{playback.loading ? 'Loading recording...' : 'Recording could not load. Try again.'}</p>)}
                 {c.aiSummary && (
                   <div className="mt-1.5 text-[12px] text-[#1A1A1A] italic bg-[#EEF2F8]/50 p-2 rounded-lg leading-snug">
                     AI: "{c.aiSummary}"
@@ -335,7 +346,7 @@ export default function ContactDetailPage() {
                 and each has its own ?demo=1 mock fallback, so merging AND
                 adding a source in one change would make a bug in either
                 impossible to tell apart. */}
-            {timeline.funnel.map((f) => (
+            {!isHostunico && timeline.funnel.map((f) => (
               <div key={`fun-${f.id}`} className="px-4 py-2 text-[12px]" data-testid="detail-funnel-event">
                 <span className="text-[#3C5A87] font-medium">▶ {f.label}</span>
                 <span className="text-[10px] text-[#9CA3AF] ml-2 tabular-nums">
@@ -347,7 +358,7 @@ export default function ContactDetailPage() {
             {/* Website funnel. A fifth unmerged block for the same reason the
                 other four are unmerged: one source per block means a bug in
                 either is obvious rather than blended into the others. */}
-            {timeline.site.map((e) => (
+            {!isHostunico && timeline.site.map((e) => (
               <div key={`site-${e.id}`} className="px-4 py-2 text-[12px]" data-testid="detail-site-event">
                 <span className="text-[#166534] font-medium">◆ {e.label}</span>
                 <span className="text-[10px] text-[#9CA3AF] ml-2 tabular-nums">

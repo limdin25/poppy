@@ -4,7 +4,7 @@
 // Subscribes to realtime so new inbound + outbound rows for the
 // active contact append without a refresh.
 
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/browser';
 
 export type ChannelKind = 'sms' | 'whatsapp' | 'email';
@@ -74,76 +74,62 @@ function rowToMessage(r: MessageRow): CrmMessage {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export function useContactMessages(contactId: string): {
+export function useContactMessages(contactId: string, refreshVersion = 0): {
   messages: CrmMessage[];
   loading: boolean;
+  error: string | null;
 } {
-  const [messages, setMessages] = useState<CrmMessage[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const load = useCallback(async () => {
-    if (!contactId || !UUID_RE.test(contactId)) {
-      setMessages([]);
-      setLoading(false);
-      return;
-    }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data } = await (supabase.from('wk_sms_messages' as any) as any)
-      .select('id, contact_id, direction, body, created_at, twilio_sid, status, channel, subject, attachment_url, media_urls, ai_generated')
-      .eq('contact_id', contactId)
-      .order('created_at', { ascending: true })
-      .limit(500);
-    setMessages(((data ?? []) as MessageRow[]).map(rowToMessage));
-    setLoading(false);
-  }, [contactId]);
+  const [snapshot, setSnapshot] = useState<{ contactId: string; messages: CrmMessage[]; loading: boolean; error: string | null }>({ contactId: '', messages: [], loading: true, error: null });
 
   useEffect(() => {
+    let cancelled = false, requestVersion = 0;
+    setSnapshot({ contactId, messages: [], loading: true, error: null });
+    const valid = !!contactId && UUID_RE.test(contactId);
+    async function load() {
+      const version = ++requestVersion;
+      if (!valid) {
+        setSnapshot({ contactId, messages: [], loading: false, error: null });
+        return;
+      }
+      const { data, error } = await (supabase.from('wk_sms_messages' as any) as any)
+        .select('id, contact_id, direction, body, created_at, twilio_sid, status, channel, subject, attachment_url, media_urls, ai_generated')
+        .eq('contact_id', contactId)
+        .order('created_at', { ascending: false })
+        .limit(500);
+      if (cancelled || version !== requestVersion) return;
+      setSnapshot((previous) => ({
+        contactId,
+        messages: error ? previous.contactId === contactId ? previous.messages : [] : ((data ?? []) as MessageRow[]).map(rowToMessage).reverse(),
+        loading: false,
+        error: error ? 'Messages could not refresh. Trying again shortly.' : null,
+      }));
+    }
     void load();
-
-    if (!contactId || !UUID_RE.test(contactId)) return;
-
-    const channel = supabase
-      .channel(`wk_sms_messages:${contactId}`)
-      .on(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        'postgres_changes' as any,
-        {
-          event: '*',
-          schema: 'public',
-          table: 'wk_sms_messages',
-          filter: `contact_id=eq.${contactId}`,
-        },
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (payload: any) => {
-          const evType = payload.eventType ?? '';
-          if (evType === 'INSERT' && payload.new) {
-            const next = rowToMessage(payload.new as MessageRow);
-            setMessages((prev) =>
-              prev.some((m) => m.id === next.id) ? prev : [...prev, next],
-            );
-          } else if (evType === 'UPDATE' && payload.new) {
-            const next = rowToMessage(payload.new as MessageRow);
-            setMessages((prev) =>
-              prev.map((m) => (m.id === next.id ? next : m)),
-            );
-          } else if (evType === 'DELETE' && payload.old?.id) {
-            const oldId = payload.old.id as string;
-            setMessages((prev) => prev.filter((m) => m.id !== oldId));
-          }
-        },
-      )
-      .subscribe();
-
-    // PR 89 (Hugo 2026-04-27): polling fallback (30s) so even if the
-    // realtime payload never arrives (service-role inserts from edge fns
-    // sometimes silently drop), the open thread refreshes itself.
-    const pollId = window.setInterval(() => { void load(); }, 30_000);
-
+    if (!valid) return () => { cancelled = true; };
+    const channel = supabase.channel(`wk_sms_messages:${contactId}`)
+      .on('postgres_changes' as any, { event: '*', schema: 'public', table: 'wk_sms_messages', filter: `contact_id=eq.${contactId}` }, (payload: any) => {
+        if (cancelled) return;
+        const next = payload.new?.id ? rowToMessage(payload.new as MessageRow) : null;
+        setSnapshot((previous) => {
+          if (previous.contactId !== contactId) return previous;
+          const messages = payload.eventType === 'DELETE'
+            ? previous.messages.filter((message) => message.id !== payload.old?.id)
+            : next && next.contactId === contactId
+              ? [...previous.messages.filter((message) => message.id !== next.id), next].sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+              : previous.messages;
+          return { ...previous, messages };
+        });
+        // Invalidate any older snapshot and reconcile delivery updates/deletes.
+        void load();
+      }).subscribe();
+    const pollId = window.setInterval(() => void load(), 10000);
     return () => {
-      try { void supabase.removeChannel(channel); } catch { /* ignore */ }
+      cancelled = true;
+      void supabase.removeChannel(channel);
       window.clearInterval(pollId);
     };
-  }, [contactId, load]);
+  }, [contactId, refreshVersion]);
 
-  return { messages, loading };
+  // Never render the previous contact's inbox while the next effect starts.
+  return snapshot.contactId === contactId ? snapshot : { messages: [], loading: true, error: null };
 }

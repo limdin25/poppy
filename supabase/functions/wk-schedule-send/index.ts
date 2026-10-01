@@ -38,6 +38,9 @@ serve(async (req: Request) => {
   const body = (p.body ?? '').trim();
   if (!contactId) return json(400, { error: 'contact_id required' });
   if (!body) return json(400, { error: 'body required' });
+  const { data: contact, error: contactError } = await supa.from('wk_contacts').select('desk').eq('id', contactId).maybeSingle();
+  if (contactError || !contact) return json(404, { error: 'Contact unavailable' });
+  if (contact.desk === 'sa') return json(409, { error: 'Hostunico follow-ups are reminders only. Pedro must press Send himself.' });
   const delayHours = Math.max(0, Number(p.delay_hours ?? 24) || 0);
   const scheduledFor = new Date(Date.now() + delayHours * 3600 * 1000).toISOString();
   const autoCancel = p.auto_cancel_on_reply !== false;

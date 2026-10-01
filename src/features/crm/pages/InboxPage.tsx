@@ -1021,7 +1021,7 @@ export default function InboxPage() {
   //
   // Read from the SAME list, so the playbook and the box can never drift.
   const propertyTemplates = useMemo(() => {
-    if (!activeIsProperty) return [];
+    if (!activeIsProperty || desk === 'sa') return [];
     // The deal process labels its templates for humans ('Email', 'WhatsApp',
     // 'Phone'); the compose box speaks in channel keys. A Phone template is a
     // script to read, not something to send, so it never reaches the box.
@@ -1041,7 +1041,7 @@ export default function InboxPage() {
           attachment_url: null,
         })),
     );
-  }, [activeIsProperty, replyChannel]);
+  }, [activeIsProperty, replyChannel, desk]);
 
   // Property templates FIRST on a house thread: they are the ones that apply.
   const allTemplates = useMemo(
@@ -1309,7 +1309,8 @@ export default function InboxPage() {
               height so the async pill never shifts the rows above/below. */}
           <div className="flex flex-col gap-2 min-w-0">
             <div className="flex items-center gap-1.5 min-w-0">
-              {aiStatus.loaded && (
+              {desk === 'sa' && <span className="text-[11px] font-medium text-slate-600">AI flags replies. Pedro sends every message.</span>}
+              {desk !== 'sa' && aiStatus.loaded && (
                 <>
                   <span
                     data-testid="inbox-ai-status"
@@ -2440,7 +2441,7 @@ export default function InboxPage() {
       {/* Pane 3, the lead's journey (only with a selected conversation).
           Replaced the old "Contact timeline", which listed activity rows and,
           for a WhatsApp creator lead, had nothing at all to list. */}
-      {activeContact && (
+      {activeContact && desk !== 'sa' && (
       <aside className="w-[320px] bg-white border-l border-[#E5E7EB] flex flex-col overflow-hidden">
         <JourneyPanel
           contactName={activeContact.name}

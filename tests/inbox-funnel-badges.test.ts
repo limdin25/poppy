@@ -95,7 +95,7 @@ describe('the AI status pill', () => {
   })
 
   it('the pill renders only once loaded, and the change link is admin-only', () => {
-    expect(inbox).toMatch(/\{aiStatus\.loaded && \(/)
+    expect(inbox).toMatch(/\{desk !== 'sa' && aiStatus\.loaded && \(/)
     expect(inbox).toMatch(/data-testid="inbox-ai-status"/)
     // The change link sits inside an isAdmin gate and targets the SMS tab of
     // the agent personality page, the only place these settings are edited.

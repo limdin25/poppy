@@ -131,6 +131,7 @@ export default function LiveCallScreen() {
   // Serviced Accommodation desk (2026-09-23).
   const isSaCall =
     contact?.customFields?.lead_type === 'sa_agency'
+    || contact?.customFields?.lead_type === 'hostunico_owner'
     || (desk === 'sa' && !contact);
   const isAuctionCall = !isSaCall && (
     contact?.customFields?.lead_type === 'auctioneer'
@@ -151,7 +152,7 @@ export default function LiveCallScreen() {
     setPickedContact(picked);
     const callId = call?.callId;
     if (!callId) return;
-    const isSa = picked.customFields?.lead_type === 'sa_agency';
+    const isSa = picked.customFields?.lead_type === 'sa_agency' || picked.customFields?.lead_type === 'hostunico_owner';
     const isAuction = picked.customFields?.lead_type === 'auctioneer';
     const isProperty = !isAuction && !isSa && (hasHouses || picked.customFields?.lead_type === 'estate_agent');
     void supabase
@@ -207,7 +208,7 @@ export default function LiveCallScreen() {
           + last-contact side-by-side, frees vertical space for the
           timeline below SMS. */}
       <div className="mt-2">
-        <ContactMetaCompact contact={contact} />
+        <ContactMetaCompact contact={contact} isHostunico={isSaCall} />
       </div>
     </div>
   ) : null;

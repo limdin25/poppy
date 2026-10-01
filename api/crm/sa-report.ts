@@ -91,6 +91,9 @@ export default async function handler(req: Request): Promise<Response> {
     const listing = check(await supa.from('sa_listings').select('id,wk_contact_id,report_property,address,listing_url,photo_urls,property_type,rent_pcm,source_price,hostunico_call_eligible').eq('id', listingId).maybeSingle());
     if (!listing) throw new Problem(404, 'Property not found.');
     const c = await contact(listing.wk_contact_id);
+    const textOptOut = check(await supa.from('wk_contact_tags').select('tag').eq('contact_id', c.id).eq('tag', 'do-not-text').limit(1));
+    const sendingPolicy = { contactBlocked: !!c.do_not_call, smsBlocked: !!c.do_not_call || textOptOut.length > 0 };
+    if (action === 'send_sms' && sendingPolicy.smsBlocked) throw new Problem(409, 'SMS is blocked for this contact. Their do-not-text preference is still active.');
     if (action === 'coach_context' && req.method === 'POST') {
       if (!['spareroom', 'facebook', 'followup'].includes(body.mode || '')) throw new Problem(400, 'Choose a call script.');
       const changedAt = (body as { context_at?: string }).context_at;
@@ -136,7 +139,7 @@ export default async function handler(req: Request): Promise<Response> {
       check(await supa.from('sa_listings').update({ report_property: property }).eq('id', listingId));
       return json(await start({ ...listing, report_property: property }));
     }
-    if (!row) return json({ stage: 'needs_details', message: 'Confirm property details to prepare this report.', property: reportProperty(listing.report_property), mobile: c.hostunico_sms_phone || (reportPhoneKind(c.phone) === 'mobile' ? reportPhone(c.phone) : '') });
+    if (!row) return json({ ...sendingPolicy, stage: 'needs_details', message: 'Confirm property details to prepare this report.', property: reportProperty(listing.report_property), mobile: c.hostunico_sms_phone || (reportPhoneKind(c.phone) === 'mobile' ? reportPhone(c.phone) : '') });
     if (action === 'retry' && req.method === 'POST') {
       if (row.state !== 'review' || row.sms_state !== 'unsent') throw new Problem(409, 'Only an unfinished, unsent report can be retried.');
       const result = await remote('retry', { id: row.remote_id, token: row.access_token });
@@ -186,7 +189,7 @@ export default async function handler(req: Request): Promise<Response> {
       const message = check(await supa.from('wk_sms_messages').select('status').eq('id', row.sms_message_id).maybeSingle());
       smsStatus = message?.status ?? smsStatus;
     }
-    return json({ stage: row.state, message: row.message, reportUrl: row.state === 'ready' ? row.report_url : undefined, reportPitch: row.state === 'ready' ? row.report_pitch : null, property: row.property, smsStatus, receivedAt: row.received_at, mobile: c.hostunico_sms_phone || (reportPhoneKind(c.phone) === 'mobile' ? reportPhone(c.phone) : '') });
+    return json({ ...sendingPolicy, stage: row.state, message: row.message, reportUrl: row.state === 'ready' ? row.report_url : undefined, smsDraft: row.state === 'ready' && row.report_url ? reportSms(row.report_url, row.property?.areaEstimate === true) : undefined, reportPitch: row.state === 'ready' ? row.report_pitch : null, property: row.property, smsStatus, receivedAt: row.received_at, mobile: c.hostunico_sms_phone || (reportPhoneKind(c.phone) === 'mobile' ? reportPhone(c.phone) : '') });
   } catch (error) {
     return json({ error: error instanceof Problem ? error.message : 'Could not complete this report action. Please try again.' }, { status: error instanceof Problem ? error.status : 503 });
   }

@@ -32,17 +32,19 @@ describe('first-call report comparison', () => {
       expect(hostunicoReportIntroduction()).not.toContain('I have put together');
     }
   });
-  it('switches report figures with props and puts permission before collection and optional qualification', () => {
+  it('switches report figures and keeps call one to permission, report, receipt and callback', () => {
     const first = render(pitch);
     const next = render({ ...pitch, monthly: '£1,800', rent: '£900', difference: '£900', areaEstimate: false });
     expect(first).toContain('£2,400');
     expect(next).toContain('it shows you could make around £1,800');
     expect(next).not.toContain('£2,400');
     expect(next.indexOf('Is it still available?')).toBeLessThan(next.indexOf('Have you got one minute'));
-    expect(next.indexOf('Have you got one minute')).toBeLessThan(next.indexOf('We manage properties'));
-    expect(next.indexOf('We manage properties')).toBeLessThan(next.indexOf('around £1,800'));
+    expect(next.indexOf('Have you got one minute')).toBeLessThan(next.indexOf('We partner with landlords'));
+    expect(next.indexOf('We partner with landlords')).toBeLessThan(next.indexOf('around £1,800'));
     expect(next.indexOf('Would you like me to send you the report')).toBeLessThan(next.indexOf('What mobile number can I text'));
-    expect(next.indexOf('What mobile number can I text')).toBeLessThan(next.indexOf('Optional details after permission'));
+    const mainScript = next.split('Quick answers, including price')[0];
+    expect(mainScript).not.toMatch(/available for guests|Before I send it, when|Optional details after permission|setup budget/);
+    expect(mainScript).toContain('we run the entire process');
     expect(next).toContain('only after a successful manual send');
     expect(render()).toContain('send it when it is ready');
     expect(next).toContain('Would tomorrow work for a quick call');

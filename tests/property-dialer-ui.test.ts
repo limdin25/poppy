@@ -250,7 +250,7 @@ describe('the send buttons are hidden from estate agents', () => {
     // VideoLinkButton queues a "you are buried on Google" video, SubscribeButton
     // texts a pay link, SendSiteButton builds them a website. All three are
     // real, immediate, and wrong for a company we are buying a house from.
-    expect(META).toMatch(/const isEstateAgent = cf\.lead_type === 'estate_agent'/)
+    expect(META).toMatch(/const isEstateAgent = .*cf\.lead_type === 'estate_agent'/)
     expect(META).toMatch(/\{!isEstateAgent && \(/)
     const guarded = META.slice(META.indexOf('{!isEstateAgent && ('), META.indexOf('</>', META.indexOf('{!isEstateAgent && (')))
     for (const b of ['VideoLinkButton', 'SubscribeButton', 'SendSiteButton']) {

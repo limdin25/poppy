@@ -22,7 +22,7 @@ export const HOSTUNICO_SPOKEN_ANSWERS: Readonly<Record<string, string>> = {
   'company-coverage': "Our properties are in Manchester and Liverpool.",
   'owner-payouts': "Normally, Airbnb or the booking platform pays you directly. Our management fee is separate. Sometimes that's through an agreed Airbnb co-host payout, but we'd go through that with you first.",
   'notenant': "I'm calling about helping you manage it for short and mid-term stays through Airbnb. Would you be open to having a look at an earnings comparison?",
-  'identity': "I'm with Hostunico. We help owners manage their properties for short and mid-term stays through Airbnb.",
+  'identity': "I'm with Hostunico. We partner with landlords for short-term lets through Airbnb, and we run the entire process.",
   'stop': "Understood, thanks for letting me know. I'll record that so we don't keep following up.",
   'report': "Of course. I can send you a link, and it opens straight in your browser.",
   'service': "We look after the Airbnb listing, prices, bookings and guest messages. Guests let themselves in with a lockbox or local key collection, and we arrange a cleaner between stays. It's still your Airbnb account, and the booking money comes to you under the platform's arrangements.",

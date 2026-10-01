@@ -20,9 +20,10 @@ import VideoLinkButton from './VideoLinkButton';
 
 interface Props {
   contact: Contact;
+  isHostunico?: boolean;
 }
 
-export default function ContactMetaCompact({ contact }: Props) {
+export default function ContactMetaCompact({ contact, isHostunico = false }: Props) {
   const store = useSmsV2();
   const stage = store.columns.find((c) => c.id === contact.pipelineColumnId);
 
@@ -74,7 +75,7 @@ export default function ContactMetaCompact({ contact }: Props) {
   // is wrong, and embarrassing, on a property call.
   // An auction office (Auction desk) is the same: we are buying, not selling.
   // So is a letting agent on the Serviced Accommodation desk.
-  const isEstateAgent = cf.lead_type === 'estate_agent' || cf.lead_type === 'auctioneer' || cf.lead_type === 'sa_agency';
+  const isEstateAgent = isHostunico || cf.lead_type === 'hostunico_owner' || cf.lead_type === 'estate_agent' || cf.lead_type === 'auctioneer' || cf.lead_type === 'sa_agency';
 
   return (
     <div className="space-y-1.5">
@@ -117,7 +118,7 @@ export default function ContactMetaCompact({ contact }: Props) {
         </div>
       )}
       {/* Plumber lead facts — website + live ranking the script reads back. */}
-      {hasLeadFacts && (
+      {hasLeadFacts && !isEstateAgent && (
         <div className="space-y-1 pb-1.5 border-b border-[#E5E7EB]/70">
           {websiteUrl && (
             <a

@@ -328,7 +328,7 @@ serve(async (req: Request) => {
         to_e164: to,
         started_at: new Date().toISOString(),
         ai_coach_enabled: aiCoachEnabled,
-        script_key: contactIsEstateAgent ? 'property_call' : contactIsAuctioneer ? 'auction_call' : null,
+        script_key: route.desk === 'sa' ? 'sa_call' : contactIsEstateAgent ? 'property_call' : contactIsAuctioneer ? 'auction_call' : null,
         // The contact's desk wins in the database trigger when there is a
         // contact; for a caller nobody knows, this is the desk he is on.
         desk: route.desk,

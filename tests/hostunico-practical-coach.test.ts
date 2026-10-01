@@ -3,10 +3,10 @@ import { hostunicoInstantAnswer } from '../supabase/functions/_shared/hostunico-
 import { HOSTUNICO_ANSWERS, HOSTUNICO_PREPARED_KNOWLEDGE } from '../supabase/functions/_shared/hostunico-answer-bank';
 
 describe('practical answers from the failed test call', () => {
+  it.each(['Tell me more please.', 'Ok, go on.', 'Yes, please explain to me how it works.', 'Send the report'])('uses live property and report context for %s', (question) => {
+    expect(hostunicoInstantAnswer(question)).toBeNull();
+  });
   it.each([
-    ['Tell me more please.', 'service', /lockbox.*cleaner/],
-    ['Ok, go on.', 'service', /listing.*bookings/],
-    ['Yes, please explain to me how it works.', 'service', /lockbox/],
     ["What if I don't make any money?", 'owner-no-income', /no percentage management fee.*software fee/],
     ["Who's going to be the cleaner?", 'cleaning', /local cleaner.*assign one/],
     ["Who's going to open the door for the guest?", 'access-owner-present', /guests take the key.*themselves/],

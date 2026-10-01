@@ -27,6 +27,7 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
+import { HOSTUNICO_COMPANY } from '../_shared/hostunico-company.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -107,11 +108,17 @@ serve(async (req: Request) => {
     // 1. Resolve contact's email.
     const { data: contact, error: contactErr } = await supa
       .from('wk_contacts')
-      .select('id, email, name')
+      .select('id, email, name, desk, owner_agent_id, do_not_call')
       .eq('id', contactId)
       .maybeSingle();
     if (contactErr) return json(500, { error: contactErr.message });
     if (!contact) return json(404, { error: 'Contact not found' });
+    if (contact.desk === 'sa') {
+      const caller = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, { global: { headers: { Authorization: `Bearer ${jwt}` } } });
+      const [staff, admin] = await Promise.all([caller.rpc('wk_is_agent_or_admin'), caller.rpc('wk_is_admin')]);
+      if (staff.error || admin.error || !staff.data || (!admin.data && contact.owner_agent_id !== agentId)) return json(403, { error: 'This Hostunico contact is not assigned to you.' });
+      if (contact.do_not_call) return json(409, { error: 'This lead has asked not to be contacted.' });
+    }
 
     // A typed recipient wins over the stored one.
     //
@@ -145,7 +152,17 @@ serve(async (req: Request) => {
     let channelRowId: string | null = null;
     let resolvedRow: { id: string; e164: string } | null = null;
 
-    if (payload.channel_id) {
+    // The Hostunico room always uses its own registered mailbox, including
+    // administrator test calls. Never fall back to a different product's sender.
+    if (contact.desk === 'sa') {
+      const { data, error } = await supa.from('wk_numbers').select('id, e164')
+        .eq('channel', 'email').eq('provider', 'resend').eq('is_active', true)
+        .eq('e164', HOSTUNICO_COMPANY.supportEmail).limit(1).maybeSingle();
+      if (error || !data) return json(503, { error: 'The Hostunico email sender is not configured.' });
+      resolvedRow = data;
+    }
+
+    if (!resolvedRow && payload.channel_id) {
       const { data } = await supa
         .from('wk_numbers')
         .select('id, e164, is_active, channel, provider')
@@ -242,7 +259,7 @@ serve(async (req: Request) => {
     // lands in that agent's CRM inbox, not a personal mailbox.
 
     // 3. POST to Resend.
-    const finalHtml = payload.html ?? body.replace(/\n/g, '<br/>');
+    const finalHtml = payload.html ?? body.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br/>');
     const rsResp = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: {

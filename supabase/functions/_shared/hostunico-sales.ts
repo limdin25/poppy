@@ -24,6 +24,9 @@ export function hostunicoInstantAnswer(utterance: string, country = 'GB', recipi
     const clauses = utterance.split(/[?;]|\b(?:and|also|but)\b/i).filter((part) => part.trim());
     if (clauses.some((part) => !answer.match.test(part) && matches.some((item) => item.key !== 'service' && answer.supersedes?.includes(item.key) && item.match.test(part)))) return null;
   }
+  // Permission to explain needs the current report and conversation. A static
+  // service answer would skip the property's earnings and asking-rent hook.
+  if (answer && ['service', 'report'].includes(answer.key)) return null;
   const reportQuestion = /\bemail\b/i.test(utterance) ? 'What email address should I send the report to?' : reportRecipientQuestion(recipient?.phone, recipient?.mobile);
   return answer ? { key: `hostunico-${answer.key}`, title: answer.title, say: hostunicoAnswerCopy(answer, country), why: 'Approved Hostunico answer. Pause and listen after answering.', nextQuestion: answer.key === 'report' ? reportQuestion : answer.nextQuestion || '' } : null;
 }

@@ -38,7 +38,6 @@ describe('prepared Hostunico conversations', () => {
     ['Can I get a discount?', 'discount'],
     ['That is too expensive', 'too-expensive'],
     ['Are there hidden costs?', 'hidden-costs'],
-    ['What do you handle?', 'service'],
     ['Is this just AI?', 'human-team'],
     ['I manage it myself', 'self-manage'],
     ['I already have a manager', 'existing-manager'],
@@ -88,7 +87,7 @@ describe('prepared Hostunico conversations', () => {
     expect(new Set(HOSTUNICO_ANSWERS.map((a) => a.key)).size).toBe(HOSTUNICO_ANSWERS.length);
     for (const country of ['GB', 'US']) {
       const criteria = hostunicoJevRequest('A question', [], country).questions.approved_answer.criteria;
-      for (const answer of HOSTUNICO_ANSWERS.filter((a) => a.key !== 'report')) {
+      for (const answer of HOSTUNICO_ANSWERS.filter((a) => !['report', 'service'].includes(a.key))) {
         const payload = { answers: { approved_answer: { type: 'choice', choice: answer.key, confidence: 0.99, probabilities: { [answer.key]: 0.99 } } } };
         expect(criteria).toHaveProperty(answer.key);
         expect(hostunicoJevAnswer(payload, country)).toBe(`SAY: ${hostunicoAnswerCopy(answer, country)}\nASK: ${answer.nextQuestion || ''}`);
