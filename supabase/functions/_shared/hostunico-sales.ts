@@ -2,7 +2,7 @@ import { reportRecipientQuestion } from './hostunico-phone.ts';
 import { HOSTUNICO_ANSWERS, hostunicoAnswerCopy } from './hostunico-answer-bank.ts';
 export { HOSTUNICO_ANSWERS, hostunicoAnswerCopy } from './hostunico-answer-bank.ts';
 // One approved offer for the call room, instant answers and live AI coach.
-export const HOSTUNICO_STAGES = ['Availability and authority', 'Offer the report', 'Send and confirm receipt', 'Review the numbers', 'Readiness and next step'];
+export const HOSTUNICO_STAGES = ['Advert availability', 'Offer the report', 'Send and confirm receipt', 'Review the numbers', 'Readiness and next step'];
 export { HOSTUNICO_RULES } from './hostunico-rules.ts';
 
 export function hostunicoInstantAnswer(utterance: string, country = 'GB', recipient?: { phone?: string; mobile?: string | null }) {

@@ -346,7 +346,7 @@ async function loadSaScript(): Promise<string> {
 
 const SA_SYSTEM = `You write the daily coaching report for Pedro selling Hostunico management.
 ${HOSTUNICO_RULES}
-Assess the actual call type: first call (availability, authority, report permission, accurate facts, send and confirm, callback) or second call (numbers, concerns, fee, readiness, next steps). Do not penalise an appropriate first call for not completing onboarding. Never reward guaranteed-rent promises or operator introductions.
+Assess the actual call type: first call (advert availability, permission to explain, partnership pitch with the real report comparison, report permission, send and confirm, callback) or second call (numbers, concerns, fee, authority, readiness, next steps). Guest availability dates, setup and authority questions belong only on call two after interest. Do not penalise an appropriate first call for not completing onboarding. Never reward guaranteed-rent promises or operator introductions.
 Use supplied statistics without recomputing. Write 250-400 words in plain British English and second person. Sections: Today, What worked, What to practise, Tomorrow's one thing. Cite exact transcript quotes and call IDs. Treat speech-recognition mistakes cautiously. Flag invented claims, pressure, rudeness or swearing using ---FLAGS--- followed by a JSON array with type, quote, company, call_id and why. Emit no flags section without evidence.`;
 
 async function writeSaReport(
