@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { callLLM } from '../lib/llm.js';
 import { nonGsm7 } from '../lib/sms-charset.js';
 import { HOSTUNICO_CAMPAIGN } from '../lib/hostunico-report.js';
+import { hostunicoOutreachAllowed, HOSTUNICO_UPLIFT_PENDING } from '../../supabase/functions/_shared/hostunico-uplift.js';
 import { REPLY_CLASSIFIER_PROMPT, safeReplyClassification, explicitOptOut } from '../lib/hostunico-reply-intent.js';
 import { validFollowupConfig, sequencePosition, hostunicoFollowupSms } from '../../src/core/hostunicoFollowup.js';
 
@@ -69,6 +70,7 @@ export default async function handler(req: Request) {
       return json({ ok: true });
     }
     if (action !== 'send') return json({ error: 'Unknown action.' }, 400);
+    if (!await hostunicoOutreachAllowed(db, lead.contact_id)) return json({ error: HOSTUNICO_UPLIFT_PENDING }, 409);
     const position = sequencePosition(lead, savedConfig);
     if (!position.step || position.node !== body.step || !position.step.approved) return json({ error: 'This follow-up is not due or its wording still needs Hugo approval.' }, 409);
     const sms = hostunicoFollowupSms(position.step.text);

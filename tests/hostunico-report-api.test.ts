@@ -54,18 +54,27 @@ beforeEach(() => {
   fixture.admin = false; fixture.smsRequests = 0;
   fixture.tables = {
     wk_contacts: [{ id: 'contact', desk: 'sa', owner_agent_id: 'pedro', do_not_call: false, phone: '+447700900123' }],
-    sa_listings: [{ id: listingId, wk_contact_id: 'contact' }],
-    sa_property_reports: [{ listing_id: listingId, remote_id: listingId, access_token: 'a'.repeat(64), state: 'ready', report_url: 'https://hostunico.com/r/A1b2C', sms_state: 'unsent' }],
+    sa_listings: [{ id: listingId, wk_contact_id: 'contact', rent_pcm: 1000, hostunico_call_eligible: true }],
+    sa_property_reports: [{ listing_id: listingId, remote_id: listingId, access_token: 'a'.repeat(64), state: 'ready', report_url: 'https://hostunico.com/r/A1b2C', sms_state: 'unsent', report_pitch: { monthly: '£2,000', monthlyGbpPence: 200000, askingRentGbpPence: 100000 } }],
     wk_pipeline_columns: [], wk_sms_messages: [],
   };
   vi.stubGlobal('fetch', vi.fn(async (url: string) => {
-    if (url.includes('crm-estimates/status')) return Response.json({ stage: 'ready', message: 'Ready', reportUrl: fixture.tables.sa_property_reports[0].report_url });
+    if (url.includes('crm-estimates/status')) return Response.json({ stage: 'ready', message: 'Ready', reportUrl: fixture.tables.sa_property_reports[0].report_url, reportPitch: fixture.tables.sa_property_reports[0].report_pitch });
     if (!url.endsWith('/functions/v1/wk-sms-send')) throw new Error('Unexpected request');
     fixture.smsRequests++;
     return Response.json({ twilio_sid: 'test-sid', message_id: 'test-message', status: 'queued' });
   }));
 });
 describe('human report sends', () => {
+  it.each([129999, 100000, 83000])('blocks a ready report with %s pence earnings from every send attempt', async (monthlyGbpPence) => {
+    Object.assign(fixture.tables.sa_property_reports[0].report_pitch, { monthlyGbpPence });
+    const preview = await (await handler(request('status'))).json();
+    expect(preview).toMatchObject({ eligibilityBlocked: true, qualification: { status: 'excluded' } });
+    expect(preview.smsDraft).toBeUndefined();
+    expect((await handler(request('send_sms', { permission: true }))).status).toBe(409);
+    expect(fixture.smsRequests).toBe(0);
+    expect(fixture.tables.sa_property_reports[0].sms_state).toBe('unsent');
+  });
   it('previews the exact SMS before Pedro sends, with the current short link', async () => {
     const preview = await (await handler(request('status'))).json();
     expect(preview.smsDraft).toContain('https://hostunico.com/r/A1b2C');
@@ -77,7 +86,7 @@ describe('human report sends', () => {
   });
   it('keeps a ready report and exact SMS available when the research service is down', async () => {
     fixture.tables.sa_property_reports[0].created_at = new Date().toISOString();
-    fixture.tables.sa_property_reports[0].report_pitch = { monthly: '£2,100' };
+    fixture.tables.sa_property_reports[0].report_pitch = { monthly: '£2,100', monthlyGbpPence: 210000, askingRentGbpPence: 100000 };
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
       if (url.includes('crm-estimates')) throw new Error('Research timeout');
       fixture.smsRequests++;
@@ -111,7 +120,7 @@ describe('human report sends', () => {
       maxInFlight = Math.max(maxInFlight, ++inFlight);
       await Promise.resolve(); inFlight--;
       if (Number(JSON.parse(String(init.body)).id) < 4) throw new Error('Temporary provider issue');
-      return Response.json({ stage: 'ready', message: 'Ready', reportUrl: 'https://hostunico.com/r/A1b2C' });
+      return Response.json({ stage: 'ready', message: 'Ready', reportUrl: 'https://hostunico.com/r/A1b2C', reportPitch: { monthlyGbpPence: 200000, askingRentGbpPence: 100000 } });
     }));
     let totalReady = 0;
     for (let offset = 0; offset < 24; offset += 2) {
@@ -135,7 +144,7 @@ describe('human report sends', () => {
       expect(url).toContain('crm-estimates/start');
       return Response.json({ stage: 'ready', reportUrl: 'https://hostunico.com/r/N3w22', reportPitch: { planning: true, monthly: '£1,000' } });
     }));
-    expect(await (await handler(request('status'))).json()).toMatchObject({ stage: 'ready', reportUrl: 'https://hostunico.com/r/N3w22', smsDraft: expect.stringContaining('/r/N3w22') });
+    expect(await (await handler(request('status'))).json()).toMatchObject({ stage: 'ready', reportUrl: 'https://hostunico.com/r/N3w22', eligibilityBlocked: true, qualification: { status: 'pending' } });
     expect(fixture.smsRequests).toBe(0);
   });
   it('shows report activity only to the assigned agent, including read-only access after opt-out', async () => {
@@ -230,7 +239,7 @@ describe('human report sends', () => {
   });
   it('does not retry after an ambiguous provider timeout', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
-      if (url.includes('crm-estimates')) return Response.json({ stage: 'ready', reportUrl: fixture.tables.sa_property_reports[0].report_url });
+      if (url.includes('crm-estimates')) return Response.json({ stage: 'ready', reportUrl: fixture.tables.sa_property_reports[0].report_url, reportPitch: fixture.tables.sa_property_reports[0].report_pitch });
       fixture.smsRequests++; throw new Error('Timed out');
     }));
     expect((await handler(request('send_sms', { permission: true }))).status).toBe(502);

@@ -281,6 +281,7 @@ export default function PipelinesPage() {
           // column; cards with no follow-up keep falling to the bottom.
           const cards = contacts
             .filter((c) => c.pipelineColumnId === col.id)
+            .filter((c) => desk !== 'sa' || !c.customFields?.hostunico_sales_status || c.customFields.hostunico_sales_status === 'eligible')
             .sort((a, b) => {
               const dueA = followupByContact.get(a.id)?.due_at;
               const dueB = followupByContact.get(b.id)?.due_at;

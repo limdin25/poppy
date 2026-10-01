@@ -8,6 +8,7 @@ import BulkUploadModal from '../components/contacts/BulkUploadModal';
 import ContactSmsModal from '../components/contacts/ContactSmsModal';
 import EditContactModal from '../components/contacts/EditContactModal';
 import EditableName from '../components/contacts/EditableName';
+import HostunicoListingLinks from '../components/contacts/HostunicoListingLinks';
 import AgentChip from '../components/shared/AgentChip';
 import DealTagChip from '../components/shared/DealTagChip';
 import CalcChip from '../components/shared/CalcChip';
@@ -119,6 +120,7 @@ export default function ContactsPage() {
   const filtered = useMemo(() => {
     return contacts.filter((c) => {
       if (desk === 'sa' && c.customFields?.lead_type === 'sa_agency') return false;
+      if (desk === 'sa' && c.customFields?.hostunico_sales_status && c.customFields.hostunico_sales_status !== 'eligible') return false;
       if (stageFilter !== 'all' && c.pipelineColumnId !== stageFilter) return false;
       if (ownerFilter !== 'all' && c.ownerAgentId !== ownerFilter) return false;
       if (search) {
@@ -358,6 +360,7 @@ export default function ContactsPage() {
                         />
                       )}
                     </Link>
+                    {desk === 'sa' && <div className="mt-1"><HostunicoListingLinks contactId={c.id} /></div>}
                     {/* Which deal, on this list too (Hugo, 2026-08-24). A
                         builder here was a bare company name with no house
                         against it, and the Property column beside it reads

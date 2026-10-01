@@ -5,6 +5,7 @@ import { useSaListings } from '../../hooks/useSaListings';
 import { useCurrentAgent } from '../../hooks/useCurrentAgent';
 import { hostunicoCountry } from '../../../../../supabase/functions/_shared/hostunico-pricing';
 import SaReportPanel from '../live-call/SaReportPanel';
+import HostunicoListingLinks from './HostunicoListingLinks';
 
 type ReportContact = { id: string; name?: string | null; phone?: string | null; email?: string; customFields?: Record<string, any> };
 export function HostunicoReportContent({ contact }: { contact: ReportContact }) {
@@ -30,6 +31,7 @@ export default function HostunicoReportButton({ contact }: { contact: ReportCont
     return () => document.removeEventListener('keydown', onKey, true);
   }, [open]);
   return <>
+    <HostunicoListingLinks contactId={contact.id} />
     <button type="button" onClick={(event) => { event.stopPropagation(); setOpen(true); }} className="inline-flex items-center gap-1 rounded-lg border bg-white px-2 py-1.5 text-xs font-semibold text-blue-800 hover:bg-blue-50" title="Open saved report and ready-made SMS"><FileText size={13} />Report / SMS</button>
     {open && createPortal(<div className="fixed inset-0 z-[400] flex items-center justify-center bg-black/40 p-3" onClick={(event) => { event.stopPropagation(); if (event.target === event.currentTarget) setOpen(false); }}><section role="dialog" aria-modal="true" aria-label="Property report and SMS" className="flex max-h-[90dvh] w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-slate-50 shadow-xl">
       <header className="flex items-center justify-between border-b bg-white p-4"><div><h2 className="font-semibold">Report and SMS</h2><p className="text-xs text-slate-500">{contact.name || contact.phone}</p></div><button type="button" autoFocus aria-label="Close property report" onClick={() => setOpen(false)} className="rounded-lg p-2 hover:bg-slate-100"><X size={18} /></button></header>

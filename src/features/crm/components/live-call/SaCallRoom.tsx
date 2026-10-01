@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { PanelLeftClose, PanelLeftOpen, ExternalLink } from 'lucide-react';
 import HostunicoScriptPane from './HostunicoScriptPane';
+import HostunicoListingLinks from '../contacts/HostunicoListingLinks';
 import SaReportPanel, { reportAction } from './SaReportPanel';
 import LiveTranscriptPane from './LiveTranscriptPane';
 import SaListingPane from './SaListingPane';
@@ -105,7 +106,9 @@ export default function SaCallRoom({ contact, contactHeader, emptyState, current
           <section className="overflow-hidden rounded-xl border bg-white" aria-label="Property on this call">
             {selected?.photoUrls[0] && <img key={selected.id} src={selected.photoUrls[0]} alt={`SpareRoom advert: ${selected.address}`} className="h-32 w-full object-cover" referrerPolicy="no-referrer" />}
             <div className="space-y-2 p-3">
-              <div className="flex items-center justify-between"><h2 className="text-sm font-semibold">Property on this call</h2>{selected?.listingUrl && <a href={selected.listingUrl} target="_blank" rel="noreferrer" aria-label="Open SpareRoom advert" className="text-blue-700"><ExternalLink size={15} /></a>}</div>
+              <h2 className="text-sm font-semibold">Property on this call</h2>
+              {selected?.listingUrl && <a href={selected.listingUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded-lg border border-blue-200 px-2 py-1.5 text-xs font-semibold text-blue-800"><ExternalLink size={14} />Open SpareRoom advert</a>}
+              {!selected && <HostunicoListingLinks contactId={contact.id} />}
               {listings.length > 1 ? <label className="block text-xs text-slate-500">{listings.length} properties, one contact<select aria-label="Property on this call" value={selected?.id || ''} onChange={(e) => setSelectedId(e.target.value)} className="mt-1 w-full rounded-lg border bg-white px-2 py-2 text-xs text-slate-900">{listings.map((l) => <option key={l.id} value={l.id}>{l.address}</option>)}</select></label> : <p className="text-sm font-medium">{selected?.address || 'Property details to confirm'}</p>}
               <div className="flex flex-wrap gap-1 text-[11px]">{[facts.layout, facts.bathroom, facts.rent].filter(Boolean).map((fact) => <span key={fact} className="rounded-md bg-slate-100 px-2 py-1">{fact}</span>)}</div>
               <p className="text-[11px] text-slate-500">Whole studio or one-bedroom advert. Report assumptions are labelled.</p>

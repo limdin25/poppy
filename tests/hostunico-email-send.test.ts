@@ -2,12 +2,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 import { HOSTUNICO_COMPANY } from '../supabase/functions/_shared/hostunico-company';
+import { hostunicoOutreachAllowed, HOSTUNICO_UPLIFT_PENDING } from '../supabase/functions/_shared/hostunico-uplift';
 
 // Exercise the deployed Deno handler with fake auth, database and provider.
 // This sends no email and catches sender/ownership mistakes before deployment.
 let handler: (request: Request) => Promise<Response>;
 let tables: Record<string, any[]>;
 let isAdmin: boolean;
+let salesAllowed: boolean;
 class Query {
   filters: ((row: any) => boolean)[] = []; singleRow = false; inserted: any;
   constructor(readonly table: string) {}
@@ -27,18 +29,25 @@ class Query {
 }
 beforeEach(() => {
   isAdmin = false;
+  salesAllowed = true;
   tables = {
     wk_contacts: [{ id: 'lead', desk: 'sa', owner_agent_id: 'pedro', email: 'owner@example.com', do_not_call: false }],
     wk_numbers: [{ id: 'hostunico', e164: 'hello@hostunico.com', channel: 'email', provider: 'resend', is_active: true }, { id: 'old', e164: 'old@other.example', channel: 'email', provider: 'resend', is_active: true }],
   };
-  const createClient = () => ({ auth: { getUser: async (token: string) => ({ data: { user: token === 'valid' ? { id: 'pedro' } : null }, error: null }) }, rpc: async (name: string) => ({ data: name === 'wk_is_admin' ? isAdmin : true, error: null }), from: (table: string) => new Query(table) });
+  const createClient = () => ({ auth: { getUser: async (token: string) => ({ data: { user: token === 'valid' ? { id: 'pedro' } : null }, error: null }) }, rpc: async (name: string) => ({ data: name === 'wk_is_admin' ? isAdmin : name === 'wk_hostunico_outreach_allowed' ? salesAllowed : true, error: null }), from: (table: string) => new Query(table) });
   const source = readFileSync('supabase/functions/wk-email-send/index.ts', 'utf8').replace(/^import .*;\n/gm, '');
   const js = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None } }).outputText;
-  new Function('serve', 'createClient', 'Deno', 'HOSTUNICO_COMPANY', js)((fn: typeof handler) => { handler = fn; }, createClient, { env: { get: () => 'test-only' } }, HOSTUNICO_COMPANY);
+  new Function('serve', 'createClient', 'Deno', 'HOSTUNICO_COMPANY', 'hostunicoOutreachAllowed', 'HOSTUNICO_UPLIFT_PENDING', js)((fn: typeof handler) => { handler = fn; }, createClient, { env: { get: () => 'test-only' } }, HOSTUNICO_COMPANY, hostunicoOutreachAllowed, HOSTUNICO_UPLIFT_PENDING);
   vi.stubGlobal('fetch', vi.fn(async () => Response.json({ id: 'provider-id' })));
 });
 const request = (extra = {}, token = 'valid') => new Request('https://example.com/email', { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ contact_id: 'lead', subject: 'Your report', body: 'Your report: https://hostunico.com/r/A1b2C', ...extra }) });
 describe('Hostunico manual report email', () => {
+  it('blocks an ineligible report before the email provider is called', async () => {
+    salesAllowed = false;
+    expect((await handler(request({ html: '<a href="https://hostunico.com/r/A1b2C">Report</a>' }))).status).toBe(409);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(tables.wk_sms_messages).toBeUndefined();
+  });
   it('uses the Hostunico sender even if an old product channel is requested and records the report in the inbox', async () => {
     expect(fetch).not.toHaveBeenCalled();
     const result = await handler(request({ channel_id: 'old', to_email: 'confirmed@example.com' }));

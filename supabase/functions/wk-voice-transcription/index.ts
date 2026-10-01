@@ -25,6 +25,8 @@ import { HOSTUNICO_COACH_PROMPT, cleanHostunicoCoach } from '../_shared/hostunic
 import { reportPhoneKind } from '../_shared/hostunico-phone.ts';
 import { hostunicoReportDelivery } from '../_shared/hostunico-report-delivery.ts';
 import { hostunicoReportHook } from '../_shared/hostunico-report-pitch.ts';
+import { hostunicoUplift, HOSTUNICO_UPLIFT_BLOCK } from '../_shared/hostunico-uplift.ts';
+import { hostunicoRentQuestion, hostunicoRentExplanation } from '../_shared/hostunico-rent.ts';
 import { hostunicoCallStep } from '../_shared/hostunico-call-step.ts';
 import { raceHostunicoCoach, selectHostunicoJevAnswer } from '../_shared/hostunico-jev.ts';
 import { hostunicoNeedsName } from '../_shared/hostunico-contact-name.ts';
@@ -2161,7 +2163,8 @@ serve(async (req: Request) => {
             const contact = contactResult.data;
             const fields = contact?.custom_fields || {};
             const listingId = fields.hostunico_listing_id;
-            const instant = hostunicoInstantAnswer(transcriptText, contact?.hostunico_country || 'GB', { phone: contact?.phone, mobile: contact?.hostunico_sms_phone });
+            const rentQuestion = hostunicoRentQuestion(transcriptText);
+            const instant = rentQuestion ? null : hostunicoInstantAnswer(transcriptText, contact?.hostunico_country || 'GB', { phone: contact?.phone, mobile: contact?.hostunico_sms_phone });
             const context = `${listingId || ''}:${fields.hostunico_script_mode || 'spareroom'}:${contact?.hostunico_country || 'GB'}`;
             const { data: cardId, error: cardError } = liveSpeech
               ? await supa.rpc('wk_hostunico_start_live_coach', { p_call_id: call.id, p_generation: generationId, p_context: context, p_sequence: liveSpeech.sequence, p_utterance: liveSpeech.utterance_id })
@@ -2183,17 +2186,24 @@ serve(async (req: Request) => {
               if (!instant) {
                 const transcript = [...(recent.data || [])].reverse();
                 const output = await raceHostunicoCoach({
-                  fast: (signal) => selectHostunicoJevAnswer({ apiKey: Deno.env.get('TYPESAFE_API_KEY') || '', latestCaller: transcriptText, transcript, country: contact?.hostunico_country || 'GB', provisional: !isFinal, signal }),
+                  fast: (signal) => rentQuestion ? Promise.resolve(null) : selectHostunicoJevAnswer({ apiKey: Deno.env.get('TYPESAFE_API_KEY') || '', latestCaller: transcriptText, transcript, country: contact?.hostunico_country || 'GB', provisional: !isFinal, signal }),
                   generate: async (onChunk, signal) => {
                     // Jev predicts from partial speech. Contextual generation
                     // handles complete questions without competing per word.
                     if (!isFinal) return null;
                     const [listing, report, messages] = await Promise.all([
-                      listingId ? supa.from('sa_listings').select('address,city,bedrooms,bathrooms,property_type,rent_pcm,source_price,report_property').eq('id', listingId).eq('wk_contact_id', call.contact_id).maybeSingle() : Promise.resolve({ data: null }),
+                      listingId ? supa.from('sa_listings').select('address,city,bedrooms,bathrooms,property_type,rent_pcm,source_price,report_property,hostunico_uplift_status').eq('id', listingId).eq('wk_contact_id', call.contact_id).maybeSingle() : Promise.resolve({ data: null }),
                       listingId ? supa.from('sa_property_reports').select('state,sms_state,received_at,report_pitch,report_url').eq('listing_id', listingId).maybeSingle() : Promise.resolve({ data: null }),
                       supa.from('wk_sms_messages').select('body,status,channel,created_at').eq('contact_id', call.contact_id).eq('direction', 'outbound').order('created_at', { ascending: false }).limit(20),
                     ]);
                     if (signal.aborted || aborted) return null;
+                    const qualification = hostunicoUplift(report.data?.state, report.data?.report_pitch, listing.data?.rent_pcm);
+                    if (qualification.status !== 'eligible' || listing.data?.hostunico_uplift_status !== 'eligible') {
+                      const blocked = `SAY: \nASK: \n${HOSTUNICO_UPLIFT_BLOCK} Move to the next qualified lead.`;
+                      onChunk(blocked, true); return blocked;
+                    }
+                    const rentExplanation = rentQuestion ? hostunicoRentExplanation(listing.data?.source_price, listing.data?.rent_pcm) : null;
+                    if (rentExplanation) { const answer = `SAY: ${rentExplanation}\nASK:`; onChunk(answer, true); return answer; }
                     const reportContext = report.data ? { ...report.data, latestDelivery: hostunicoReportDelivery(report.data.report_url, messages.data || []) } : null;
                     const mode = fields.hostunico_script_mode || 'spareroom';
                     const scripted = hostunicoCallStep({ mode, leadName: contact?.name, latestCaller: transcriptText, transcript, report: reportContext });

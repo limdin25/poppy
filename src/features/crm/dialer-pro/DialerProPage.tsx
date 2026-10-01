@@ -686,7 +686,7 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
         .order('created_at', { ascending: true });
       if (impId) colQ = colQ.eq('owner_agent_id', impId);
       if (isSaCall) {
-        const { data: eligible } = await (supabase.from('sa_listings' as any) as any).select('wk_contact_id').eq('hostunico_call_eligible', true);
+        const { data: eligible } = await (supabase.from('sa_listings' as any) as any).select('wk_contact_id').eq('hostunico_call_eligible', true).eq('hostunico_uplift_status', 'eligible');
         const ids = [...new Set((eligible || []).map((row: { wk_contact_id: string }) => row.wk_contact_id))];
         if (!ids.length) { columnContactsRef.current = []; setColumnLeads([]); return; }
         colQ = colQ.in('id', ids);

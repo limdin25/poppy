@@ -13,6 +13,14 @@ import { wholeHomeEligibility } from '../scripts/lib/hostunico-spareroom.mjs';
 
 const listing = { id: 'one', city: 'Manchester', address: 'Studio on Princess Road', bedrooms: null, bathrooms: null, propertyType: null, rentPcm: 1000, photoUrls: [] } as unknown as SaListing;
 describe('the property changes with the call', () => {
+  it('states the advertised weekly rent and its approximate monthly equivalent', () => {
+    const weekly = { ...listing, sourcePrice: '150pw', rentPcm: 650 };
+    expect(hostunicoProperty(weekly).rent).toBe('£150 a week, around £650 a month');
+    expect(hostunicoProperty({ ...weekly, sourcePrice: '275pw', rentPcm: 1191.67 }).rent).toBe('£275 a week, around £1,192 a month');
+    expect(hostunicoProperty({ ...weekly, sourcePrice: '150pw', rentPcm: 600 }).rent).toBe('a price that needs checking');
+    const html = renderToStaticMarkup(createElement(HostunicoScriptPane, { listing: weekly, agentName: 'Pedro', onOpener: () => {} }));
+    expect(html).toContain('£150 a week, around £650 a month');
+  });
   it('uses studio as advertised and never converts an unknown layout to the report assumption', () => {
     expect(hostunicoProperty(listing).description).toBe('studio');
     expect(hostunicoProperty({ ...listing, address: 'Princess Road' }).description).toBe('property');

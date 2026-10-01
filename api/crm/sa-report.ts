@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { HOSTUNICO_CAMPAIGN, HOSTUNICO_PIPELINE, REPORT_AHEAD, REPORT_SCAN_LIMIT, cachedReportReady, reportProperty, reportSms } from '../lib/hostunico-report.js';
 import { hostunicoCountry } from '../../supabase/functions/_shared/hostunico-pricing.js';
 import { reportPhone, reportPhoneKind } from '../../supabase/functions/_shared/hostunico-phone.js';
+import { hostunicoUplift, hostunicoOutreachAllowed } from '../../supabase/functions/_shared/hostunico-uplift.js';
 
 export const config = { runtime: 'edge' };
 const db = () => createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
@@ -52,17 +53,17 @@ export default async function handler(req: Request): Promise<Response> {
       const token = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
       check(await supa.from('sa_property_reports').upsert({ listing_id: listing.id, access_token: token, property }, { onConflict: 'listing_id', ignoreDuplicates: true }));
       const row = check(await supa.from('sa_property_reports').select('*').eq('listing_id', listing.id).single());
-      if (cachedReportReady(row) && row.report_pitch && !row.report_pitch.planning && Date.now() - Date.parse(row.updated_at) < 300000) {
-        return { stage: 'ready', message: row.message, reportUrl: row.report_url, reportPitch: row.report_pitch };
-      }
       const leadListing = check(await supa.from('sa_listings').select('wk_contact_id,address,listing_url,photo_urls,property_type,rent_pcm,source_price,hostunico_call_eligible').eq('id', listing.id).single());
       const lead = await contact(leadListing.wk_contact_id);
+      if (cachedReportReady(row) && typeof row.report_pitch?.monthlyGbpPence === 'number' && !row.report_pitch.planning && Date.now() - Date.parse(row.updated_at) < 300000) {
+        return { stage: 'ready', message: row.message, reportUrl: row.report_url, reportPitch: row.report_pitch, qualification: hostunicoUplift(row.state, row.report_pitch, leadListing.rent_pcm) };
+      }
       const result = await remote('start', { id: row.remote_id, token: row.access_token, property: row.property, country: hostunicoCountry(lead.hostunico_country, lead.phone), listing: reportListing(leadListing) }).catch((error) => {
         if (cachedReportReady(row)) return { stage: 'ready', message: row.message, reportUrl: row.report_url, reportPitch: row.report_pitch };
         throw error;
       });
       check(await supa.from('sa_property_reports').update({ state: result.stage, message: result.message, report_url: result.reportUrl ?? null, report_pitch: result.stage === 'ready' ? result.reportPitch ?? null : null, updated_at: new Date().toISOString() }).eq('listing_id', listing.id).eq('remote_id', row.remote_id));
-      return result;
+      return { ...result, qualification: hostunicoUplift(result.stage, result.reportPitch, leadListing.rent_pcm) };
     };
     if (action === 'prepare_queue' && req.method === 'POST') {
       if (body.campaign_id !== HOSTUNICO_CAMPAIGN) throw new Problem(400, 'Choose the Hostunico calling campaign.');
@@ -72,7 +73,7 @@ export default async function handler(req: Request): Promise<Response> {
       if (!admin && !membership) throw new Problem(403, 'Campaign access required.');
       const now = new Date().toISOString();
       let q = supa.from('wk_dialer_queue').select('contact_id,wk_contacts!inner(id,desk,owner_agent_id,do_not_call)').eq('campaign_id', HOSTUNICO_CAMPAIGN)
-        .eq('status', 'pending').eq('wk_contacts.desk', 'sa').eq('wk_contacts.do_not_call', false)
+        .or('status.eq.pending,hostunico_uplift_hold.eq.true').eq('wk_contacts.desk', 'sa').eq('wk_contacts.do_not_call', false)
         .or(`scheduled_for.is.null,scheduled_for.lte.${now}`).order('priority', { ascending: false }).order('scheduled_for', { ascending: true, nullsFirst: true }).order('attempts').order('created_at').order('id').limit(REPORT_SCAN_LIMIT);
       if (!admin) q = q.eq('wk_contacts.owner_agent_id', auth.user.id);
       if (body.contact_id) q = q.neq('contact_id', body.contact_id);
@@ -82,12 +83,13 @@ export default async function handler(req: Request): Promise<Response> {
       // continues until twenty reports are ready, going past unavailable leads.
       await Promise.all(queue.slice(offset, offset + 2).map(async (lead) => {
         try {
-          const listing = check(await supa.from('sa_listings').select('id,report_property').eq('wk_contact_id', lead.contact_id).eq('source', 'spareroom').eq('hostunico_call_eligible', true).order('dealt_at', { ascending: false }).order('id').limit(1).maybeSingle());
+          const listings = check(await supa.from('sa_listings').select('id,report_property,hostunico_uplift_status').eq('wk_contact_id', lead.contact_id).eq('source', 'spareroom').eq('hostunico_call_eligible', true).order('dealt_at', { ascending: false }).order('id').limit(100));
+          const listing = listings.find((l) => l.hostunico_uplift_status === 'eligible') || listings.find((l) => l.hostunico_uplift_status === 'pending') || listings[0];
           if (!listing || !reportProperty(listing.report_property)) { needsDetails++; return; }
           const result = await start(listing);
           if (result.stage === 'needs_details') needsDetails++;
           else if (result.stage === 'review') failed++;
-          else { prepared++; if (result.stage === 'ready') ready++; else preparing++; }
+          else { prepared++; if (result.stage === 'ready' && 'qualification' in result && result.qualification.status === 'eligible') ready++; else preparing++; }
         } catch { failed++; }
       }));
       return json({ prepared, ready, preparing, needsDetails, failed, ahead: queue.length, target: REPORT_AHEAD, nextOffset: offset + 2 < queue.length ? offset + 2 : null });
@@ -161,7 +163,7 @@ export default async function handler(req: Request): Promise<Response> {
       check(await supa.from('sa_property_reports').update({ received_at: new Date().toISOString() }).eq('listing_id', listingId).eq('remote_id', row.remote_id));
       return json({ ok: true });
     }
-    if (!cachedReportReady(row) || (action === 'status' && (!row.report_pitch || (row.report_pitch.planning && Date.now() - Date.parse(row.updated_at || '') > 45000)))) {
+    if (!cachedReportReady(row) || (action === 'status' && (typeof row.report_pitch?.monthlyGbpPence !== 'number' || (row.report_pitch.planning && Date.now() - Date.parse(row.updated_at || '') > 45000)))) {
       const result = await remote('status', { id: row.remote_id, token: row.access_token, listing: reportListing(listing) }).catch((error) => {
         if (cachedReportReady(row)) return { stage: 'ready', message: row.message, reportUrl: row.report_url, reportPitch: row.report_pitch };
         throw error;
@@ -174,6 +176,9 @@ export default async function handler(req: Request): Promise<Response> {
       if (body.permission !== true) throw new Problem(400, 'Confirm that they agreed to receive the report by SMS.');
       if (!c.hostunico_sms_phone && reportPhoneKind(c.phone) !== 'mobile') throw new Problem(400, 'Ask for their mobile number and save it, or use email.');
       if (row.state !== 'ready' || !row.report_url) throw new Problem(409, 'The report is not ready yet.');
+      const qualification = hostunicoUplift(row.state, row.report_pitch, listing.rent_pcm);
+      if (qualification.status !== 'eligible') throw new Problem(409, qualification.message);
+      if (!await hostunicoOutreachAllowed(supa, c.id, '', listingId)) throw new Problem(409, 'This property or its asking price needs checking. Sending is blocked.');
       const sms = reportSms(row.report_url, row.property?.areaEstimate === true);
       const claim = check(await supa.from('sa_property_reports').update({ sms_state: 'sending', sms_requested_at: new Date().toISOString() }).eq('listing_id', listingId).eq('remote_id', row.remote_id).eq('sms_state', 'unsent').select('listing_id'));
       if (!claim.length) throw new Problem(409, 'This report has already been sent or is being sent. Check its message status before trying again.');
@@ -202,7 +207,10 @@ export default async function handler(req: Request): Promise<Response> {
       const message = check(await supa.from('wk_sms_messages').select('status').eq('id', row.sms_message_id).maybeSingle());
       smsStatus = message?.status ?? smsStatus;
     }
-    return json({ ...sendingPolicy, stage: row.state, message: row.message, reportUrl: row.state === 'ready' ? row.report_url : undefined, smsDraft: row.state === 'ready' && row.report_url ? reportSms(row.report_url, row.property?.areaEstimate === true) : undefined, reportPitch: row.state === 'ready' ? row.report_pitch : null, property: row.property, smsStatus, receivedAt: row.received_at, mobile: c.hostunico_sms_phone || (reportPhoneKind(c.phone) === 'mobile' ? reportPhone(c.phone) : '') });
+    let qualification = hostunicoUplift(row.state, row.report_pitch, listing.rent_pcm);
+    const qualified = listing.hostunico_call_eligible === true && qualification.status === 'eligible' && await hostunicoOutreachAllowed(supa, c.id, '', listingId);
+    if (!qualified && qualification.status === 'eligible') qualification = { status: 'pending', message: 'This property or its asking price needs checking. Calling and sending are blocked.' };
+    return json({ ...sendingPolicy, qualification, eligibilityBlocked: !qualified, stage: row.state, message: qualified ? row.message : qualification.message, reportUrl: row.state === 'ready' ? row.report_url : undefined, smsDraft: qualified && row.report_url ? reportSms(row.report_url, row.property?.areaEstimate === true) : undefined, reportPitch: row.state === 'ready' ? { ...row.report_pitch, eligibility: qualified ? 'eligible' : qualification.status === 'eligible' ? 'excluded' : qualification.status } : null, property: row.property, smsStatus, receivedAt: row.received_at, mobile: c.hostunico_sms_phone || (reportPhoneKind(c.phone) === 'mobile' ? reportPhone(c.phone) : '') });
   } catch (error) {
     return json({ error: error instanceof Problem ? error.message : 'Could not complete this report action. Please try again.' }, { status: error instanceof Problem ? error.status : 503 });
   }

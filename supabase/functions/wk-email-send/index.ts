@@ -28,6 +28,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 import { HOSTUNICO_COMPANY } from '../_shared/hostunico-company.ts';
+import { hostunicoOutreachAllowed, HOSTUNICO_UPLIFT_PENDING } from '../_shared/hostunico-uplift.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -113,6 +114,7 @@ serve(async (req: Request) => {
       .maybeSingle();
     if (contactErr) return json(500, { error: contactErr.message });
     if (!contact) return json(404, { error: 'Contact not found' });
+    if (contact.desk === 'sa' && !await hostunicoOutreachAllowed(supa, contactId, `${body}\n${payload.html || ''}`)) return json(409, { error: HOSTUNICO_UPLIFT_PENDING });
     if (contact.desk === 'sa') {
       const caller = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, { global: { headers: { Authorization: `Bearer ${jwt}` } } });
       const [staff, admin] = await Promise.all([caller.rpc('wk_is_agent_or_admin'), caller.rpc('wk_is_admin')]);

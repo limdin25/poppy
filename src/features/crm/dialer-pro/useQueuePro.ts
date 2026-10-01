@@ -47,6 +47,7 @@ function rowToLead(row: QueueRow): QueueLead | null {
   const contact = row.wk_contacts;
   if (!contact || !contact.phone) return null;
   const cf = contact.custom_fields || {};
+  if (cf.lead_type === 'hostunico_owner' && cf.hostunico_sales_status !== 'eligible') return null;
   return {
     id: contact.id,
     contactId: contact.id,

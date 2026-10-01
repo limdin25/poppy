@@ -11,6 +11,8 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
+import { hostunicoOutreachAllowed } from '../_shared/hostunico-uplift.ts';
+import { isHostunicoAdminTestCall } from '../_shared/hostunico-test-call.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -190,6 +192,23 @@ serve(async (req: Request) => {
     }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+    // Recheck at the actual dial, including a stale call button or call ID.
+    const { data: dialContact, error: dialContactError } = preContactId
+      ? await supabase.from('wk_contacts').select('id,desk,phone,custom_fields').eq('id', preContactId).maybeSingle()
+      : await supabase.from('wk_contacts').select('id,desk,phone,custom_fields').eq('phone', to).maybeSingle();
+    let internalTest = false;
+    if (identity && isHostunicoAdminTestCall(true, dialContact, to)) {
+      const [profile, account] = await Promise.all([
+        supabase.from('profiles').select('workspace_role').eq('id', identity).maybeSingle(),
+        supabase.auth.admin.getUserById(identity),
+      ]);
+      const email = account.data?.user?.email;
+      const admin = email ? await supabase.from('admin_users').select('email').eq('email', email).maybeSingle() : { data: null };
+      internalTest = !profile.error && !account.error && (profile.data?.workspace_role === 'admin' || !!admin.data);
+    }
+    if (dialContactError || (dialContact?.desk === 'sa' && !internalTest && !await hostunicoOutreachAllowed(supabase, dialContact.id))) {
+      return new Response('<Response><Hangup/></Response>', { status: 200, headers: { 'Content-Type': 'text/xml' } });
+    }
 
     // PR 46 (Hugo 2026-04-27): parallel-dial branch. wk-dialer-start
     // originates calls with From=<twilio_number> (NOT 'client:<uuid>').

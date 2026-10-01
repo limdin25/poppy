@@ -15,6 +15,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 import { reportPhoneKind } from '../_shared/hostunico-phone.ts';
+import { hostunicoOutreachAllowed, HOSTUNICO_UPLIFT_PENDING } from '../_shared/hostunico-uplift.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -156,6 +157,7 @@ serve(async (req: Request) => {
       .maybeSingle();
     if (contactErr) return json(500, { error: contactErr.message });
     if (!contact) return json(404, { error: 'Contact not found' });
+    if (contact.desk === 'sa' && !await hostunicoOutreachAllowed(supa, contactId, body)) return json(409, { error: HOSTUNICO_UPLIFT_PENDING });
 
     const reportMobile = contact.desk === 'sa' ? contact.hostunico_sms_phone : null;
     if (contact.desk === 'sa' && (contact.do_not_call || (!reportMobile && reportPhoneKind(contact.phone) !== 'mobile'))) {
