@@ -8,6 +8,13 @@ const pitch: HostunicoReportPitch = { monthly: '£2,400', rent: '£1,000', diffe
 const render = (reportPitch?: HostunicoReportPitch | null) => renderToStaticMarkup(createElement(HostunicoScriptPane, { listing: null, agentName: 'Pedro', onOpener: () => {}, reportPitch }));
 
 describe('first-call report comparison', () => {
+  it('asks for a mobile or email only when there is no usable mobile, and follows a saved alternative', () => {
+    for (const phone of [undefined, '', '+442079460123', '+447012345678', '+12025550123']) {
+      expect(hostunicoReportRecipient(phone)).toBe('Perfect. What mobile number can I text the report to? Or would you prefer email?');
+    }
+    expect(hostunicoReportRecipient('+447700900123')).toBe('Perfect. Can I text it to this number?');
+    expect(hostunicoReportRecipient('+442079460123', '+447700900456')).toBe('Perfect. Can I text the report to your mobile ending 0456?');
+  });
   it('offers the ready initial report without passing a rent-matching target off as researched earnings', () => {
     const copy = hostunicoReportHook({ ...pitch, planning: true });
     expect(copy).toContain("I've put together an initial report");
