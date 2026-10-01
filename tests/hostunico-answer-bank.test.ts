@@ -3,8 +3,32 @@ import { HOSTUNICO_ANSWERS, hostunicoAnswerCopy } from '../supabase/functions/_s
 import { hostunicoInstantAnswer } from '../supabase/functions/_shared/hostunico-sales';
 import { hostunicoJevAnswer, hostunicoJevRequest } from '../supabase/functions/_shared/hostunico-jev';
 import { HOSTUNICO_COACH_PROMPT } from '../supabase/functions/_shared/hostunico-coach';
+import { HOSTUNICO_SPOKEN_ANSWERS } from '../supabase/functions/_shared/hostunico-spoken-answers';
 
 describe('prepared Hostunico conversations', () => {
+  it('has a spoken version of every factual answer without putting both software currencies into a call', () => {
+    const fixed = HOSTUNICO_ANSWERS.filter((a) => !['price', 'software'].includes(a.key));
+    expect(Object.keys(HOSTUNICO_SPOKEN_ANSWERS).sort()).toEqual(fixed.map((a) => a.key).sort());
+    for (const country of ['GB', 'US']) {
+      for (const answer of HOSTUNICO_ANSWERS) {
+        const spoken = hostunicoAnswerCopy(answer, country);
+        expect(spoken).not.toMatch(/[\u2013\u2014\u2018\u2019\u2026]|hello@unicohost\.com|for UK leads|for US leads/);
+        expect(spoken).not.toContain(country === 'GB' ? '$29' : '£29');
+      }
+    }
+  });
+
+  it('gives Hugo\'s corrected contact and property location, and keeps Airbnb protection precise', () => {
+    expect(hostunicoInstantAnswer('What is your email address?')?.say).toContain('hello@hostunico.com');
+    expect(hostunicoInstantAnswer('How do I make a complaint?')?.say).toContain('hello@hostunico.com');
+    expect(hostunicoInstantAnswer('Where are your properties?')?.say).toBe('Our properties are in Manchester and Liverpool.');
+    const cover = hostunicoInstantAnswer('What about Airbnb insurance?')?.say;
+    expect(cover).toContain('up to US$3 million');
+    expect(cover).toContain('US$1 million');
+    expect(cover).toContain('terms and exclusions');
+    expect(HOSTUNICO_COACH_PROMPT).not.toContain('hello@unicohost.com');
+  });
+
   it.each([
     ['How much is it?', 'price'],
     ['What is the monthly subscription?', 'software'],

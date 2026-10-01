@@ -44,7 +44,7 @@ describe('Hostunico sales desk', () => {
   });
   it('gives immediate approved answers and no answer to an unrelated statement', () => {
     expect(hostunicoInstantAnswer('How much is your fee?')?.say).toContain('9%');
-    expect(hostunicoInstantAnswer('Is the income guaranteed?')?.say).toContain('not guaranteed');
+    expect(hostunicoInstantAnswer('Is the income guaranteed?')?.say).toMatch(/(?:not|isn't) guaranteed/);
     expect(hostunicoInstantAnswer('Who manages the cleaner?')?.say).toContain('operations team');
     expect(hostunicoInstantAnswer('It has two bedrooms')).toBeNull();
     expect(hostunicoInstantAnswer('Who are you with?')?.say).toContain('Hostunico');

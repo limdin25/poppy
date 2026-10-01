@@ -11,7 +11,7 @@ describe('Hostunico company knowledge', () => {
     expect(hostunicoInstantAnswer('What is your company number?')?.say).toContain('11197856');
     expect(hostunicoInstantAnswer('What is your company name?')?.say).toContain('ULINC UNICO GROUP LTD.');
     expect(hostunicoInstantAnswer('Where are you based?')?.say).toBe('Our registered address is 483 Green Lanes, London, England, N13 4BS.');
-    expect(hostunicoInstantAnswer('What is your email address?')?.say).toContain('hello@unicohost.com');
+    expect(hostunicoInstantAnswer('What is your email address?')?.say).toContain('hello@hostunico.com');
     expect(hostunicoInstantAnswer('What is your website?')?.say).toContain('hostunico.com');
     expect(hostunicoInstantAnswer('How long have you been doing this?')?.say).toContain('200 properties over four years');
     expect(hostunicoInstantAnswer('Who is your night manager in Leeds?')).toBeNull();

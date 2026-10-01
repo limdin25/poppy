@@ -1,6 +1,7 @@
 import { hostunicoPriceCopy, hostunicoSoftwareCopy } from './hostunico-pricing.ts';
-import { HOSTUNICO_COMPANY_ANSWERS } from './hostunico-company.ts';
+import { HOSTUNICO_COMPANY, HOSTUNICO_COMPANY_ANSWERS } from './hostunico-company.ts';
 import { HOSTUNICO_OPERATIONS_ANSWERS } from './hostunico-operations-answers.ts';
+import { HOSTUNICO_SPOKEN_ANSWERS } from './hostunico-spoken-answers.ts';
 
 export type HostunicoAnswer = { key: string; title: string; match: RegExp; say: string; nextQuestion?: string; supersedes?: readonly string[] };
 
@@ -37,7 +38,7 @@ export const HOSTUNICO_ANSWERS: readonly HostunicoAnswer[] = [
   { key: 'seasonality', title: 'Quiet months and empty nights', match: /\b(quiet months|low season|empty nights|no bookings|not booked|seasonal)\b/i, say: 'Income varies with demand, rates and occupied nights. We adjust pricing and review performance, but there can be quieter periods.' },
   { key: 'guest-types', title: 'Who would stay in my property?', match: /\b(who (?:are|would be) (?:the |my )?guests|who would stay|what (?:type|kind) of guests|business travellers|holidaymakers)\b/i, say: 'Depending on the location, it could be visitors, people travelling for work or people needing temporary accommodation. We work with short and mid-term stays rather than promise one particular type of guest.' },
   { key: 'parties', title: 'What about parties or noisy guests?', match: /\b(parties|party house|noisy guests|neighbour complaints)\b/i, say: 'We make the house rules clear and address reported noise with the guest. If it continues, the team escalates through the platform and the agreed local contact. Serious immediate safety problems need the emergency services.' },
-  { key: 'damage', title: 'Airbnb protection', match: /\b(damage|aircover|liability insurance)\b/i, say: 'Airbnb has up to US$3 million host damage protection and US$1 million host liability insurance for eligible stays. Terms and exclusions apply.' },
+  { key: 'damage', title: 'Airbnb protection', match: /\b(damage|aircover|airbnb (?:insurance|protection|cover)|liability insurance)\b/i, say: 'Airbnb has up to US$3 million host damage protection and US$1 million host liability insurance for eligible stays. Terms and exclusions apply.' },
   { key: 'property-insurance', title: 'The owner insurance policy', match: /\b(own insurance|property insurance|insurer|insurance policy)\b/i, say: 'You need to check that your property insurance allows this use. Airbnb protection does not replace your own policy.' },
   { key: 'guest-comms', title: 'Guest questions and arrivals', match: /\b(who (?:answers|replies|speaks).*guests|guest (?:messages|communication)|arrival (?:questions|guidance))\b/i, say: 'Elsie and the operations team handle guest communication and arrival guidance using the agreed arrangements for your property.' },
   { key: 'access', title: 'How do guests get into the property?', match: /\b(key safe|lock\s?box|smart lock|(?:guest |the )?access|who.*keys|guests?.*(?:get in|enter|open.*door)|who.*open.*door)\b/i, supersedes: ['service'], say: 'Usually guests let themselves in. We use a lockbox near the entrance with a key inside, where fitting one is possible. Otherwise we look for a nearby shop offering key collection. We send the guest clear instructions and test the access before launch.' },
@@ -67,7 +68,7 @@ export const HOSTUNICO_ANSWERS: readonly HostunicoAnswer[] = [
   { key: 'already-let', title: 'The property is already let', match: /\b(already let|already rented|no longer available|tenant moved in)\b/i, say: 'Thanks for letting me know. I will note that the property is no longer available.' },
   { key: 'unsuitable-room', title: 'It turns out to be a room', match: /\b(only a room|just a room|shared house|house share)\b/i, say: 'Thanks for clarifying. We are focusing on whole studios and one-bedroom properties, so this would not fit.' },
   { key: 'references', title: 'Reviews and references', match: /\b(references|customer reviews|testimonials|speak to.*owner)\b/i, say: 'I can ask Hugo what relevant references we can share. I would rather confirm that than give you unverified examples.' },
-  { key: 'complaint', title: 'A concern about the service', match: /\b(make a complaint|complaints process|unhappy.*service)\b/i, say: 'You can contact hello@unicohost.com or raise it in the owner portal. The team records the issue and arranges a review.' },
+  { key: 'complaint', title: 'A concern about the service', match: /\b(make a complaint|complaints process|unhappy.*service)\b/i, say: `You can contact ${HOSTUNICO_COMPANY.supportEmail} or raise it in the owner portal. The team records the issue and arranges a review.` },
   { key: 'legal-advice', title: 'Personal tax or legal advice', match: /\b(income tax|tax return|tax advice|legal advice)\b/i, say: 'Your personal tax and legal position needs your own adviser. We can explain our service and the property checks we need.' },
   ...HOSTUNICO_OPERATIONS_ANSWERS,
 ];
@@ -75,7 +76,7 @@ export const HOSTUNICO_ANSWERS: readonly HostunicoAnswer[] = [
 export function hostunicoAnswerCopy(answer: HostunicoAnswer, country = 'GB') {
   if (answer.key === 'price') return hostunicoPriceCopy(country);
   if (answer.key === 'software') return hostunicoSoftwareCopy(country);
-  return answer.say;
+  return HOSTUNICO_SPOKEN_ANSWERS[answer.key] || answer.say;
 }
 
 // Currency-sensitive answers come from the lead's country in the main rules.

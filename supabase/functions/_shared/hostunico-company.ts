@@ -2,13 +2,14 @@
 // src/core/hostunico/domain.ts, apps/hostunico/src/legal.ts and report copy.
 // Experience, payouts and coverage: Hostunico University curriculum, release
 // 41eefb3. Hugo's current pricing and call instructions override older copy.
+// Hugo corrected the email and property-city wording on 1 October 2026.
 export const HOSTUNICO_COMPANY = {
   brand: 'Hostunico',
   legalName: 'ULINC UNICO GROUP LTD.',
   companyNumber: '11197856',
   registeredAddress: '483 Green Lanes, London, England, N13 4BS',
   website: 'https://hostunico.com',
-  supportEmail: 'hello@unicohost.com',
+  supportEmail: 'hello@hostunico.com',
   registry: 'https://find-and-update.company-information.service.gov.uk/company/11197856',
 } as const;
 
@@ -18,7 +19,7 @@ export const HOSTUNICO_COMPANY_ANSWERS = [
   { key: 'company-website', title: 'Our website', match: /\b(your website|company website|web address|find you online)\b/i, say: 'Our website is hostunico.com.' },
   { key: 'company-email', title: 'Contact the team', match: /\b(your email(?: address)?|company email|contact email|email (?:you|your team)|contact your team)\b/i, say: `You can reach our team at ${HOSTUNICO_COMPANY.supportEmail}.` },
   { key: 'company-experience', title: 'Our experience', match: /\b(your experience|how experienced|track record|how long have you|how many properties have you managed)\b/i, say: 'Our team has managed 200 properties over four years.' },
-  { key: 'company-coverage', title: 'Where we operate', match: /\b(which cities|what areas do you cover|where do you operate|do you cover (?:manchester|liverpool))\b/i, say: 'Our confirmed operating cities are Manchester and Liverpool. We can check the arrangements for your specific property.' },
+  { key: 'company-coverage', title: 'Where our properties are', match: /\b(which cities|what areas do you cover|where do you operate|where are (?:your|the) properties|where.*properties.*(?:located|based)|do you cover (?:manchester|liverpool))\b/i, say: 'Our properties are in Manchester and Liverpool.' },
   { key: 'owner-payouts', title: 'Who receives the money', match: /\b(who (?:gets|receives) (?:the )?(?:money|payouts?|booking (?:money|payments))|hold my money|paid directly|pay me directly)\b/i, say: 'Normally the booking platform pays you directly. Our management fee is handled separately, sometimes through an agreed Airbnb co-host payout.' },
 ] as const;
 

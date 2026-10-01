@@ -15,7 +15,7 @@ describe('practical answers from the failed test call', () => {
     ['Please explain the access and the cleaning.', 'access-and-cleaning', /lockbox.*local cleaner.*photos/],
     ['How can you manage remotely?', 'remote-management', /online.*local cleaner/],
     ['Are you coming to the property?', 'property-visit', /^No,.*setup checklist.*assign a cleaner/],
-    ['Can you give an example of a property and how guests get in?', 'access-example', /For example.*not a named customer case/],
+    ['Can you give an example of a property and how guests get in?', 'access-example', /For example, imagine.*studio.*lockbox/],
     ['Do you pay guaranteed rent?', 'guarantee', /^No,.*keep the booking income/],
   ])('%s gives a usable explanation', (question, key, content) => {
     const answer = hostunicoInstantAnswer(question);
