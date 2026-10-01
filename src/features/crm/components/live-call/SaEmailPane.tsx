@@ -40,7 +40,7 @@ export function saEmailTemplate(opts: {
       '',
       opts.reportUrl ? `Here is your property report: ${opts.reportUrl}\n\nIt includes the estimated earnings, assumptions and costs. The figures are estimates, not guaranteed income.` : `We can prepare a report comparing estimated earnings and costs${opts.rent ? ` with the advertised rent of ${opts.rent}` : ''}. Please confirm the full postcode, whole-property bedrooms and bathrooms. The figures are estimates, not guaranteed income.`,
       '',
-      'Want me to walk you through what onboarding looks like?',
+      'Let me know what you think.',
       '',
       'Thanks,',
       opts.fromName,

@@ -14,6 +14,7 @@ import { useAuth } from '../../lib/useCrmAuth';
 import { useViewAs } from '../../lib/ViewAsContext';
 import { useAgentDirectory } from '../../hooks/useAgentDirectory';
 import { hostunicoCallerName } from '../../lib/hostunicoCaller';
+import type { HostunicoSpeech } from '../../lib/hostunicoSpeech';
 
 export interface SaCallRoomProps {
   contact: Contact | null; contactHeader?: ReactNode; emptyState?: ReactNode;
@@ -45,6 +46,9 @@ export default function SaCallRoom({ contact, contactHeader, emptyState, current
   const [notesOpen, setNotesOpen] = useState(false);
   const [countryError, setCountryError] = useState('');
   const [contextError, setContextError] = useState('');
+  const [speechSnapshot, setSpeechSnapshot] = useState<{ scope: string; lines: HostunicoSpeech[] } | null>(null);
+  const receiveSpeech = useCallback((lines: HostunicoSpeech[]) => setSpeechSnapshot({ scope: `${contact?.id}:${currentCallId}`, lines }), [contact?.id, currentCallId]);
+  const agentSpeech = speechSnapshot?.scope === `${contact?.id}:${currentCallId}` ? speechSnapshot.lines.filter((line) => line.speaker === 'agent').map((line) => line.body).join(' ') : '';
   useEffect(() => {
     let cancelled = false;
     setCountry(hostunicoCountry(null, contact?.phone)); setCountryError('');
@@ -119,14 +123,14 @@ export default function SaCallRoom({ contact, contactHeader, emptyState, current
         </div>}
       </aside>
       <div className="grid min-h-0 min-w-0 flex-1 grid-cols-1 overflow-y-auto md:grid-cols-2 md:overflow-hidden" data-testid="hostunico-focus-columns">
-        <div className="min-h-[440px] min-w-0 border-r md:min-h-0"><HostunicoScriptPane key={contact?.id || 'no-contact'} listing={selected} agentName={callerName} onOpener={setOpener} onMode={setMode} country={country} reportPitch={pitchSnapshot?.listingId === selected?.id && pitchSnapshot?.country === country ? pitchSnapshot.value : null} phone={contact?.phone} reportMobile={mobileSnapshot?.listingId === selected?.id ? mobileSnapshot?.mobile : null} onArrangeCallback={contact && selected ? () => { setCollapsed(false); setNotesOpen(true); setReviewRequest({ contactId: contact.id, listingId: selected.id }); } : undefined} controls={<>
+        <div className="min-h-[440px] min-w-0 border-r md:min-h-0"><HostunicoScriptPane key={contact?.id || 'no-contact'} listing={selected} agentName={callerName} agentSpeech={agentSpeech} contactName={contact?.name} onEditName={() => { setCollapsed(false); setNotesOpen(true); }} onOpener={setOpener} onMode={setMode} country={country} reportPitch={pitchSnapshot?.listingId === selected?.id && pitchSnapshot?.country === country ? pitchSnapshot.value : null} phone={contact?.phone} reportMobile={mobileSnapshot?.listingId === selected?.id ? mobileSnapshot?.mobile : null} onArrangeCallback={contact && selected ? () => { setCollapsed(false); setNotesOpen(true); setReviewRequest({ contactId: contact.id, listingId: selected.id }); } : undefined} controls={<>
           <button onClick={() => setCollapsed(!collapsed)} aria-expanded={!collapsed} aria-controls="hostunico-call-sidebar" aria-label={collapsed ? 'Show property and controls' : 'Hide property and controls'} title={collapsed ? 'Show property and controls' : 'Hide property and controls'} className="flex h-8 w-8 shrink-0 items-center justify-center gap-1.5 rounded-lg border bg-slate-50 text-xs hover:bg-slate-100 xl:w-auto xl:px-2">{collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}<span className="hidden xl:inline">Property</span></button>
           {callInProgress && onEndCall && <button onClick={onEndCall} className="h-8 shrink-0 rounded-lg bg-red-700 px-2 text-xs font-semibold text-white">End call</button>}
         </>} /></div>
         <section className="flex min-h-[440px] min-w-0 flex-col bg-white md:min-h-0" aria-label="Live AI coach">
           {direction === 'inbound' && <p className="border-b bg-blue-50 p-2 text-xs text-blue-700">They called back. Confirm which property they mean.</p>}
           {contextError && <p role="alert" className="bg-amber-50 p-2 text-xs text-amber-900">{contextError}</p>}
-          <div className="min-h-0 flex-1">{contact ? <LiveTranscriptPane key={currentCallId || contact.id} durationSec={liveDurationSec} contactId={contact.id} callId={currentCallId} agentFirstName={callerName} hostunicoCountry={country} hostunicoContext={`${selected?.id || ''}:${mode}:${country}`} hostunicoPhone={contact.phone} hostunicoReportMobile={mobileSnapshot?.listingId === selected?.id ? mobileSnapshot?.mobile : null} isSaCall propertyOpener={opener} /> : <div className="p-5 text-sm text-slate-500">{emptyState || 'Choose a lead to start. The live coach appears here.'}</div>}</div>
+          <div className="min-h-0 flex-1">{contact ? <LiveTranscriptPane key={currentCallId || contact.id} durationSec={liveDurationSec} contactId={contact.id} callId={currentCallId} agentFirstName={callerName} hostunicoCountry={country} hostunicoContext={`${selected?.id || ''}:${mode}:${country}`} hostunicoPhone={contact.phone} hostunicoReportMobile={mobileSnapshot?.listingId === selected?.id ? mobileSnapshot?.mobile : null} onHostunicoSpeech={receiveSpeech} isSaCall propertyOpener={opener} /> : <div className="p-5 text-sm text-slate-500">{emptyState || 'Choose a lead to start. The live coach appears here.'}</div>}</div>
         </section>
       </div>
     </div>

@@ -27,6 +27,7 @@ import { hostunicoReportDelivery } from '../_shared/hostunico-report-delivery.ts
 import { hostunicoReportHook } from '../_shared/hostunico-report-pitch.ts';
 import { hostunicoCallStep } from '../_shared/hostunico-call-step.ts';
 import { raceHostunicoCoach, selectHostunicoJevAnswer } from '../_shared/hostunico-jev.ts';
+import { hostunicoNeedsName } from '../_shared/hostunico-contact-name.ts';
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 import {
@@ -1604,7 +1605,7 @@ async function streamCoachInternal(args: {
       presence_penalty: 0.3,
       frequency_penalty: 0.2,
       // GPT-5 family rejects `max_tokens` — use max_completion_tokens.
-      max_completion_tokens: args.hostunico ? 220 : 120,
+      max_completion_tokens: args.hostunico ? 170 : 120,
       // The coach runs on a GPT-5 family model, which reasons before it emits a
       // visible token, and the hidden reasoning also eats the same 120-token
       // budget the card is supposed to use.
@@ -1894,6 +1895,19 @@ serve(async (req: Request) => {
       ? (parentLegIsAgent ? 'caller' : 'agent')
       : (parentLegIsAgent ? 'agent' : 'caller');
 
+    // Live speech is a replaceable line, not a new archived sentence each time.
+    // The provider sequence rejects retries and out-of-order partials.
+    let liveSpeech: { sequence: number; utterance_id: string; ts: string } | null = null;
+    if (call.script_key === 'sa_call') {
+      const sequence = Number(params.SequenceId);
+      if (Number.isSafeInteger(sequence) && sequence >= 0) {
+        const heard = await supa.rpc('wk_hostunico_hear', { p_call_id: call.id, p_speaker: speaker, p_sequence: sequence, p_body: transcriptText, p_final: isFinal });
+        if (heard.error) console.warn('[wk-voice-transcription] live speech unavailable', heard.error.message);
+        else if (!heard.data) return new Response('ok', { status: 200, headers: corsHeaders });
+        else liveSpeech = heard.data;
+      }
+    }
+
     // Persist transcript line ONLY for finalized chunks. Hugo
     // 2026-04-28: "Interim chunks for coach only — keep transcript
     // pane clean." Interim chunks would spam the pane with partial
@@ -1993,7 +2007,7 @@ serve(async (req: Request) => {
       // that section so the coach's STAGE LOCK accounts for what
       // the agent just covered. Forward-only — never moves the
       // cursor backward.
-      if (speaker === 'agent' && call.ai_coach_enabled) {
+      if (speaker === 'agent' && call.ai_coach_enabled && call.script_key !== 'sa_call') {
         try {
           // Resolve the agent's effective script body (own > campaign-
           // pinned > workspace default) — same chain useAgentScript
@@ -2078,7 +2092,7 @@ serve(async (req: Request) => {
     // Finals are never gated: a genuinely short answer ("Yeah." / "No chance.")
     // is a real turn and often the most important one on the call.
     const wordCount = transcriptText.split(/\s+/).filter(Boolean).length;
-    const tooShortToAnswer = !isFinal && wordCount < 4;
+    const tooShortToAnswer = !isFinal && wordCount < (call.script_key === 'sa_call' ? 2 : 4);
 
     if (call.ai_coach_enabled && speaker === 'caller' && !tooShortToAnswer) {
       const generationId = crypto.randomUUID();
@@ -2090,9 +2104,16 @@ serve(async (req: Request) => {
 
       const coachPromise = (async () => {
         try {
+          const hostunicoContext = call.script_key === 'sa_call' ? Promise.all([
+            supa.from('wk_live_transcripts').select('speaker,body,ts').eq('call_id', call.id).order('ts', { ascending: false }).limit(24),
+            supa.from('wk_contacts').select('name,phone,hostunico_sms_phone,hostunico_country,custom_fields').eq('id', call.contact_id).maybeSingle(),
+          ]) : null;
+          const settingsPromise = supa.from('wk_ai_settings')
+            .select('ai_enabled, live_coach_enabled, openai_api_key, live_coach_system_prompt, coach_style_prompt, coach_script_prompt, live_coach_model')
+            .limit(1).maybeSingle();
           // 1. Try to acquire the lock. Interim chunks debounce on
           //    400ms; final chunks force-supersede.
-          const { data: lockResult, error: lockErr } = await supa.rpc(
+          const [lockResponse, settings] = await Promise.all([supa.rpc(
             'wk_acquire_coach_lock',
             {
               p_call_id: call.id,
@@ -2104,9 +2125,10 @@ serve(async (req: Request) => {
               // coach line ~300ms sooner. Final chunks still force-
               // supersede, and the SILENCE RULE keeps most generations
               // returning STAY_ON_SCRIPT, so the extra fires stay cheap.
-              p_min_age_ms: 400,
+              p_min_age_ms: call.script_key === 'sa_call' ? 180 : 400,
             }
-          );
+          ), settingsPromise]);
+          const { data: lockResult, error: lockErr } = lockResponse;
           if (lockErr) {
             console.warn(`[wk-voice-transcription] [coach gen=${genShort}] lock RPC error`, lockErr.message);
             return;
@@ -2120,11 +2142,7 @@ serve(async (req: Request) => {
           log('lock acquired');
 
           // 2. Read AI settings (now includes the three-layer prompts).
-          const { data: ai } = await supa
-            .from('wk_ai_settings')
-            .select('ai_enabled, live_coach_enabled, openai_api_key, live_coach_system_prompt, coach_style_prompt, coach_script_prompt, live_coach_model')
-            .limit(1)
-            .maybeSingle();
+          const { data: ai } = settings;
           const envOpenAiKey = Deno.env.get('OPENAI_API_KEY') ?? '';
           if (!envOpenAiKey) {
             console.warn('[wk-voice-transcription] OPENAI_API_KEY secret not set — falling back to wk_ai_settings.openai_api_key');
@@ -2138,32 +2156,38 @@ serve(async (req: Request) => {
           // Hostunico uses only this lead and its selected property. Avoid the
           // old desk's sequential script/profile lookups on every spoken turn.
           if (call.script_key === 'sa_call') {
-            const [recent, contactResult] = await Promise.all([
-              supa.from('wk_live_transcripts').select('speaker,body,ts').eq('call_id', call.id).order('ts', { ascending: false }).limit(24),
-              supa.from('wk_contacts').select('name,phone,hostunico_sms_phone,hostunico_country,custom_fields').eq('id', call.contact_id).maybeSingle(),
-            ]);
+            const [recent, contactResult] = await hostunicoContext!;
             if (recent.error || contactResult.error) throw new Error('Hostunico coach context unavailable');
             const contact = contactResult.data;
             const fields = contact?.custom_fields || {};
             const listingId = fields.hostunico_listing_id;
             const instant = hostunicoInstantAnswer(transcriptText, contact?.hostunico_country || 'GB', { phone: contact?.phone, mobile: contact?.hostunico_sms_phone });
             const context = `${listingId || ''}:${fields.hostunico_script_mode || 'spareroom'}:${contact?.hostunico_country || 'GB'}`;
-            const { data: cardId, error: cardError } = await supa.rpc('wk_hostunico_start_coach', { p_call_id: call.id, p_generation: generationId, p_context: context });
+            const { data: cardId, error: cardError } = liveSpeech
+              ? await supa.rpc('wk_hostunico_start_live_coach', { p_call_id: call.id, p_generation: generationId, p_context: context, p_sequence: liveSpeech.sequence, p_utterance: liveSpeech.utterance_id })
+              : await supa.rpc('wk_hostunico_start_coach', { p_call_id: call.id, p_generation: generationId, p_context: context });
             if (cardError) throw new Error('Hostunico coach card unavailable');
             if (!cardId) return;
             const card = { id: cardId };
             let aborted = false;
+            const meta = { source_sequence: liveSpeech?.sequence, source_text: transcriptText, source_ts: liveSpeech?.ts, provisional: !isFinal, utterance_id: liveSpeech?.utterance_id };
+            const writeAnswer = async (text: string, status: string) => {
+              const result = await supa.rpc('wk_hostunico_write_coach', { p_card: card.id, p_generation: generationId, p_body: cleanHostunicoCoach(text), p_status: status, p_meta: meta });
+              if (result.error || !result.data) aborted = true;
+            };
             const writer = createThrottledWriter<string>(async (text) => {
-              const result = await supa.from('wk_live_coach_events').update({ body: cleanHostunicoCoach(text) }).eq('id', card.id).select('id');
-              if (result.error || !result.data?.length) aborted = true;
-            }, 100);
+              await writeAnswer(text, 'streaming');
+            }, 70);
             try {
               let answer = instant ? `SAY: ${instant.say}\nASK: ${instant.nextQuestion}` : '';
               if (!instant) {
                 const transcript = [...(recent.data || [])].reverse();
                 const output = await raceHostunicoCoach({
-                  fast: (signal) => selectHostunicoJevAnswer({ apiKey: Deno.env.get('TYPESAFE_API_KEY') || '', latestCaller: transcriptText, transcript, country: contact?.hostunico_country || 'GB', signal }),
+                  fast: (signal) => selectHostunicoJevAnswer({ apiKey: Deno.env.get('TYPESAFE_API_KEY') || '', latestCaller: transcriptText, transcript, country: contact?.hostunico_country || 'GB', provisional: !isFinal, signal }),
                   generate: async (onChunk, signal) => {
+                    // Jev predicts from partial speech. Contextual generation
+                    // handles complete questions without competing per word.
+                    if (!isFinal) return null;
                     const [listing, report, messages] = await Promise.all([
                       listingId ? supa.from('sa_listings').select('address,city,bedrooms,bathrooms,property_type,rent_pcm,source_price,report_property').eq('id', listingId).eq('wk_contact_id', call.contact_id).maybeSingle() : Promise.resolve({ data: null }),
                       listingId ? supa.from('sa_property_reports').select('state,sms_state,received_at,report_pitch,report_url').eq('listing_id', listingId).maybeSingle() : Promise.resolve({ data: null }),
@@ -2172,10 +2196,10 @@ serve(async (req: Request) => {
                     if (signal.aborted || aborted) return null;
                     const reportContext = report.data ? { ...report.data, latestDelivery: hostunicoReportDelivery(report.data.report_url, messages.data || []) } : null;
                     const mode = fields.hostunico_script_mode || 'spareroom';
-                    const scripted = hostunicoCallStep({ mode, latestCaller: transcriptText, transcript, report: reportContext });
+                    const scripted = hostunicoCallStep({ mode, leadName: contact?.name, latestCaller: transcriptText, transcript, report: reportContext });
                     if (scripted) { onChunk(scripted, true); return scripted; }
                     const approvedOpening = hostunicoReportHook(report.data?.state === 'ready' ? report.data.report_pitch : null);
-                    const generated = await streamCoachInternal({ apiKey: openaiKey, model: (ai.live_coach_model as string) || 'gpt-5.4-mini', hostunico: true, signal, systemMessages: [HOSTUNICO_COACH_PROMPT], userMsg: JSON.stringify({ lead: contact?.name, country: contact?.hostunico_country || 'GB', recipient: { callingNumberType: reportPhoneKind(contact?.phone), confirmedMobile: contact?.hostunico_sms_phone || null }, mode, advertisedProperty: listing.data, report: reportContext, approvedOpening, transcript, latestCaller: transcriptText }), onChunk, isAborted: () => aborted || signal.aborted });
+                    const generated = await streamCoachInternal({ apiKey: openaiKey, model: (ai.live_coach_model as string) || 'gpt-5.4-mini', hostunico: true, signal, systemMessages: [HOSTUNICO_COACH_PROMPT], userMsg: JSON.stringify({ lead: contact?.name, needsPersonalName: hostunicoNeedsName(contact?.name, transcript), country: contact?.hostunico_country || 'GB', recipient: { callingNumberType: reportPhoneKind(contact?.phone), confirmedMobile: contact?.hostunico_sms_phone || null }, mode, advertisedProperty: listing.data, report: reportContext, approvedOpening, transcript, latestCaller: transcriptText }), onChunk, isAborted: () => aborted || signal.aborted });
                     return generated?.body || null;
                   },
                   onChunk: (text, first) => { if (first) log('Hostunico first words'); writer.schedule(text); },
@@ -2185,12 +2209,12 @@ serve(async (req: Request) => {
                 answer = output?.body || '';
               }
               await writer.flush();
-              if (!aborted && answer) await supa.from('wk_live_coach_events').update({ body: cleanHostunicoCoach(answer), status: 'final' }).eq('id', card.id);
-              else await supa.from('wk_live_coach_events').delete().eq('id', card.id);
+              if (!aborted && answer) await writeAnswer(answer, 'final');
+              else if (!aborted) await supa.from('wk_live_coach_events').delete().eq('id', card.id).eq('generation_id', generationId).eq('body', '...');
               log(instant ? 'Hostunico approved answer ready' : 'Hostunico answer ready');
             } catch (error) {
               await writer.flush();
-              await supa.from('wk_live_coach_events').delete().eq('id', card.id);
+              await supa.from('wk_live_coach_events').delete().eq('id', card.id).eq('generation_id', generationId);
               throw error;
             }
             return;

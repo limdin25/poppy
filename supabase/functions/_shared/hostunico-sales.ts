@@ -6,6 +6,8 @@ export const HOSTUNICO_STAGES = ['Advert availability', 'Offer the report', 'Sen
 export { HOSTUNICO_RULES } from './hostunico-rules.ts';
 
 export function hostunicoInstantAnswer(utterance: string, country = 'GB', recipient?: { phone?: string; mobile?: string | null }) {
+  // A property fact is not a request to explain the matching keyword.
+  if (!/\?/.test(utterance) && /^(?:yes[, ]+)?(?:it(?:'s| is)|the (?:flat|property|studio|apartment) is) (?:already )?(?:furnished|empty|available|ready|a studio|one bed)\b/i.test(utterance)) return null;
   // A correction needs its meaning read, not the first keyword matched.
   if (/\b(actually|i mean(?:t)?|rather|sorry|not your|instead)\b/i.test(utterance)) return null;
   // A qualified rejection or double negative needs context, not a stop keyword.

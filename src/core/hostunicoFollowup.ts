@@ -4,7 +4,7 @@ export interface FollowupConfig { steps: FollowupStep[]; branches: { intent: Rep
 export const HOSTUNICO_FOLLOWUP: FollowupConfig = {
   steps: [
     { id: 'step1', label: 'Step 1', waitHours: 24, text: 'Did the numbers match what you expected?', approved: true },
-    { id: 'step2', label: 'Step 2', waitHours: 48, text: 'Would a quick walkthrough of onboarding help?', approved: false },
+    { id: 'step2', label: 'Step 2', waitHours: 48, text: 'What did you think of the report?', approved: false },
     { id: 'step3', label: 'Step 3', waitHours: 120, text: 'Shall I leave this with you for now?', approved: false },
   ],
   branches: [
@@ -13,6 +13,9 @@ export const HOSTUNICO_FOLLOWUP: FollowupConfig = {
     { intent: 'negative', target: 'cold', label: 'Not interested' },
   ],
 };
+export function hostunicoFollowupSms(text: string) {
+  return `Hi, just following up on your Hostunico report. ${text}`;
+}
 export interface SequenceLead {
   contact_id: string; report_sent_at: string; sent_steps: Record<string, string>;
   replied_at?: string | null; intent?: ReplyIntent | null; reason?: string | null;

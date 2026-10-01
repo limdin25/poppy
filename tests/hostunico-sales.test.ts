@@ -36,9 +36,10 @@ describe('Hostunico sales desk', () => {
     for (const bad of [{ ...p, postcode: 'M1' }, { ...p, bathrooms: null }, { ...p, wholeProperty: false }, { ...p, bedrooms: 0 }, { ...p, bedrooms: '2' }]) expect(reportProperty(bad)).toBeNull();
     expect(REPORT_AHEAD).toBe(10);
   });
-  it('only builds texts for the report service, including the income caveat', () => {
+  it('shares the report in one conversational text', () => {
     const url = 'https://hostunico.com/r/A1b2C';
-    expect(reportSms(url)).toContain('not guaranteed income');
+    expect(reportSms(url)).toContain('Let me know what you think.');
+    expect(reportSms(url)).not.toMatch(/STOP|opt out|walk you through/);
     expect(() => reportSms('https://evil.example/report')).toThrow();
     expect(() => reportSms('https://hostunico.com/login')).toThrow();
   });

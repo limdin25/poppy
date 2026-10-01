@@ -109,7 +109,7 @@ describe('the next words stand apart from past speech', () => {
       cards: [{ id: 'old', body: 'SAY: Old advice.\nASK: Old question?', ts: '2' }],
     }));
     const current = html.split('data-testid="hostunico-current-answer"')[1].split('</section>')[0];
-    expect(current).toContain('Your next line is coming.');
+    expect(current).toContain('Picking the next answer...');
     expect(current).not.toContain('Old advice');
     expect(current).not.toContain('Old question');
     expect(html).toContain('Earlier suggestions (1)');
@@ -126,7 +126,7 @@ describe('the next words stand apart from past speech', () => {
       lines: [{ id: 'lead', speaker: 'caller', body: 'It is furnished.', ts: '1' }],
       cards: [{ id: 'new', body: '...', ts: '2', status: 'streaming' }],
     }));
-    expect(streaming).toContain('Listening and preparing');
-    expect(streaming).toContain('Your next line is coming.');
+    expect(streaming).toContain('Listening');
+    expect(streaming).toContain('Picking the next answer...');
   });
 });

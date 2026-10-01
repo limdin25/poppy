@@ -15,5 +15,5 @@ export const HOSTUNICO_PIPELINE = 'dadce4ac-90b5-4320-9291-ff6bb1cf89f0';
 export function reportSms(url: string, areaEstimate = false) {
   const parsed = new URL(url);
   if (parsed.origin !== 'https://hostunico.com' || !/^\/r\/[A-Za-z0-9]{5}$/.test(parsed.pathname) || parsed.search || parsed.hash) throw new Error('Invalid property report link');
-  return `Your Hostunico ${areaEstimate ? 'area estimate' : 'property report'}: ${url}\nEstimated earnings, not guaranteed income. Want me to walk you through what onboarding looks like? Reply STOP to opt out.`;
+  return `Hi, here's your Hostunico ${areaEstimate ? 'area estimate' : 'property report'}: ${url}\nLet me know what you think.`;
 }

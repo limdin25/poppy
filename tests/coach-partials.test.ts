@@ -47,7 +47,7 @@ describe('partials are on', () => {
 
 describe('a fragment is not a turn', () => {
   it('refuses to answer a short interim, but never gates a final', () => {
-    expect(HANDLER).toMatch(/const tooShortToAnswer = !isFinal && wordCount < 4/)
+    expect(HANDLER).toMatch(/const tooShortToAnswer = !isFinal && wordCount < \(call.script_key === 'sa_call' \? 2 : 4\)/)
     expect(HANDLER).toMatch(/speaker === 'caller' && !tooShortToAnswer/)
   })
 
@@ -70,7 +70,7 @@ describe('a growing sentence replaces its own card, it does not stack', () => {
     // generation supersedes the still-streaming previous one, so the card is
     // rewritten in place as the sentence grows.
     expect(HANDLER).toMatch(/p_force: isFinal/)
-    expect(HANDLER).toMatch(/p_min_age_ms: 400/)
+    expect(HANDLER).toMatch(/p_min_age_ms: call.script_key === 'sa_call' \? 180 : 400/)
   })
 
   it('the transcript PANE stays finals-only so it cannot fill with half-sentences', () => {

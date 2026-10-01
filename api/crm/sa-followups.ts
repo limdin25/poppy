@@ -3,7 +3,7 @@ import { callLLM } from '../lib/llm.js';
 import { nonGsm7 } from '../lib/sms-charset.js';
 import { HOSTUNICO_CAMPAIGN } from '../lib/hostunico-report.js';
 import { REPLY_CLASSIFIER_PROMPT, safeReplyClassification, explicitOptOut } from '../lib/hostunico-reply-intent.js';
-import { validFollowupConfig, sequencePosition } from '../../src/core/hostunicoFollowup.js';
+import { validFollowupConfig, sequencePosition, hostunicoFollowupSms } from '../../src/core/hostunicoFollowup.js';
 
 export const config = { runtime: 'edge' };
 const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { 'Cache-Control': 'private, no-store' } });
@@ -71,7 +71,7 @@ export default async function handler(req: Request) {
     if (action !== 'send') return json({ error: 'Unknown action.' }, 400);
     const position = sequencePosition(lead, savedConfig);
     if (!position.step || position.node !== body.step || !position.step.approved) return json({ error: 'This follow-up is not due or its wording still needs Hugo approval.' }, 409);
-    const sms = `Hostunico: ${position.step.text} Reply STOP to opt out.`;
+    const sms = hostunicoFollowupSms(position.step.text);
     if (nonGsm7(sms).length) return json({ error: 'SMS copy needs plain characters.' }, 400);
     if (!checked(await db.rpc('sa_claim_followup', { p_contact: lead.contact_id, p_step: body.step }))) return json({ error: 'The lead replied, opted out, or this send is already in progress. Refresh the list.' }, 409);
     try {

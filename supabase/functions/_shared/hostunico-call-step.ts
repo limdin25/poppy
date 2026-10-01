@@ -1,14 +1,19 @@
 import { hostunicoReportHook, type HostunicoReportPitch } from './hostunico-report-pitch.ts';
+import { hostunicoNeedsName } from './hostunico-contact-name.ts';
 
 /** Only clear answers to the last spoken script question skip generation. */
 export function hostunicoCallStep(input: {
   mode: string; latestCaller: string; transcript: { speaker: string; body: string }[];
+  leadName?: string | null;
   report: { state?: string; report_pitch?: HostunicoReportPitch | null; latestDelivery?: unknown } | null;
 }) {
   if (!['spareroom', 'facebook'].includes(input.mode)) return null;
   const caller = input.latestCaller.toLowerCase().replace(/[.,!?]/g, '').trim();
   const agent = [...input.transcript].reverse().find((row) => row.speaker === 'agent')?.body || '';
   const permission = /^(?:yes|yeah|yep|sure|okay|ok|please)(?:\s+(?:yes|okay|ok|please|go on|tell me more|explain|you can|that's fine))*$/i.test(caller);
+  if (permission && /(?:would you like|can i send|shall i send).*report/i.test(agent) && !input.report?.latestDelivery && hostunicoNeedsName(input.leadName, input.transcript)) {
+    return "SAY: Of course.\nASK: By the way, what's your name?";
+  }
   if (permission && /(?:one minute|explain why (?:i|we) (?:called|am calling))/i.test(agent) && !input.report?.latestDelivery) {
     const pitch = input.report?.state === 'ready' ? input.report.report_pitch : null;
     const hook = hostunicoReportHook(pitch);

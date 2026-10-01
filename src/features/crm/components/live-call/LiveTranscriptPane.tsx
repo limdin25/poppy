@@ -19,6 +19,7 @@ import { hostunicoInstantAnswer } from '../../../../../supabase/functions/_share
 import { supabase } from '@/integrations/supabase/browser';
 import HostunicoCoachView from './HostunicoCoachView';
 import { mergeLiveRows } from '../../../../../supabase/functions/_shared/hostunico-coach';
+import { hostunicoSpeechLines, mergeHostunicoSpeech, type HostunicoLiveSpeech, type HostunicoSpeech } from '../../lib/hostunicoSpeech';
 
 interface Props {
   durationSec: number;
@@ -39,6 +40,7 @@ interface Props {
   hostunicoContext?: string;
   hostunicoPhone?: string;
   hostunicoReportMobile?: string | null;
+  onHostunicoSpeech?: (lines: HostunicoSpeech[]) => void;
   /** Property calls only: the first blue line of the property script for THIS
    *  call, built by PropertyCallRoom from the same facts the script pane is
    *  filled with. When set it IS the opener card. Without it the card used to
@@ -94,6 +96,7 @@ interface LiveCoachRow {
   /** For kind === 'script': human label of the section (Open / Qualify
    *  / Pitch / …). Surfaces in the badge as "SCRIPT — <section>". */
   script_section?: string | null;
+  meta?: { source_sequence?: number; source_text?: string; provisional?: boolean; utterance_id?: string };
 }
 
 const COACH_ICONS: Record<
@@ -138,12 +141,13 @@ function pickFiller(): string {
   return BUYTIME_FILLERS[Math.floor(Math.random() * BUYTIME_FILLERS.length)];
 }
 
-export default function LiveTranscriptPane({ durationSec, contactId, callId, agentFirstName, isPropertyCall = false, isSaCall = false, hostunicoCountry = 'GB', hostunicoContext, hostunicoPhone, hostunicoReportMobile, propertyOpener }: Props) {
+export default function LiveTranscriptPane({ durationSec, contactId, callId, agentFirstName, isPropertyCall = false, isSaCall = false, hostunicoCountry = 'GB', hostunicoContext, hostunicoPhone, hostunicoReportMobile, propertyOpener, onHostunicoSpeech }: Props) {
   const { aiCoach } = useKillSwitch();
   const store = useSmsV2();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [liveLines, setLiveLines] = useState<LiveTranscriptRow[]>([]);
   const [liveEvents, setLiveEvents] = useState<LiveCoachRow[]>([]);
+  const [speech, setSpeech] = useState<HostunicoLiveSpeech[]>([]);
   const [coachConnected, setCoachConnected] = useState(false);
   // Live transcript is collapsed by DEFAULT (Hugo 2026-07-22) so the coach
   // cards (what the agent reads aloud) own the space. Toggle to peek at words.
@@ -242,16 +246,17 @@ export default function LiveTranscriptPane({ durationSec, contactId, callId, age
     if (!callId) {
       setLiveLines([]);
       setLiveEvents([]);
+      setSpeech([]);
       return;
     }
 
     let cancelled = false;
     let revision = 0;
-    setLiveLines([]); setLiveEvents([]); setCoachConnected(false); setInstant(null);
+    setLiveLines([]); setLiveEvents([]); setSpeech([]); setCoachConnected(false); setInstant(null);
 
     const refresh = async () => {
       const atRevision = revision;
-      const [tRes, cRes] = await Promise.all([
+      const [tRes, cRes, sRes] = await Promise.all([
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (supabase.from('wk_live_transcripts' as any) as any)
           .select('id, speaker, body, ts')
@@ -259,16 +264,21 @@ export default function LiveTranscriptPane({ durationSec, contactId, callId, age
           .order('ts', { ascending: true }),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (supabase.from('wk_live_coach_events' as any) as any)
-          .select('id, kind, body, ts, script_section, status')
+          .select('id, kind, body, ts, script_section, status, meta')
           .eq('call_id', callId)
           .order('ts', { ascending: true }),
+        isSaCall ? (supabase as any).from('wk_hostunico_live_speech').select('*').eq('call_id', callId) : Promise.resolve({ data: null }),
       ]);
       if (cancelled) return;
       if (tRes.data) setLiveLines((previous) => atRevision === revision ? tRes.data : mergeLiveRows(tRes.data as LiveTranscriptRow[], previous));
       if (cRes.data) setLiveEvents((previous) => atRevision === revision ? cRes.data : mergeLiveRows(cRes.data as LiveCoachRow[], previous));
+      if (sRes.data) setSpeech((previous) => (sRes.data as HostunicoLiveSpeech[]).reduce(mergeHostunicoSpeech, previous));
     };
     void refresh();
     const recovery = isSaCall ? window.setInterval(() => void refresh(), 5000) : null;
+    const sCh = isSaCall ? supabase.channel(`hostunico-speech:${callId}`).on('postgres_changes', { event: '*', schema: 'public', table: 'wk_hostunico_live_speech', filter: `call_id=eq.${callId}` }, (payload: RealtimeChangePayload<HostunicoLiveSpeech>) => {
+      if (!cancelled && payload.eventType !== 'DELETE' && payload.new.call_id === callId) setSpeech((previous) => mergeHostunicoSpeech(previous, payload.new));
+    }).subscribe((status) => { if (!cancelled && status === 'SUBSCRIBED') void refresh(); }) : null;
 
     const tCh = supabase
       .channel(`live-transcripts:${callId}`)
@@ -349,8 +359,12 @@ export default function LiveTranscriptPane({ durationSec, contactId, callId, age
       if (recovery) window.clearInterval(recovery);
       try { supabase.removeChannel(tCh); } catch { /* ignore */ }
       try { supabase.removeChannel(cCh); } catch { /* ignore */ }
+      if (sCh) void supabase.removeChannel(sCh);
     };
   }, [callId, isPropertyCall, isSaCall, hostunicoCountry]);
+
+  const hostunicoLines = useMemo(() => hostunicoSpeechLines(liveLines, speech), [liveLines, speech]);
+  useEffect(() => { if (isSaCall) onHostunicoSpeech?.(hostunicoLines); }, [isSaCall, onHostunicoSpeech, hostunicoLines]);
 
   // Use live data when callId is present. Without a callId we render an
   // empty state in production. The legacy mock fallback is only allowed
@@ -421,7 +435,7 @@ export default function LiveTranscriptPane({ durationSec, contactId, callId, age
     }
   }, [lines.length]);
 
-  if (isSaCall) return <HostunicoCoachView lines={liveLines} cards={liveEvents.filter((event) => event.script_section === hostunicoContext)} active={!!callId} offline={aiCoach} connected={coachConnected} opener={opener} country={hostunicoCountry} agentName={agentFirstName || 'Pedro'} phone={hostunicoPhone} reportMobile={hostunicoReportMobile} />;
+  if (isSaCall) return <HostunicoCoachView lines={hostunicoLines} speech={speech} cards={liveEvents.filter((event) => event.script_section === hostunicoContext)} active={!!callId} offline={aiCoach} connected={coachConnected} opener={opener} country={hostunicoCountry} agentName={agentFirstName || 'Pedro'} phone={hostunicoPhone} reportMobile={hostunicoReportMobile} />;
 
   return (
     <div className="flex flex-col h-full">
