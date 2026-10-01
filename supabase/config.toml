@@ -364,7 +364,8 @@ verify_jwt = false
 [functions.wk-supervisor-join]
 verify_jwt = true
 [functions.wk-dialer-start]
-verify_jwt = true
+# User authentication is enforced by auth.getUser inside the handler.
+verify_jwt = false
 [functions.wk-dialer-answer]
 verify_jwt = false
 [functions.wk-dialer-tick]
@@ -380,7 +381,8 @@ verify_jwt = false
 [functions.wk-outcome-apply]
 verify_jwt = false
 [functions.wk-sms-send]
-verify_jwt = true
+# User authentication is enforced by auth.getUser inside the handler.
+verify_jwt = false
 [functions.wk-sms-incoming]
 verify_jwt = false
 # Twilio delivery-status callback (no JWT on Twilio's POST; the function
@@ -410,7 +412,8 @@ verify_jwt = false
 [functions.wk-ai-template]
 verify_jwt = false
 [functions.wk-email-send]
-verify_jwt = true
+# User authentication is enforced by auth.getUser inside the handler.
+verify_jwt = false
 [functions.wk-email-webhook]
 verify_jwt = false
 [functions.unipile-send]
