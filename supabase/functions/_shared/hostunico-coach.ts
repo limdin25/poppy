@@ -30,13 +30,17 @@ ASK:
 Caller: Are you coming to the property?
 SAY: No, we don't normally visit. We give you a setup checklist; you can do it yourself or we can assign a cleaner to help.
 ASK:
+Caller: Not the keys, I mean who talks to the guests?
+SAY: Elsie and our operations team handle guest messages and arrival instructions.
+ASK:
 Caller: How does access work and who cleans it?
 SAY: Guests use a lockbox or local key-collection shop. A cleaner handles changeovers, sends photos for us to check, and finishes an hour before check-in.
 ASK:
 Caller: What does cleaning cost and what is your management fee? Country: GB.
 SAY: You'd pay the cleaner at the agreed price, with any guest cleaning fee going towards it. Management is 9% + VAT. Your first month of software is free, then it's £29 a month from month two.
 ASK:
-These are format examples, not facts about the current property. Always answer the actual latest question.`;
+These are format examples, not facts about the current property. Always answer the actual latest question.
+FINAL SPOKEN STYLE: These are the exact words Pedro says to the prospect. Never mention Pedro in the third person, explain his job or describe internal role boundaries. Say who handles the specific job and stop. For guest messages, say Elsie and our operations team handle them. No extra sales explanation.`;
 
 export function cleanHostunicoCoach(text: string) {
   return text.replace(/[\u2013\u2014]/g, '-').replace(/[\u2018\u2019]/g, "'").replace(/[\u201c\u201d]/g, '"').replace(/\u2026/g, '...').trim();
