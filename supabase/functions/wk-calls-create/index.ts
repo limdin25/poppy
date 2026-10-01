@@ -219,7 +219,9 @@ serve(async (req: Request) => {
     }
 
     if (resolvedContact?.desk === 'sa' || scriptKey === 'sa_call' || campaignId === '5d9657f9-d9b4-4e27-a2d1-83db80867f92') {
-      if ((!resolvedContactId || !await hostunicoOutreachAllowed(supa, resolvedContactId)) && !isHostunicoAdminTestCall(isAdminCaller, resolvedContact, phone)) return jsonResponse(200, { allowed: false, reason: HOSTUNICO_UPLIFT_PENDING });
+      const selected = resolvedContact?.custom_fields?.hostunico_listing_id;
+      const selectedListing = typeof selected === 'string' && UUID_RE.test(selected) ? selected : null;
+      if ((!resolvedContactId || !await hostunicoOutreachAllowed(supa, resolvedContactId, '', selectedListing)) && !isHostunicoAdminTestCall(isAdminCaller, resolvedContact, phone)) return jsonResponse(200, { allowed: false, reason: HOSTUNICO_UPLIFT_PENDING });
       const eligible = resolvedContactId ? await supa.from('sa_listings').select('id').eq('wk_contact_id', resolvedContactId).eq('hostunico_call_eligible', true).eq('hostunico_uplift_status', 'eligible').limit(1) : { data: [], error: null };
       if (eligible.error || (!eligible.data?.length && !isHostunicoAdminTestCall(isAdminCaller, resolvedContact, phone))) return jsonResponse(200, { allowed: false, reason: 'This lead has no verified whole-property studio or one-bedroom home in the current calling queue.' });
     }

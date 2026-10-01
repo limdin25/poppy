@@ -206,7 +206,9 @@ serve(async (req: Request) => {
       const admin = email ? await supabase.from('admin_users').select('email').eq('email', email).maybeSingle() : { data: null };
       internalTest = !profile.error && !account.error && (profile.data?.workspace_role === 'admin' || !!admin.data);
     }
-    if (dialContactError || (dialContact?.desk === 'sa' && !internalTest && !await hostunicoOutreachAllowed(supabase, dialContact.id))) {
+    const selectedHome = dialContact?.custom_fields?.hostunico_listing_id;
+    const selectedListing = typeof selectedHome === 'string' && /^[0-9a-f-]{36}$/i.test(selectedHome) ? selectedHome : null;
+    if (dialContactError || (dialContact?.desk === 'sa' && !internalTest && !await hostunicoOutreachAllowed(supabase, dialContact.id, '', selectedListing))) {
       return new Response('<Response><Hangup/></Response>', { status: 200, headers: { 'Content-Type': 'text/xml' } });
     }
 
