@@ -9,7 +9,8 @@ const pending = <T,>() => { let resolve!: (value: T) => void; const promise = ne
 describe('Hostunico company knowledge', () => {
   it('gives the published legal identity, registered address and contact without inventing a local office', () => {
     expect(hostunicoInstantAnswer('What is your company number?')?.say).toContain('11197856');
-    expect(hostunicoInstantAnswer('What is your company name?')?.say).toContain('ULINC UNICO GROUP LTD.');
+    expect(hostunicoInstantAnswer('What is your company name?')?.say).toBe("I'm with Hostunico.");
+    expect(hostunicoInstantAnswer('What is your registered company name?')?.say).toBe('The registered company is ULINC UNICO GROUP LTD.');
     expect(hostunicoInstantAnswer('Where are you based?')?.say).toBe('Our registered address is 483 Green Lanes, London, England, N13 4BS.');
     expect(hostunicoInstantAnswer('What is your email address?')?.say).toContain('hello@hostunico.com');
     expect(hostunicoInstantAnswer('What is your website?')?.say).toContain('hostunico.com');

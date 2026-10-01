@@ -2,7 +2,7 @@
 // src/core/hostunico/domain.ts, apps/hostunico/src/legal.ts and report copy.
 // Experience, payouts and coverage: Hostunico University curriculum, release
 // 41eefb3. Hugo's current pricing and call instructions override older copy.
-// Hugo corrected the email and property-city wording on 1 October 2026.
+// Hugo confirmed brand-first answers and no public office visits on 1 October 2026.
 export const HOSTUNICO_COMPANY = {
   brand: 'Hostunico',
   legalName: 'ULINC UNICO GROUP LTD.',
@@ -14,8 +14,10 @@ export const HOSTUNICO_COMPANY = {
 } as const;
 
 export const HOSTUNICO_COMPANY_ANSWERS = [
-  { key: 'company-registration', title: 'Company details', match: /\b(company (?:name|number|registration)|registration number|registered company|legal (?:name|entity)|companies house)\b/i, say: `${HOSTUNICO_COMPANY.brand} is a trading name of ${HOSTUNICO_COMPANY.legalName} Our company number is ${HOSTUNICO_COMPANY.companyNumber}.` },
+  { key: 'company-registration', title: 'Registered company name, only when asked', match: /\b(registered (?:company|name)|legal (?:name|entity)|what (?:company )?name are you registered under)\b/i, supersedes: ['identity'], say: `The registered company is ${HOSTUNICO_COMPANY.legalName}` },
+  { key: 'company-number', title: 'Company number or Companies House, only when asked', match: /\b(company (?:registration )?number|registration number|registered company number|companies house)\b/i, supersedes: ['identity', 'company-registration'], say: `Our company number is ${HOSTUNICO_COMPANY.companyNumber}. You can find us on Companies House.` },
   { key: 'company-address', title: 'Our registered address', match: /\b(?:(?:your|company|registered|office|business) address|where are you (?:based|located)|where is your office)\b/i, say: `Our registered address is ${HOSTUNICO_COMPANY.registeredAddress}.` },
+  { key: 'company-office-visits', title: 'Visiting our office or public access', match: /\b(?:visit|come (?:to|into)|drop (?:in|by)|pop (?:in|over)|meet).*(?:\boffice\b|\bgreen lanes\b|\byour premises\b|\bregistered address\b)|\bopen to (?:the )?public\b|\boffice\b.*\b(?:visit|drop by|open for visitors)\b/i, supersedes: ['property-visit'], say: "We're not open to the public. We operate remotely, with the on-site work happening at the properties." },
   { key: 'company-website', title: 'Our website', match: /\b(your website|company website|web address|find you online)\b/i, say: 'Our website is hostunico.com.' },
   { key: 'company-email', title: 'Contact the team', match: /\b(your email(?: address)?|company email|contact email|email (?:you|your team)|contact your team)\b/i, say: `You can reach our team at ${HOSTUNICO_COMPANY.supportEmail}.` },
   { key: 'company-experience', title: 'Our experience', match: /\b(your experience|how experienced|track record|how long have you|how many properties have you managed)\b/i, say: 'Our team has managed 200 properties over four years.' },
@@ -25,7 +27,8 @@ export const HOSTUNICO_COMPANY_ANSWERS = [
 
 export const HOSTUNICO_COMPANY_KNOWLEDGE = `Verified Hostunico company knowledge. Use only the relevant fact to answer the caller, not a recital of this page.
 ${HOSTUNICO_COMPANY_ANSWERS.map((fact) => `${fact.title}: ${fact.say}`).join('\n')}
-The London address is the registered address. Do not call it a staffed walk-in office or claim an office in each operating city. Company verification: ${HOSTUNICO_COMPANY.registry}.
+Use Hostunico for ordinary company-name questions. Give the registered company name only when they ask for the legal or registered name. Give the company number only when they ask for the number or Companies House verification. Do not add legal details to a brand answer.
+The London address is the registered address. We are not open to the public. If asked to visit, say we operate remotely and on-site work happens at the properties. Do not invite a visit, offer office appointments, invent opening hours or claim an office in each operating city. Company verification: ${HOSTUNICO_COMPANY.registry}.
 Experience means historical team experience, not 200 currently managed homes, verified reviews or a current occupancy result. Current portfolio count, individual references, opening hours, named local staff and a public telephone number are not supplied. Check with Hugo rather than inventing any of these.
 Services: pricing and listing operations, booking/calendar coordination, guest communication and arrival guidance, cleaning/changeover coordination, agreed maintenance arrangements and owner reporting. The owner is buying a managed service supported by our system. Actual cleaners, linen, repairs, supplies, utilities, insurance and platform charges are separate costs. Pedro handles sales; Elsie and operations coordinate delivery; Hugo oversees the business and grants owner access.
 Account and money: the owner keeps their Airbnb account; start with Airbnb and consider other channels later. Connecting Airbnb does not authorise a co-host payout. Booking payouts normally go to the owner. Confirmed co-host fee receipts are credited once against management fees. Do not promise a payout date. Pricing and VAT follow the current offer rules, not old website claims that software is free forever.
