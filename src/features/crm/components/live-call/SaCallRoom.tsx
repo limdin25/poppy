@@ -16,6 +16,7 @@ import { useViewAs } from '../../lib/ViewAsContext';
 import { useAgentDirectory } from '../../hooks/useAgentDirectory';
 import { hostunicoCallerName } from '../../lib/hostunicoCaller';
 import type { HostunicoSpeech } from '../../lib/hostunicoSpeech';
+import { refreshHostunicoReports } from '../../lib/hostunicoPreparation';
 
 export interface SaCallRoomProps {
   contact: Contact | null; contactHeader?: ReactNode; emptyState?: ReactNode;
@@ -79,16 +80,11 @@ export default function SaCallRoom({ contact, contactHeader, emptyState, current
       if (running) return;
       running = true;
       try {
-        const totals = { ready: 0, preparing: 0, needsDetails: 0, failed: 0 };
-        let offset: number | null = 0;
-        while (offset !== null && !cancelled) {
-          const result = await reportAction('prepare_queue', { campaign_id: campaignId, contact_id: contact?.id, offset });
-          if (cancelled) break;
-          for (const key of Object.keys(totals) as (keyof typeof totals)[]) totals[key] += Number(result[key]) || 0;
-          offset = result.nextOffset ?? null;
-          if (totals.ready >= (result.target || 20)) offset = null;
-          setAhead(`${totals.ready} ready ahead${totals.preparing ? `, ${totals.preparing} preparing` : ''}${totals.needsDetails ? `, ${totals.needsDetails} need details` : ''}${totals.failed ? `, ${totals.failed} need review` : ''}${offset !== null ? ', checking next reports' : ''}`);
-        }
+        await refreshHostunicoReports(
+          offset => reportAction('prepare_queue', { campaign_id: campaignId, contact_id: contact?.id, offset }),
+          (totals, checking) => setAhead(`${totals.ready} ready ahead${totals.preparing ? `, ${totals.preparing} preparing` : ''}${totals.needsDetails ? `, ${totals.needsDetails} need details` : ''}${totals.failed ? `, ${totals.failed} need review` : ''}${checking ? ', checking next reports' : ''}`),
+          () => cancelled,
+        );
       } catch { if (!cancelled) setAhead('Reports ahead could not refresh.'); }
       finally { running = false; }
     }

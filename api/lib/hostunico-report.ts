@@ -10,7 +10,7 @@ export function reportProperty(value: unknown): ReportProperty | null {
   return { postcode, bedrooms: p.bedrooms as number, bathrooms: p.bathrooms as number, wholeProperty: true, ...(p.advertisedRentPcm ? { advertisedRentPcm: p.advertisedRentPcm as number } : {}), ...(area ? { areaEstimate: true as const, areaLabel: String(p.areaLabel || postcode).slice(0, 120) } : {}) };
 }
 export const REPORT_AHEAD = 20;
-export const REPORT_SCAN_LIMIT = 100;
+export const REPORT_SCAN_LIMIT = 500;
 export function cachedReportReady(row: { state?: string; report_url?: string; created_at?: string } | null) {
   return row?.state === 'ready' && /^https:\/\/hostunico\.com\/r\/[A-Za-z0-9]{5}$/.test(row.report_url || '')
     && Date.now() - Date.parse(row.created_at || '') < 29 * 86400000;

@@ -135,7 +135,29 @@ describe('human report sends', () => {
     expect(new Set(started).size).toBe(24);
     expect(maxInFlight).toBeLessThanOrEqual(2);
     expect(fixture.smsRequests).toBe(0);
-    expect((await handler(request('prepare_queue', { campaign_id: campaign, offset: 100 }))).status).toBe(400);
+    expect((await handler(request('prepare_queue', { campaign_id: campaign, offset: 500 }))).status).toBe(400);
+  });
+  it('refreshes existing reports beyond the first hundred contacts without creating reports or sending SMS', async () => {
+    const campaign = '5d9657f9-d9b4-4e27-a2d1-83db80867f92';
+    const property = { postcode: 'M1', bedrooms: 1, bathrooms: 1, wholeProperty: true, areaEstimate: true };
+    fixture.tables.wk_campaign_agents = [{ campaign_id: campaign, agent_id: 'pedro' }];
+    fixture.tables.wk_contacts = Array.from({ length: 108 }, (_, i) => ({ id: `lead-${i}`, desk: 'sa', owner_agent_id: 'pedro', do_not_call: false }));
+    fixture.tables.wk_dialer_queue = fixture.tables.wk_contacts.map((contact) => ({ campaign_id: campaign, contact_id: contact.id, status: 'pending', scheduled_for: null, wk_contacts: contact }));
+    fixture.tables.sa_listings = fixture.tables.wk_contacts.map((contact, i) => ({ id: `${i}`.padStart(36, '0'), wk_contact_id: contact.id, source: 'spareroom', hostunico_call_eligible: true, report_property: property, rent_pcm: 1000, source_price: '£1000 pcm' }));
+    fixture.tables.sa_property_reports = fixture.tables.sa_listings.map((listing) => ({ listing_id: listing.id, remote_id: listing.id, access_token: 'a'.repeat(64), state: 'ready', report_url: 'https://hostunico.com/r/A1b2C', report_pitch: { planning: true } }));
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
+      // The existing start route is idempotent for these saved report IDs.
+      expect(url).toBe('https://hostunico.com/api/hostunico/crm-estimates/start');
+      const payload = JSON.parse(String(init.body));
+      expect(fixture.tables.sa_property_reports.some((row) => row.remote_id === payload.id && row.access_token === payload.token)).toBe(true);
+      return Response.json({ stage: 'ready', reportUrl: 'https://hostunico.com/r/A1b2C', reportPitch: { monthlyGbpPence: 200000, askingRentGbpPence: 100000 } });
+    }));
+    const response = await handler(request('prepare_queue', { campaign_id: campaign, offset: 104 }));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ ready: 2, ahead: 108, nextOffset: 106 });
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fixture.tables.sa_property_reports).toHaveLength(108);
+    expect(fixture.smsRequests).toBe(0);
   });
   it('repairs the current failed report on opening it, with no retry click or outbound message', async () => {
     fixture.tables.sa_listings[0].report_property = { postcode: 'M22', bedrooms: 1, bathrooms: 1, wholeProperty: true, areaEstimate: true, advertisedRentPcm: 1000 };
