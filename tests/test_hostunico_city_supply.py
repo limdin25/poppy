@@ -255,6 +255,12 @@ class RunSelectionTests(unittest.TestCase):
 
 
 class ResumedSupplyTests(unittest.TestCase):
+    def test_report_refresh_interval_releases_new_results_without_waiting_fifteen_minutes(self):
+        self.assertFalse(module.report_sync_due(100, False, now=279, interval=180))
+        self.assertTrue(module.report_sync_due(100, False, now=280, interval=180))
+        self.assertFalse(module.report_sync_due(100, False, now=280))
+        self.assertTrue(module.report_sync_due(100, True, now=101))
+
     def test_explicit_one_pass_resumes_after_old_overnight_deadline(self):
         self.assertTrue(module.run_window_open(True, 100, 200))
         self.assertFalse(module.run_window_open(False, 100, 200))

@@ -377,6 +377,10 @@ def run_window_open(once, stop_at, now=None):
     return once or (time.time() if now is None else now) < stop_at
 
 
+def report_sync_due(last_sync, once, now=None, interval=900):
+    return once or (time.time() if now is None else now) - last_sync >= interval
+
+
 def report_listing_ids(state):
     # An agent may have several homes. Refresh each home so a later qualifying
     # property can release their one unique calling row.
@@ -400,7 +404,10 @@ def main():
     parser.add_argument('--once', action='store_true')
     parser.add_argument('--max-items', type=int, default=35)
     parser.add_argument('--stop-at', type=float, default=STOP_AT, help='Explicit UTC Unix deadline for a resumed persistent run')
+    parser.add_argument('--report-sync-seconds', type=int, default=900, help='Status refresh interval for newly researched reports')
     args = parser.parse_args()
+    if not 60 <= args.report_sync_seconds <= 900:
+        parser.error('Report refresh interval must be between 60 and 900 seconds')
     os.umask(0o077)
     home = Path(args.home)
     ops = home / 'ops'
@@ -481,7 +488,7 @@ def main():
                 print(json.dumps({'event': 'retry_later', 'advert_id': aid, 'error_type': type(e).__name__}), flush=True)
             save_state()
             time.sleep(.4)
-        if time.time() - last_sync > 900 or args.once:
+        if report_sync_due(last_sync, args.once, interval=args.report_sync_seconds):
             selected = report_listing_ids(state)
             ready, waiting, errors = sync_reports(api, selected)
             state['last_report_sync'] = time.time()
