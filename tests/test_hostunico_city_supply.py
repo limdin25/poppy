@@ -88,11 +88,21 @@ class ScreeningTests(unittest.TestCase):
         for outcode, councils in [('KT1', ['Kingston upon Thames', 'Richmond upon Thames']),
                                  ('KT17', ['Epsom and Ewell', 'Sutton']),
                                  ('BR8', ['Bromley', 'Dartford', 'Sevenoaks']),
+                                 ('DA6', ['Bexley']),
+                                 ('WD6', ['Barnet', 'Hertsmere']),
                                  ('E1', ['Tower Hamlets'])]:
             source = advert().replace('Leeds, LS1:', 'Border town, ' + outcode + ':')
             with patch.object(module, 'lookup_outcode_councils', return_value={'outcode': outcode, 'admin_district': councils}):
                 with self.assertRaisesRegex(module.Rejected, 'london'):
                     module.screen_city_advert(self.row(), source)
+
+    def test_every_postcode_is_verified_not_only_a_prefix_list(self):
+        source = advert()
+        with patch.object(module, 'lookup_outcode_councils', return_value=None):
+            with self.assertRaises(module.Rejected):
+                module.screen_city_advert(self.row(), source)
+        with patch.object(module, 'lookup_outcode_councils', return_value={'outcode': 'LS1', 'admin_district': ['Leeds']}):
+            self.assertEqual(module.screen_city_advert(self.row(), source)['outcode'], 'LS1')
 
     def test_missing_or_mismatched_council_evidence_cannot_release_a_property(self):
         source = advert().replace('Leeds, LS1:', 'Border town, KT12:')

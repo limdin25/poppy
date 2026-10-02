@@ -139,8 +139,11 @@ def screen_city_advert(row, source):
     page = Visible()
     page.feed(source)
     outcode = advert_outcode(page)
-    prefix = re.match(r'[A-Z]+', outcode)[0]
-    evidence = lookup_outcode_councils(outcode) if prefix in LONDON_BORDER_PREFIXES else None
+    # Postal areas cross council boundaries, including DA and WD. Verify every
+    # actual outcode instead of assuming a prefix list covers Greater London.
+    evidence = lookup_outcode_councils(outcode)
+    if not outside_london(outcode, evidence):
+        raise Rejected('london_or_london_border')
     return screen(row, source, evidence)
 
 
