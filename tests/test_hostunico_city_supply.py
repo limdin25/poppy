@@ -135,6 +135,32 @@ class HistoryTests(unittest.TestCase):
 
 
 class ReportProgressTests(unittest.TestCase):
+    def test_service_outage_defers_remote_requests_but_still_counts_cached_research(self):
+        class Api:
+            def __init__(self):
+                self.requests = 0
+
+            def db(self, table, query=None, **kwargs):
+                if table == 'sa_property_reports':
+                    researched = query['listing_id'] == 'eq.cached'
+                    return [{'state': 'ready', 'report_pitch': {'planning': not researched},
+                             'remote_id': 'stable-id', 'access_token': 'private-token', 'report_url': 'existing-link'}]
+                if table == 'sa_listings':
+                    return [{'address': 'Studio', 'photo_urls': ['photo'], 'listing_url': 'listing',
+                             'property_type': 'Studio', 'rent_pcm': 650, 'source_price': '£650 pcm',
+                             'hostunico_call_eligible': True}]
+                raise AssertionError(table)
+
+            def report(self, action, data):
+                self.requests += 1
+                raise RuntimeError('Report status HTTP 503')
+
+        api = Api()
+        with redirect_stdout(io.StringIO()):
+            counts = module.sync_reports(api, ['failed', 'cached', 'deferred'])
+        self.assertEqual(counts, (1, 2, 1))
+        self.assertEqual(api.requests, 1)
+
     def test_failed_reports_remain_waiting_and_other_reports_continue_without_leaking_secrets(self):
         output = io.StringIO()
         results = [RuntimeError('Report status HTTP 503 credential=private-value'), True, False]

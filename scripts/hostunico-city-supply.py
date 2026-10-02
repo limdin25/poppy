@@ -247,9 +247,13 @@ def import_property(api, item, owner, stage):
     return contact_id, listing[0]['id'], new_contact, new_property
 
 
-def sync_report(api, listing_id, create=True):
-    listing = api.db('sa_listings', {'select': 'id,report_property,address,listing_url,photo_urls,property_type,rent_pcm,source_price,hostunico_call_eligible', 'id': 'eq.' + listing_id})[0]
+def sync_report(api, listing_id, create=True, refresh=True):
     rows = api.db('sa_property_reports', {'select': '*', 'listing_id': 'eq.' + listing_id})
+    if rows and rows[0]['state'] == 'ready' and rows[0].get('report_pitch') and not rows[0]['report_pitch'].get('planning'):
+        return True
+    if not refresh:
+        return False
+    listing = api.db('sa_listings', {'select': 'id,report_property,address,listing_url,photo_urls,property_type,rent_pcm,source_price,hostunico_call_eligible', 'id': 'eq.' + listing_id})[0]
     if not rows and create:
         api.db('sa_property_reports', {'on_conflict': 'listing_id'}, body={
             'listing_id': listing_id, 'remote_id': str(uuid.uuid4()), 'access_token': secrets.token_hex(32),
@@ -258,8 +262,6 @@ def sync_report(api, listing_id, create=True):
     if not rows:
         return False
     row = rows[0]
-    if row['state'] == 'ready' and row.get('report_pitch') and not row['report_pitch'].get('planning'):
-        return True
     payload = {'id': row['remote_id'], 'token': row['access_token'], 'country': 'GB',
                'listing': {'title': listing['address'], 'photo': listing['photo_urls'][0],
                            'url': listing['listing_url'], 'propertyType': listing['property_type'],
@@ -281,9 +283,10 @@ def sync_report(api, listing_id, create=True):
 
 def sync_reports(api, selected):
     ready, waiting, errors = 0, 0, 0
+    refresh = True
     for listing_id in selected:
         try:
-            if sync_report(api, listing_id):
+            if sync_report(api, listing_id, refresh=refresh):
                 ready += 1
             else:
                 waiting += 1
@@ -291,6 +294,10 @@ def sync_reports(api, selected):
             waiting += 1
             errors += 1
             status = re.search(r'HTTP (\d{3})\b', str(e))
+            if status and int(status[1]) in (429, 502, 503, 504):
+                # Keep imports moving during a shared service outage. The next
+                # scheduled pass tries again with the same report identities.
+                refresh = False
             print(json.dumps({'event': 'report_retry_later', 'listing_id': listing_id,
                               'error_type': type(e).__name__,
                               'http_status': int(status[1]) if status else None}), flush=True)
