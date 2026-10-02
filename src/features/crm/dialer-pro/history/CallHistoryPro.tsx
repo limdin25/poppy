@@ -35,30 +35,39 @@ interface CallRow {
   agentNote: string | null;
 }
 
-async function fetchPage(pageParam: number, impAgentId: string | null, desk: Desk): Promise<CallRow[]> {
+interface HistoryPage {
+  calls: CallRow[];
+  total: number | null;
+}
+
+export async function fetchPage(pageParam: number, impAgentId: string | null, desk: Desk): Promise<HistoryPage> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let callsQ = (supabase.from('wk_calls' as any) as any)
-    .select('id, contact_id, direction, status, started_at, duration_sec, agent_note')
+    .select('id, contact_id, direction, status, started_at, duration_sec, agent_note, from_e164, to_e164', { count: 'exact' })
     .eq('desk', desk)
     .order('started_at', { ascending: false })
+    .order('id', { ascending: false })
     .range(pageParam * PAGE_SIZE, (pageParam + 1) * PAGE_SIZE - 1);
   // "See as: <agent>" — admin impersonating sees that agent's call history.
   if (impAgentId) callsQ = callsQ.eq('agent_id', impAgentId);
-  const [callsRes, recRes] = await Promise.all([
-    callsQ,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (supabase.from('wk_recordings' as any) as any)
-      .select('call_id, storage_path, status'),
-  ]);
+  const callsRes = await callsQ;
 
-  if (callsRes.error) { console.warn('[dialer-pro] history fetch error', callsRes.error); return []; }
+  if (callsRes.error) throw new Error(callsRes.error.message);
+
+  const callIds = ((callsRes.data ?? []) as Array<{ id: string; contact_id: string | null }>);
+  if (callIds.length === 0) return { calls: [], total: callsRes.count ?? 0 };
+  // Only fetch recordings for this page, so older recordings cannot push
+  // recent ones past the database's response limit.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const recRes = await (supabase.from('wk_recordings' as any) as any)
+    .select('call_id, storage_path, status')
+    .in('call_id', callIds.map((call) => call.id));
 
   const recByCallId = new Map<string, string>();
   for (const r of (recRes.data ?? []) as Array<{ call_id: string; storage_path: string; status: string }>) {
     recByCallId.set(r.call_id, r.storage_path);
   }
 
-  const callIds = ((callsRes.data ?? []) as Array<{ id: string; contact_id: string | null }>);
   const contactIds = [...new Set(callIds.map((c) => c.contact_id).filter(Boolean))] as string[];
 
   const contactMap = new Map<string, { name: string | null; phone: string | null; ownerAgentId: string | null; cf: Record<string, string> | null }>();
@@ -72,9 +81,10 @@ async function fetchPage(pageParam: number, impAgentId: string | null, desk: Des
     }
   }
 
-  return ((callsRes.data ?? []) as Array<{
+  const calls = ((callsRes.data ?? []) as Array<{
     id: string; contact_id: string | null; direction: string; status: string;
     started_at: string | null; duration_sec: number | null; agent_note: string | null;
+    from_e164: string | null; to_e164: string | null;
   }>).map((r) => {
     const contact = r.contact_id ? contactMap.get(r.contact_id) : null;
     return {
@@ -84,7 +94,7 @@ async function fetchPage(pageParam: number, impAgentId: string | null, desk: Des
       contactOwnerAgentId: contact?.ownerAgentId ?? null,
       contactOwner: (contact?.cf?.owner_name || '').trim() || null,
       contactWebsite: (contact?.cf?.website || '').trim() || null,
-      contactPhone: contact?.phone ?? null,
+      contactPhone: contact?.phone ?? (r.direction === 'inbound' ? r.from_e164 : r.to_e164),
       customFields: contact?.cf ?? {},
       direction: r.direction,
       status: r.status,
@@ -94,6 +104,7 @@ async function fetchPage(pageParam: number, impAgentId: string | null, desk: Des
       agentNote: r.agent_note,
     };
   });
+  return { calls, total: callsRes.count ?? null };
 }
 
 export default function CallHistoryPro({ onCountChange, onEditContact, onRedial }: CallHistoryProProps = {}) {
@@ -110,12 +121,18 @@ export default function CallHistoryPro({ onCountChange, onEditContact, onRedial 
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
+    isError,
+    refetch,
   } = useInfiniteQuery({
     queryKey: ['dialer-pro-call-history', impId ?? 'self', desk],
     queryFn: ({ pageParam }) => fetchPage(pageParam, impId, desk),
     initialPageParam: 0,
-    getNextPageParam: (lastPage, _allPages, lastPageParam) =>
-      lastPage.length === PAGE_SIZE ? lastPageParam + 1 : undefined,
+    getNextPageParam: (lastPage, _allPages, lastPageParam) => {
+      const nextOffset = (lastPageParam + 1) * PAGE_SIZE;
+      return lastPage.calls.length === PAGE_SIZE && (lastPage.total == null || nextOffset < lastPage.total)
+        ? lastPageParam + 1 : undefined;
+    },
+    refetchInterval: 10_000,
   });
 
   useEffect(() => {
@@ -150,11 +167,12 @@ export default function CallHistoryPro({ onCountChange, onEditContact, onRedial 
     return () => observer.disconnect();
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
-  const calls = data?.pages.flat() ?? [];
+  const calls = data?.pages.flatMap((page) => page.calls) ?? [];
+  const total = data?.pages[0]?.total ?? calls.length;
 
   useEffect(() => {
-    onCountChange?.(calls.length);
-  }, [calls.length, onCountChange]);
+    onCountChange?.(total);
+  }, [total, onCountChange]);
 
   const handlePlay = async (path: string) => {
     const signed = await signCallRecording(path);
@@ -175,7 +193,14 @@ export default function CallHistoryPro({ onCountChange, onEditContact, onRedial 
   };
 
   if (isLoading) {
-    return <div className="flex items-center justify-center py-4 text-[11px] text-[#9CA3AF]">Loading…</div>;
+    return <div className="flex items-center justify-center py-4 text-[11px] text-[#9CA3AF]">Loading...</div>;
+  }
+
+  if (isError && calls.length === 0) {
+    return <div className="p-2 text-[11px] text-[#6B7280]">
+      Could not load call history.
+      <button onClick={() => void refetch()} className="ml-2 text-[#3C5A87] underline">Retry</button>
+    </div>;
   }
 
   if (calls.length === 0) {
@@ -184,6 +209,7 @@ export default function CallHistoryPro({ onCountChange, onEditContact, onRedial 
 
   return (
     <div className="space-y-0.5 p-1.5">
+      <div className="px-1.5 pb-1 text-[10px] text-[#6B7280]">{`Showing ${calls.length} of ${total} calls`}</div>
       {playingUrl && (
         <div className="p-1.5 bg-[#F3F3EE] rounded-lg mb-1 flex items-center gap-1">
           <audio src={playingUrl} controls autoPlay className="flex-1 h-7" onEnded={() => setPlayingUrl(null)} />
@@ -200,7 +226,7 @@ export default function CallHistoryPro({ onCountChange, onEditContact, onRedial 
         >
           <Phone className="w-3 h-3 text-[#9CA3AF] flex-shrink-0" />
           <div className="flex-1 min-w-0">
-            <div className="font-medium text-[#1A1A1A] text-[11px] truncate">{call.contactName ?? call.contactPhone ?? 'Unknown'}</div>
+            <div className="font-medium text-[#1A1A1A] text-[11px] truncate">{call.contactName || call.contactPhone || 'Unknown'}</div>
             {/* The owner name and website lines were removed on 2026-08-25:
                 they came from the killed reviews product and were an italic
                 red "not available" on every property and builder row. */}
@@ -248,8 +274,11 @@ export default function CallHistoryPro({ onCountChange, onEditContact, onRedial 
       ))}
 
       <div ref={sentinelRef} className="h-2" />
-      {isFetchingNextPage && (
-        <div className="flex items-center justify-center py-1 text-[10px] text-[#9CA3AF]">Loading…</div>
+      {hasNextPage && (
+        <button onClick={() => void fetchNextPage()} disabled={isFetchingNextPage}
+          className="w-full rounded-md px-2 py-1.5 text-[11px] text-[#3C5A87] hover:bg-[#EEF2F8] disabled:opacity-50">
+          {isFetchingNextPage ? 'Loading...' : 'Load older calls'}
+        </button>
       )}
 
       {transcriptCallId && (
