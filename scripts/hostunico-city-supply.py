@@ -106,12 +106,17 @@ def screen(row, source):
     one_bed = bool(re.search(r'This ad is for a 1 bed (?:flat|apartment)\b', property_text, re.I))
     if not studio and not one_bed:
         raise Rejected('not_a_studio_or_one_bed_flat')
-    if re.search(r'\broom\b|house\s*share', row.get('Name', ''), re.I):
+    title = row.get('Name', '')
+    ensuite_bedroom = re.search(r'\ben[- ]?suite\s+(?:(?:single|double)\s+)?bedroom\b', title, re.I)
+    names_whole_home = re.search(r'\b(?:studio|flat|apartment)\b', title, re.I)
+    if re.search(r'\broom\b|house\s*share', title, re.I) or (ensuite_bedroom and not names_whole_home):
         raise Rejected('room_title')
     page = Visible()
     page.feed(source)
     text = page.text()
     before_availability = text.split('\nAvailability\n')[0]
+    if re.search(r'\bphotos?\s+show\s+(?:a\s+)?(?:variety|variaty)\s+of\s+(?:different\s+)?(?:rooms|properties|units)\b', before_availability, re.I):
+        raise Rejected('generic_listing_photos')
     affirmative = '\n'.join(x for x in re.split(r'[.\n]+', before_availability)
                             if not re.search(r'\b(not|unlike|without|no shared)\b|than (?:a |the )?(?:conventional|traditional) house share', x, re.I))
     if re.search(r'shared (?:kitchen|bathroom|student|flat|house)|sharing (?:their|a|the|our|your)?\s*(?:own )?(?:communal )?(?:kitchen|bathroom)|(?:ensuite|en-suite) room|room (?:in a|remaining)|house\s*share', affirmative, re.I):

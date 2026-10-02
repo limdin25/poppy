@@ -48,6 +48,18 @@ class ScreeningTests(unittest.TestCase):
     def test_no_shared_facilities_is_not_misclassified(self):
         self.assertEqual(module.screen(self.row(), advert(description='No shared kitchen. Your own bathroom.'))['outcode'], 'LS1')
 
+    def test_ensuite_bedroom_title_is_not_a_verified_studio_even_if_ad_flag_says_studio(self):
+        with self.assertRaisesRegex(module.Rejected, 'room_title'):
+            module.screen(self.row(Name='Student Ensuite Double Bedroom - Preston Centre'), advert())
+
+    def test_generic_photos_of_different_rooms_do_not_count_as_the_actual_property(self):
+        for description in ['Photos show a variety of different rooms.', 'photos show a variaty of different rooms.']:
+            with self.assertRaisesRegex(module.Rejected, 'generic_listing_photos'):
+                module.screen(self.row(), advert(description=description))
+
+    def test_whole_flat_with_a_double_bedroom_is_not_a_room_advert(self):
+        self.assertEqual(module.screen(self.row(Name='One bed flat with ensuite double bedroom'), advert(kind='1 bed flat'))['rent_pcm'], 650)
+
     def test_current_tenant_has_no_assumed_landlord_authority(self):
         with self.assertRaisesRegex(module.Rejected, 'authority'):
             module.screen(self.row(AgentType='current flatmate'), advert())
