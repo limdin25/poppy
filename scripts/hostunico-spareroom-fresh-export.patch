@@ -1,0 +1,21 @@
+--- app/server.py
++++ app/server.py
+@@ -23,6 +23,7 @@
+ import argparse
+ import collections
+ import csv
++from hostunico_fresh_exports import fresh_advert_ids
+ import datetime
+ import faulthandler
+ import gzip
+@@ -678,6 +679,10 @@
+             client.enable_session_recovery(
+                 lambda: self.app.sign_in(client, self.log, self.country), self.log, signed_in)
+             ids = self.search(client)
++            fresh_ids = fresh_advert_ids(self.app.db.query, self.app.home, self.run_id, self.country, ids)
++            if len(fresh_ids) != len(ids):
++                self.log("Fresh supply: %d recent adverts already saved elsewhere, %d new candidates" % (len(ids) - len(fresh_ids), len(fresh_ids)))
++            ids = fresh_ids
+             already = self.in_file() if self.resume else set()
+             pending = [advert_id for advert_id in ids if advert_id not in already]
+             self.open_csv()
