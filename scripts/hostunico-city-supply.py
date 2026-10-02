@@ -318,11 +318,23 @@ def supply_runs(db, ops):
     return db.execute('select id,label,location,status,file_name from runs where id in (' + slots + ') order by id', ids).fetchall()
 
 
+def run_window_open(once, stop_at, now=None):
+    # An explicitly requested one-pass run must not inherit yesterday's deadline.
+    return once or (time.time() if now is None else now) < stop_at
+
+
+def report_listing_ids(state):
+    # An agent may have several homes. Refresh each home so a later qualifying
+    # property can release their one unique calling row.
+    return list(dict.fromkeys(state.get('properties', []) + list(state.get('contacts', {}).values())))
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--home', default='/opt/spareroom')
     parser.add_argument('--once', action='store_true')
     parser.add_argument('--max-items', type=int, default=35)
+    parser.add_argument('--stop-at', type=float, default=STOP_AT, help='Explicit UTC Unix deadline for a resumed persistent run')
     args = parser.parse_args()
     os.umask(0o077)
     home = Path(args.home)
@@ -346,7 +358,7 @@ def main():
     source_dir = ops / 'sources'
     source_dir.mkdir(exist_ok=True)
     last_sync = 0
-    while time.time() < STOP_AT:
+    while run_window_open(args.once, args.stop_at):
         db = sqlite3.connect(home / 'data/spareroom.db')
         db.row_factory = sqlite3.Row
         runs = supply_runs(db, ops)
@@ -394,7 +406,7 @@ def main():
             save_state()
             time.sleep(.4)
         if time.time() - last_sync > 900 or args.once:
-            selected = list(dict.fromkeys(state['contacts'].values()))
+            selected = report_listing_ids(state)
             ready, waiting, errors = sync_reports(api, selected)
             state['last_report_sync'] = time.time()
             state['researched_reports'] = ready

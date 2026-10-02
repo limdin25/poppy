@@ -209,5 +209,20 @@ class RunSelectionTests(unittest.TestCase):
                     module.supply_runs(sqlite3.connect(':memory:'), ops)
 
 
+class ResumedSupplyTests(unittest.TestCase):
+    def test_explicit_one_pass_resumes_after_old_overnight_deadline(self):
+        self.assertTrue(module.run_window_open(True, 100, 200))
+        self.assertFalse(module.run_window_open(False, 100, 200))
+        self.assertTrue(module.run_window_open(False, 300, 200))
+        self.assertFalse(module.run_window_open(False, 200, 200))
+
+    def test_all_properties_get_report_refresh_when_a_contact_has_several(self):
+        state = {'contacts': {'owner1': 'old-low-yield', 'owner2': 'another'},
+                 'properties': ['old-low-yield', 'new-high-yield', 'new-high-yield']}
+        self.assertEqual(module.report_listing_ids(state),
+                         ['old-low-yield', 'new-high-yield', 'another'])
+        self.assertEqual(module.report_listing_ids({'contacts': {'owner': 'legacy'}}), ['legacy'])
+
+
 if __name__ == '__main__':
     unittest.main()
