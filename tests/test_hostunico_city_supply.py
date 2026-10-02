@@ -73,6 +73,51 @@ class ScreeningTests(unittest.TestCase):
         with self.assertRaisesRegex(module.Rejected, 'london'):
             module.screen(self.row(), advert().replace('Leeds, LS1:', 'London, SW1:'))
 
+    def test_border_properties_require_official_council_evidence(self):
+        for outcode, councils in [('KT12', ['Elmbridge', 'Spelthorne']),
+                                 ('TW18', ['Runnymede', 'Spelthorne', 'Windsor and Maidenhead']),
+                                 ('EN11', ['Broxbourne', 'East Hertfordshire', 'Epping Forest'])]:
+            source = advert().replace('Leeds, LS1:', 'Border town, ' + outcode + ':')
+            with self.assertRaisesRegex(module.Rejected, 'london'):
+                module.screen(self.row(), source)
+            evidence = {'outcode': outcode, 'admin_district': councils}
+            with patch.object(module, 'lookup_outcode_councils', return_value=evidence):
+                self.assertEqual(module.screen_city_advert(self.row(), source)['outcode'], outcode)
+
+    def test_london_and_mixed_outcodes_stay_excluded(self):
+        for outcode, councils in [('KT1', ['Kingston upon Thames', 'Richmond upon Thames']),
+                                 ('KT17', ['Epsom and Ewell', 'Sutton']),
+                                 ('BR8', ['Bromley', 'Dartford', 'Sevenoaks']),
+                                 ('E1', ['Tower Hamlets'])]:
+            source = advert().replace('Leeds, LS1:', 'Border town, ' + outcode + ':')
+            with patch.object(module, 'lookup_outcode_councils', return_value={'outcode': outcode, 'admin_district': councils}):
+                with self.assertRaisesRegex(module.Rejected, 'london'):
+                    module.screen_city_advert(self.row(), source)
+
+    def test_missing_or_mismatched_council_evidence_cannot_release_a_property(self):
+        source = advert().replace('Leeds, LS1:', 'Border town, KT12:')
+        for evidence in [None, {}, {'outcode': 'KT13', 'admin_district': ['Elmbridge']},
+                         {'outcode': 'KT12', 'admin_district': []},
+                         {'outcode': 'KT12', 'admin_district': [None]}]:
+            with patch.object(module, 'lookup_outcode_councils', return_value=evidence):
+                with self.assertRaises(module.Rejected):
+                    module.screen_city_advert(self.row(), source)
+
+    def test_council_api_failure_is_retryable_and_never_imported(self):
+        source = advert().replace('Leeds, LS1:', 'Border town, KT12:')
+        with patch.object(module, 'lookup_outcode_councils', side_effect=TimeoutError('unavailable')):
+            with self.assertRaises(TimeoutError):
+                module.screen_city_advert(self.row(), source)
+
+    def test_border_recheck_preserves_imports_and_other_exclusions(self):
+        state = {'checked': {'old-border': 'london_or_london_border', 'live': 'imported', 'room': 'shared_facilities'},
+                 'rejections': {'london_or_london_border': 1, 'shared_facilities': 1}}
+        module.prepare_border_recheck(state)
+        self.assertEqual(state['checked'], {'live': 'imported', 'room': 'shared_facilities'})
+        self.assertEqual(state['refresh_source_ids'], ['old-border'])
+        module.prepare_border_recheck(state)
+        self.assertEqual(state['refresh_source_ids'], ['old-border'])
+
     def test_number_formats_deduplicate_to_one_contact(self):
         self.assertEqual(module.phone('07700 900123'), module.phone('+44 7700 900123'))
         self.assertEqual(module.phone('0044 7700 900123'), module.phone('07700 900123'))

@@ -7,6 +7,7 @@ import argparse
 import collections
 from decimal import Decimal, ROUND_HALF_UP
 import fcntl
+from functools import lru_cache
 import html
 from html.parser import HTMLParser
 import json
@@ -26,6 +27,18 @@ CAMPAIGN = '5d9657f9-d9b4-4e27-a2d1-83db80867f92'
 PIPELINE = 'dadce4ac-90b5-4320-9291-ff6bb1cf89f0'
 BATCH = 'uk-cities-2026-10-01'
 STOP_AT = 1790924400  # 2 October 2026, 07:00 UTC (08:00 London).
+LONDON_PREFIXES = {'E', 'EC', 'N', 'NW', 'SE', 'SW', 'W', 'WC'}
+LONDON_BORDER_PREFIXES = {'HA', 'UB', 'IG', 'RM', 'SM', 'CR', 'BR', 'KT', 'TW', 'EN'}
+# Verified against the 33 council options on London Councils on 2 October 2026:
+# https://www.londoncouncils.gov.uk/local-elections-2026-results
+LONDON_COUNCILS = {
+    'barking and dagenham', 'barnet', 'bexley', 'brent', 'bromley', 'camden',
+    'city of london', 'croydon', 'ealing', 'enfield', 'greenwich', 'hackney',
+    'hammersmith and fulham', 'haringey', 'harrow', 'havering', 'hillingdon',
+    'hounslow', 'islington', 'kensington and chelsea', 'kingston upon thames',
+    'lambeth', 'lewisham', 'merton', 'newham', 'redbridge', 'richmond upon thames',
+    'southwark', 'sutton', 'tower hamlets', 'waltham forest', 'wandsworth', 'westminster',
+}
 
 
 class Rejected(Exception):
@@ -85,7 +98,53 @@ def rent(value):
     return monthly.quantize(Decimal('.01'), rounding=ROUND_HALF_UP), '£' + m[1] + ' ' + m[2].lower()
 
 
-def screen(row, source):
+def advert_outcode(page):
+    out = re.search(r',\s*([A-Z]{1,2}\d[A-Z\d]?)\s*:', page.meta.get('description', ''), re.I)
+    if not out:
+        out = re.search(r'\(([A-Z]{1,2}\d[A-Z\d]?)\)', page.text())
+    if not out:
+        raise Rejected('missing_postcode_area')
+    return out[1].upper()
+
+
+def outside_london(outcode, evidence):
+    if not isinstance(evidence, dict) or evidence.get('outcode') != outcode:
+        return False
+    councils = evidence.get('admin_district')
+    if not isinstance(councils, list) or not councils or any(not isinstance(x, str) or not x.strip() for x in councils):
+        return False
+    names = {' '.join(x.replace('&', 'and').lower().split()) for x in councils}
+    # A mixed outcode remains excluded. A town name cannot establish which side
+    # of a London boundary the actual property is on.
+    return not (names & LONDON_COUNCILS)
+
+
+@lru_cache(maxsize=256)
+def lookup_outcode_councils(outcode):
+    # Official aggregated council data, documented at:
+    # https://postcodes.io/docs/api/find-outcode
+    req = urllib.request.Request('https://api.postcodes.io/outcodes/' + urllib.parse.quote(outcode),
+                                 headers={'User-Agent': 'Hostunico verified property import'})
+    try:
+        with urllib.request.urlopen(req, timeout=12) as response:
+            data = json.load(response)
+    except urllib.error.HTTPError as error:
+        if error.code == 404:
+            return None
+        raise
+    return data.get('result') if data.get('status') == 200 else None
+
+
+def screen_city_advert(row, source):
+    page = Visible()
+    page.feed(source)
+    outcode = advert_outcode(page)
+    prefix = re.match(r'[A-Z]+', outcode)[0]
+    evidence = lookup_outcode_councils(outcode) if prefix in LONDON_BORDER_PREFIXES else None
+    return screen(row, source, evidence)
+
+
+def screen(row, source, council_evidence=None):
     number = phone(row.get('Number'))
     if not number:
         raise Rejected('invalid_number')
@@ -128,14 +187,9 @@ def screen(row, source):
     scraped_monthly, _ = rent(row.get('Price', ''))
     if monthly != scraped_monthly:
         raise Rejected('price_mismatch')
-    out = re.search(r',\s*([A-Z]{1,2}\d[A-Z\d]?)\s*:', page.meta.get('description', ''), re.I)
-    if not out:
-        out = re.search(r'\(([A-Z]{1,2}\d[A-Z\d]?)\)', text)
-    if not out:
-        raise Rejected('missing_postcode_area')
-    outcode = out[1].upper()
+    outcode = advert_outcode(page)
     prefix = re.match(r'[A-Z]+', outcode)[0]
-    if prefix in {'E', 'EC', 'N', 'NW', 'SE', 'SW', 'W', 'WC', 'HA', 'UB', 'IG', 'RM', 'SM', 'CR', 'BR', 'KT', 'TW', 'EN'}:
+    if prefix in LONDON_PREFIXES or (prefix in LONDON_BORDER_PREFIXES and not outside_london(outcode, council_evidence)):
         raise Rejected('london_or_london_border')
     photos = list(dict.fromkeys(re.findall(r'(?:href|data-src)=["\'](https://photos[12]?\.spareroom\.co\.uk/images/flatshare/listings/large/[\d/]+\.(?:jpg|jpeg|png|webp))["\']', source, re.I)))[:12]
     if not photos:
@@ -329,6 +383,17 @@ def report_listing_ids(state):
     return list(dict.fromkeys(state.get('properties', []) + list(state.get('contacts', {}).values())))
 
 
+def prepare_border_recheck(state):
+    if state.get('london_boundary_rule_version') == 2:
+        return
+    retry = [aid for aid, reason in state['checked'].items() if reason == 'london_or_london_border']
+    for aid in retry:
+        del state['checked'][aid]
+    state['rejections']['london_or_london_border'] = max(0, state['rejections'].get('london_or_london_border', 0) - len(retry))
+    state['refresh_source_ids'] = list(dict.fromkeys(state.get('refresh_source_ids', []) + retry))
+    state['london_boundary_rule_version'] = 2
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--home', default='/opt/spareroom')
@@ -345,6 +410,7 @@ def main():
     state_file = ops / 'supply-state.json'
     state = json.loads(state_file.read_text()) if state_file.exists() else {
         'batch': BATCH, 'checked': {}, 'contacts': {}, 'properties': [], 'rejections': {}, 'new_contacts': 0, 'new_properties': 0}
+    prepare_border_recheck(state)
     def save_state():
         temporary = state_file.with_suffix('.tmp')
         temporary.write_text(json.dumps(state))
@@ -383,7 +449,15 @@ def main():
                     with urllib.request.urlopen(req, timeout=25) as r:
                         source = r.read().decode('utf-8', errors='replace')
                     path.write_text(source)
-                item = screen(row, path.read_text())
+                item = screen_city_advert(row, path.read_text())
+                if aid in state.get('refresh_source_ids', []):
+                    # Only a previously rejected property outside London reaches
+                    # here. Verify the current page again before importing it.
+                    req = urllib.request.Request(row['Link'], headers={'User-Agent': 'Mozilla/5.0'})
+                    with urllib.request.urlopen(req, timeout=25) as r:
+                        source = r.read().decode('utf-8', errors='replace')
+                    path.write_text(source)
+                    item = screen_city_advert(row, source)
                 photo = urllib.request.Request(item['photos'][0], method='HEAD')
                 with urllib.request.urlopen(photo, timeout=15) as r:
                     if not r.headers.get('Content-Type', '').startswith('image/'):
@@ -395,6 +469,8 @@ def main():
                 state['new_contacts'] += int(new_contact)
                 state['new_properties'] += int(new_property)
                 state['checked'][aid] = 'imported'
+                if aid in state.get('refresh_source_ids', []):
+                    state['refresh_source_ids'].remove(aid)
                 # Keep the verified source alongside the public page for review.
                 (source_dir / (aid + '.txt')).write_text(item['text'])
             except Rejected as e:
