@@ -279,6 +279,24 @@ def sync_report(api, listing_id, create=True):
     return value['stage'] == 'ready' and bool(value.get('reportPitch')) and not value['reportPitch'].get('planning')
 
 
+def sync_reports(api, selected):
+    ready, waiting, errors = 0, 0, 0
+    for listing_id in selected:
+        try:
+            if sync_report(api, listing_id):
+                ready += 1
+            else:
+                waiting += 1
+        except Exception as e:
+            waiting += 1
+            errors += 1
+            status = re.search(r'HTTP (\d{3})\b', str(e))
+            print(json.dumps({'event': 'report_retry_later', 'listing_id': listing_id,
+                              'error_type': type(e).__name__,
+                              'http_status': int(status[1]) if status else None}), flush=True)
+    return ready, waiting, errors
+
+
 def supply_runs(db, ops):
     config = ops / 'supply-runs.json'
     ids = json.loads(config.read_text()) if config.exists() else list(range(10, 21))
@@ -365,16 +383,7 @@ def main():
             time.sleep(.4)
         if time.time() - last_sync > 900 or args.once:
             selected = list(dict.fromkeys(state['contacts'].values()))
-            ready, waiting, errors = 0, 0, 0
-            for listing_id in selected:
-                try:
-                    if sync_report(api, listing_id):
-                        ready += 1
-                    else:
-                        waiting += 1
-                except Exception as e:
-                    errors += 1
-                    print(json.dumps({'event': 'report_retry_later', 'listing_id': listing_id, 'error_type': type(e).__name__}), flush=True)
+            ready, waiting, errors = sync_reports(api, selected)
             state['last_report_sync'] = time.time()
             state['researched_reports'] = ready
             state['waiting_reports'] = waiting
@@ -387,6 +396,7 @@ def main():
                           'new_contacts': state['new_contacts'], 'new_properties': state['new_properties'],
                           'researched_reports': state.get('researched_reports', 0),
                           'waiting_reports': state.get('waiting_reports', 0),
+                          'report_errors': state.get('report_errors', 0),
                           'rejections': state['rejections'], 'automatic_messages': 0}), flush=True)
         if args.once:
             break

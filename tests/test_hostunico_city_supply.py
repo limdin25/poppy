@@ -1,9 +1,12 @@
 import importlib.util
+from contextlib import redirect_stdout
+import io
 import json
 from pathlib import Path
 import sqlite3
 import tempfile
 import unittest
+from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location('city_supply', Path(__file__).parents[1] / 'scripts/hostunico-city-supply.py')
 module = importlib.util.module_from_spec(spec)
@@ -129,6 +132,20 @@ class HistoryTests(unittest.TestCase):
         self.assertEqual(patch['photo_urls'], item['photos'])
         self.assertEqual(patch['report_property']['postcode'], 'LS1')
         self.assertTrue(patch['report_property']['areaEstimate'])
+
+
+class ReportProgressTests(unittest.TestCase):
+    def test_failed_reports_remain_waiting_and_other_reports_continue_without_leaking_secrets(self):
+        output = io.StringIO()
+        results = [RuntimeError('Report status HTTP 503 credential=private-value'), True, False]
+        with patch.object(module, 'sync_report', side_effect=results) as sync, redirect_stdout(output):
+            counts = module.sync_reports(object(), ['failed', 'researched', 'planning'])
+        self.assertEqual(counts, (1, 2, 1))
+        self.assertEqual(sync.call_count, 3)
+        event = json.loads(output.getvalue())
+        self.assertEqual(event['http_status'], 503)
+        self.assertEqual(event['listing_id'], 'failed')
+        self.assertNotIn('private-value', output.getvalue())
 
 
 class RunSelectionTests(unittest.TestCase):
