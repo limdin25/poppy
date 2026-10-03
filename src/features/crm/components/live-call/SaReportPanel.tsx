@@ -26,7 +26,7 @@ interface ReportState {
   stage: string; message?: string; reportUrl?: string; smsStatus?: string; receivedAt?: string; mobile?: string;
   property?: { postcode: string; bedrooms: number; bathrooms: number; advertisedRentPcm?: number; areaEstimate?: boolean; areaLabel?: string };
   reportPitch?: HostunicoReportPitch | null;
-  smsDraft?: string; smsBlocked?: boolean; contactBlocked?: boolean; eligibilityBlocked?: boolean;
+  smsDraft?: string; callback?: { number: string; name: string } | null; smsBlocked?: boolean; contactBlocked?: boolean; eligibilityBlocked?: boolean;
 }
 export default function SaReportPanel({ listing, phone, contactId, contactEmail, agentName = 'Pedro', country = 'GB', onReportPitch, onReportMobile }: { listing: SaListing | null; phone?: string; contactId?: string; contactEmail?: string; agentName?: string; country?: string; onReportPitch?: (listingId: string, country: string, pitch: HostunicoReportPitch | null) => void; onReportMobile?: (listingId: string, mobile: string) => void }) {
   const [channel, setChannel] = useState<'sms' | 'email'>('sms');
@@ -120,6 +120,7 @@ export default function SaReportPanel({ listing, phone, contactId, contactEmail,
       {report?.contactBlocked && <p role="alert" className="mt-2 text-xs text-red-700">This lead has asked not to be contacted. Sending is blocked.</p>}
       {report?.eligibilityBlocked && <p role="alert" className="mt-2 text-xs font-semibold text-red-700">{report.message} Choose the next qualified lead.</p>}
       {channel === 'sms' && <>
+      {report?.smsDraft && report.callback === null && <p role="alert" className="mt-2 text-xs font-semibold text-amber-800">No callback number found for your account, so the text goes without it. Ask Hugo to set your caller ID number.</p>}
       {report?.smsDraft && <label className="mt-2 block text-xs font-medium text-slate-600">Ready-made SMS<textarea aria-label="Ready-made report SMS" readOnly value={report.smsDraft} rows={6} className="mt-1 w-full resize-y rounded-lg border bg-slate-50 p-2 text-xs leading-relaxed text-slate-900" /></label>}
       {report?.smsBlocked && !report.contactBlocked && <p role="alert" className="mt-2 text-xs text-red-700">SMS is blocked: this contact has a do-not-text preference.</p>}
     {!alreadySent && <div className="mt-3 space-y-2">
@@ -135,7 +136,7 @@ export default function SaReportPanel({ listing, phone, contactId, contactEmail,
     </div>}
     {alreadySent && <div className="mt-3 flex flex-wrap items-center gap-3 text-xs"><span>SMS status: <b>{report?.smsStatus?.replaceAll('_', ' ')}</b></span>{report?.receivedAt ? <span className="text-green-700">They confirmed receipt</span> : <button disabled={busy || report?.contactBlocked || ['sending', 'check_inbox'].includes(report?.smsStatus || '')} onClick={() => void act('received')} className="rounded-lg border px-3 py-1.5 disabled:opacity-40">They confirmed receipt</button>}</div>}
       </>}
-      {channel === 'email' && <SaEmailPane key={`${contactId}:${listing.id}:${report?.reportUrl || ''}:${country}`} contactId={contactId} contactEmail={contactEmail} listing={listing} agentFirstName={agentName} reportUrl={report?.reportUrl} country={country} requireReport blocked={report?.contactBlocked !== false || report?.eligibilityBlocked !== false} onSent={() => setMessageVersion((v) => v + 1)} />}
+      {channel === 'email' && <SaEmailPane key={`${contactId}:${listing.id}:${report?.reportUrl || ''}:${country}:${report?.callback?.number || ''}`} contactId={contactId} contactEmail={contactEmail} listing={listing} agentFirstName={agentName} reportUrl={report?.reportUrl} callbackNumber={report?.callback?.number} country={country} requireReport blocked={report?.contactBlocked !== false || report?.eligibilityBlocked !== false} onSent={() => setMessageVersion((v) => v + 1)} />}
     </div>
     {contactId && <HostunicoCallMessages key={contactId} contactId={contactId} refreshVersion={messageVersion} />}
     {report?.reportUrl && <HostunicoReportActivity load={loadActivity} />}

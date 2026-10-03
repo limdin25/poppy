@@ -1,3 +1,4 @@
+import { callbackDisplayNumber, callbackFirstName, callbackSmsLine, type HostunicoCallback } from '../../supabase/functions/_shared/hostunico-callback.js';
 export interface ReportProperty { postcode: string; bedrooms: number; bathrooms: number; wholeProperty: true; advertisedRentPcm?: number; areaEstimate?: true; areaLabel?: string }
 export function reportProperty(value: unknown): ReportProperty | null {
   if (!value || typeof value !== 'object') return null;
@@ -17,8 +18,32 @@ export function cachedReportReady(row: { state?: string; report_url?: string; cr
 }
 export const HOSTUNICO_CAMPAIGN = '5d9657f9-d9b4-4e27-a2d1-83db80867f92';
 export const HOSTUNICO_PIPELINE = 'dadce4ac-90b5-4320-9291-ff6bb1cf89f0';
-export function reportSms(url: string, areaEstimate = false) {
+export function reportSms(url: string, areaEstimate = false, callback: HostunicoCallback | null = null) {
   const parsed = new URL(url);
   if (parsed.origin !== 'https://hostunico.com' || !/^\/r\/[A-Za-z0-9]{5}$/.test(parsed.pathname) || parsed.search || parsed.hash) throw new Error('Invalid property report link');
-  return `Hi, here's your Hostunico ${areaEstimate ? 'area estimate' : 'property report'}: ${url}\nLet me know what you think.`;
+  const text = `Hi, here's your Hostunico ${areaEstimate ? 'area estimate' : 'property report'}: ${url}\nLet me know what you think.`;
+  return callback ? `${text}\n${callbackSmsLine(callback)}` : text;
+}
+
+interface CallbackDb { from(table: string): any }
+/** The sending agent's own caller id, else the Hostunico campaign SMS number. Null when neither resolves. */
+export async function hostunicoCallback(supa: CallbackDb, agentId: string): Promise<(HostunicoCallback & { e164: string }) | null> {
+  try {
+    const { data: profile } = await supa.from('profiles').select('name,default_caller_id_number_id').eq('id', agentId).maybeSingle();
+    const name = callbackFirstName(profile?.name);
+    let e164: string | undefined;
+    if (profile?.default_caller_id_number_id) {
+      const { data: own } = await supa.from('wk_numbers').select('e164,is_active').eq('id', profile.default_caller_id_number_id).maybeSingle();
+      if (own?.is_active !== false) e164 = own?.e164;
+    }
+    if (!callbackDisplayNumber(e164)) {
+      const { data: pinned } = await supa.from('wk_campaign_numbers').select('priority,wk_numbers!inner(e164,is_active,channel)').eq('campaign_id', HOSTUNICO_CAMPAIGN).order('priority').limit(10);
+      const first = ((pinned || []) as { wk_numbers: { e164: string; is_active: boolean; channel: string } }[]).find((r) => r.wk_numbers?.is_active !== false && r.wk_numbers?.channel === 'sms');
+      e164 = first?.wk_numbers.e164;
+    }
+    const number = callbackDisplayNumber(e164);
+    return number && e164 ? { e164, number, name } : null;
+  } catch {
+    return null;
+  }
 }

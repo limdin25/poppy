@@ -28,6 +28,8 @@ export function saEmailTemplate(opts: {
   fromName: string;
   reportUrl?: string;
   country?: string;
+  /** Pedro's callback number in national format, read from the database. */
+  callbackNumber?: string | null;
 }): { subject: string; body: string } {
   const hi = opts.person ? `Hi ${opts.person},` : 'Hi,';
   const where = opts.city ? ` in ${opts.city}` : '';
@@ -40,11 +42,12 @@ export function saEmailTemplate(opts: {
       '',
       opts.reportUrl ? `Here is your property report: ${opts.reportUrl}\n\nIt includes the estimated earnings, assumptions and costs. The figures are estimates, not guaranteed income.` : `We can prepare a report comparing estimated earnings and costs${opts.rent ? ` with the advertised rent of ${opts.rent}` : ''}. Please confirm the full postcode, whole-property bedrooms and bathrooms. The figures are estimates, not guaranteed income.`,
       '',
-      'Let me know what you think.',
+      opts.callbackNumber ? `Let me know what you think. You can call me back on ${opts.callbackNumber}.` : 'Let me know what you think.',
       '',
       'Thanks,',
       opts.fromName,
       COMPANY,
+      ...(opts.callbackNumber ? [opts.callbackNumber] : []),
     ].join('\n'),
   };
 }
@@ -56,6 +59,7 @@ interface Props {
   listing: SaListing | null;
   reportUrl?: string;
   country?: string;
+  callbackNumber?: string | null;
   requireReport?: boolean;
   blocked?: boolean;
   onSent?: () => void;
@@ -63,7 +67,7 @@ interface Props {
 
 const VALID = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
-export default function SaEmailPane({ contactId, contactEmail, agentFirstName, listing, reportUrl, country, requireReport = false, blocked = false, onSent }: Props) {
+export default function SaEmailPane({ contactId, contactEmail, agentFirstName, listing, reportUrl, country, callbackNumber, requireReport = false, blocked = false, onSent }: Props) {
   const { pushToast, patchContact } = useSmsV2();
   const persist = useContactPersistence();
   const [email, setEmail] = useState(contactEmail ?? '');
@@ -82,10 +86,10 @@ export default function SaEmailPane({ contactId, contactEmail, agentFirstName, l
 
   useEffect(() => {
     if (touched.current) return;
-    const t = saEmailTemplate({ address, street, city: listing?.city, rent, person: person.trim() || null, fromName: agentFirstName, reportUrl, country });
+    const t = saEmailTemplate({ address, street, city: listing?.city, rent, person: person.trim() || null, fromName: agentFirstName, reportUrl, country, callbackNumber });
     setSubject(t.subject);
     setBody(t.body);
-  }, [address, street, rent, listing?.city, person, agentFirstName, reportUrl, country]);
+  }, [address, street, rent, listing?.city, person, agentFirstName, reportUrl, country, callbackNumber]);
 
   const valid = VALID.test(email.trim());
   const reportAttached = !!reportUrl && body.includes(reportUrl);

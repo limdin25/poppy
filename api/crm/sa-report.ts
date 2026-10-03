@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { HOSTUNICO_CAMPAIGN, HOSTUNICO_PIPELINE, REPORT_AHEAD, REPORT_SCAN_LIMIT, cachedReportReady, reportProperty, reportSms } from '../lib/hostunico-report.js';
+import { HOSTUNICO_CAMPAIGN, HOSTUNICO_PIPELINE, REPORT_AHEAD, REPORT_SCAN_LIMIT, cachedReportReady, hostunicoCallback, reportProperty, reportSms } from '../lib/hostunico-report.js';
 import { hostunicoCountry } from '../../supabase/functions/_shared/hostunico-pricing.js';
 import { reportPhone, reportPhoneKind } from '../../supabase/functions/_shared/hostunico-phone.js';
 import { hostunicoUplift, hostunicoOutreachAllowed } from '../../supabase/functions/_shared/hostunico-uplift.js';
@@ -179,7 +179,8 @@ export default async function handler(req: Request): Promise<Response> {
       const qualification = hostunicoUplift(row.state, row.report_pitch, listing.rent_pcm);
       if (qualification.status !== 'eligible') throw new Problem(409, qualification.message);
       if (!await hostunicoOutreachAllowed(supa, c.id, '', listingId)) throw new Problem(409, 'This property or its asking price needs checking. Sending is blocked.');
-      const sms = reportSms(row.report_url, row.property?.areaEstimate === true);
+      const callback = await hostunicoCallback(supa, auth.user.id);
+      const sms = reportSms(row.report_url, row.property?.areaEstimate === true, callback);
       const claim = check(await supa.from('sa_property_reports').update({ sms_state: 'sending', sms_requested_at: new Date().toISOString() }).eq('listing_id', listingId).eq('remote_id', row.remote_id).eq('sms_state', 'unsent').select('listing_id'));
       if (!claim.length) throw new Problem(409, 'This report has already been sent or is being sent. Check its message status before trying again.');
       // There is deliberately no automatic retry after a provider request: a lost response could still mean sent.
@@ -207,10 +208,13 @@ export default async function handler(req: Request): Promise<Response> {
       const message = check(await supa.from('wk_sms_messages').select('status').eq('id', row.sms_message_id).maybeSingle());
       smsStatus = message?.status ?? smsStatus;
     }
+    // Pedro's callback number goes at the end of the report text. If it cannot be
+    // resolved the old text is sent and the panel shows a warning instead.
+    const callback = await hostunicoCallback(supa, auth.user.id);
     let qualification = hostunicoUplift(row.state, row.report_pitch, listing.rent_pcm);
     const qualified = listing.hostunico_call_eligible === true && qualification.status === 'eligible' && await hostunicoOutreachAllowed(supa, c.id, '', listingId);
     if (!qualified && qualification.status === 'eligible') qualification = { status: 'pending', message: 'This property or its asking price needs checking. Calling and sending are blocked.' };
-    return json({ ...sendingPolicy, qualification, eligibilityBlocked: !qualified, stage: row.state, message: qualified ? row.message : qualification.message, reportUrl: row.state === 'ready' ? row.report_url : undefined, smsDraft: qualified && row.report_url ? reportSms(row.report_url, row.property?.areaEstimate === true) : undefined, reportPitch: row.state === 'ready' ? { ...row.report_pitch, eligibility: qualified ? 'eligible' : qualification.status === 'eligible' ? 'excluded' : qualification.status } : null, property: row.property, smsStatus, receivedAt: row.received_at, mobile: c.hostunico_sms_phone || (reportPhoneKind(c.phone) === 'mobile' ? reportPhone(c.phone) : '') });
+    return json({ ...sendingPolicy, qualification, eligibilityBlocked: !qualified, stage: row.state, message: qualified ? row.message : qualification.message, reportUrl: row.state === 'ready' ? row.report_url : undefined, smsDraft: qualified && row.report_url ? reportSms(row.report_url, row.property?.areaEstimate === true, callback) : undefined, callback: callback ? { number: callback.number, name: callback.name } : null, reportPitch: row.state === 'ready' ? { ...row.report_pitch, eligibility: qualified ? 'eligible' : qualification.status === 'eligible' ? 'excluded' : qualification.status } : null, property: row.property, smsStatus, receivedAt: row.received_at, mobile: c.hostunico_sms_phone || (reportPhoneKind(c.phone) === 'mobile' ? reportPhone(c.phone) : '') });
   } catch (error) {
     return json({ error: error instanceof Problem ? error.message : 'Could not complete this report action. Please try again.' }, { status: error instanceof Problem ? error.status : 503 });
   }
