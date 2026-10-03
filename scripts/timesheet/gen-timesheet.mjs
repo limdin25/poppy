@@ -72,26 +72,42 @@ const WEEKS = [
     // Reports sent to owners count as moved forward.
     forwardExtra: { '2026-10-02': 12 },
     prevPaidNote: null,
+    extras: {
+      '2026-09-28': { study: 2.00 },
+      '2026-09-29': { study: 5.25, overlap: 0.01 },
+      '2026-09-30': { study: 0.76, overlap: 0.02, held: 2.39 },
+      '2026-10-01': { noLeads: 2.77 },
+    },
+    headFoot: 'Includes 1 hour of break on every day, study time and the time we held you',
+    intro: 'The call figures on this page come straight from the call system. Study time comes from the study clock in Hostunico University, except Monday, which is corrected as explained under Monday. The rules are the same ones used for every timesheet since July, plus the three paid extras listed below.',
+    zeroDayRule: '<strong>A day with no calls and no paid study or hold time is not paid.</strong> Every day this week had calls, and was paid.',
     rulesExtra: [
       'This week is Monday to Saturday, because you are being paid on the Saturday. Saturday is paid on exactly the same rules as Monday.',
+      'Study time in Hostunico University is paid at the same rate. It is counted once, so a minute of study that overlaps a call is not paid twice.',
+      'Time we held you is paid in full. If we send you home or tell you to stop because our system is not ready, every hour of it is paid.',
+      'No leads is paid in full. If the leads run out and you have nothing to dial, we pay the time you had none.',
     ],
     dayNotes: {
       '2026-09-28': [
-        { fair: false, text: 'An almost empty day. 11 calls: 8 were people ringing you and 3 you dialled yourself, at 10:02, 12:10 and 12:15. Working time was 8 minutes in a shift that runs 08:37 to 19:58, so the day pays its free hour and little else.' },
+        { fair: true, text: 'Study time in Hostunico University, paid at the same rate: 2h 00m. The study clock missed about 2 hours of your first session, so we pay 2 hours.' },
+        { fair: false, text: 'Very few calls. 11 calls: 8 were people ringing you and 3 you dialled yourself, at 10:02, 12:10 and 12:15. Working time on calls was 8 minutes, so the rest of the day pays through study and the free hour.' },
         { fair: true, text: 'The last call, somebody ringing you at 19:58, makes the shift look very long. It costs you nothing: the day already had far more than its free hour of stops, so the pay is the same with or without it.' },
       ],
       '2026-09-29': [
-        { fair: false, text: 'No dialling at all. All 13 calls were people ringing you, and 8 of them did not connect. Working time was 12 minutes, so the day pays its free hour and those 12 minutes.' },
+        { fair: true, text: 'Study time in Hostunico University, paid at the same rate: 5h 15m on the study clock, less about 1 minute that overlapped with calls, so 5h 14m is paid. This was the main work of the day.' },
+        { fair: false, text: 'No dialling. All 13 calls were people ringing you, and 8 of them did not connect. Working time on calls was 12 minutes.' },
         { fair: true, text: 'Missed calls still count as calls and as work, and the 16:04 to 16:11 run of four missed calls is not held against you.' },
       ],
       '2026-09-30': [
-        { fair: false, text: 'No dialling again. 11 calls, all of them coming in to you, every one saved as completed, from 08:52 to 16:22. Working time was 17 minutes, the most of the three empty days, and the day pays its free hour on top.' },
-        { fair: true, text: 'If you were waiting on us for a list or for the new calling set up, tell us the times. Those stops get paid.' },
+        { fair: true, text: 'Study time in Hostunico University, paid at the same rate: 46 minutes on the study clock, less about 1 minute that overlapped with calls.' },
+        { fair: true, text: 'Time we held you, paid in full: 2h 23m. Your last study event was at 13:28 and we sent you home at 15:52 because the CRM was not ready. That is our delay, so every minute of it is paid.' },
+        { fair: false, text: 'No dialling. 11 calls, all of them coming in to you, every one saved as completed, from 08:52 to 16:22. Working time on calls was 17 minutes.' },
       ],
       '2026-10-01': [
-        { fair: true, text: 'Dialling started again. 70 dials between 10:04 and 15:14, 25 real conversations, and 10 new leads. 36 calls went to voicemail, which is the numbers and not you. 2 notes written.' },
-        { fair: false, text: 'Thirteen stops over 10 minutes, 7h 26m in total. After your last dial at 15:14 the only calls were people ringing you, and the longest stop was 188 minutes from 16:09 to 19:17.' },
-        { fair: true, text: 'The 19:17 and 19:56 calls coming in after you had stopped make the day look longer. They cost you nothing, the day already had more than its free hour of stops.' },
+        { fair: true, text: 'Dialling started. 70 dials between 10:04 and 15:14, 25 real conversations, and 10 new leads. 36 calls went to voicemail, which is the numbers and not you. 2 notes written.' },
+        { fair: true, text: 'No leads, paid in full: 2h 46m, from 15:14 to 18:00. The leads ran out and you finished early, so we pay the time you had no leads.' },
+        { fair: false, text: 'Before that, thirteen stops over 10 minutes, 7h 26m in total on the call clock. The stops table still lists them, because it only looks at calls, but the no leads time above is paid on top.' },
+        { fair: true, text: 'The 19:17 and 19:56 calls coming in after you had stopped make the day look longer. They cost you nothing.' },
       ],
       '2026-10-02': [
         { fair: true, text: 'Your best day of the week and the one that carries it: 99 dials from 10:01 to 18:01, 39 real conversations, 1h 45m of talk time and 12 reports sent, the most useful result of the week. 12 notes written, and 17 texts and emails sent.' },
@@ -108,20 +124,20 @@ const WEEKS = [
       (m) => {
         const monWed = m.week.slice(0, 3).reduce((t, d) => t + d.calls, 0);
         const thuFri = m.week.slice(3, 5).reduce((t, d) => t + d.calls, 0);
-        return `<p><strong>This was a short week for calls, and the work changed.</strong> ${m.B.calls} calls against ${m.A.calls} the week before. Monday, Tuesday and Wednesday were ${monWed} calls between them, only 3 of them dialled by you, and Saturday was ${m.week[5].calls} calls, all of them people ringing you. Your dialling restarted on Thursday 1 October on a new set of calls and not on the builders: ${m.cfg.mixLast.builder} of last week's calls went to builders and this week only 7 did, 5 of them people ringing you. Thursday and Friday together were ${thuFri} calls, 169 of them dialled by you, and 12 reports were sent on Friday.</p>`;
+        return `<p><strong>A short week for calls, with a lot of paid time that is not calls.</strong> ${m.B.calls} calls against ${m.A.calls} the week before. Monday, Tuesday and Wednesday were ${monWed} calls between them, only 3 of them dialled by you, as those days were study in Hostunico University, and on Wednesday we held you for ${m.hm(m.rows[2].held)} because the CRM was not ready. Your dialling restarted on Thursday 1 October on a new set of calls and not on the builders: ${m.cfg.mixLast.builder} of last week's calls went to builders and this week only 7 did. Thursday and Friday together were ${thuFri} calls, 169 of them dialled by you, and 12 reports were sent on Friday. On Thursday the leads ran out at 15:14 and we pay the time until 18:00.</p>`;
       },
       (m) => {
-        const four = [0, 1, 2, 5].reduce((t, i) => t + m.rows[i].paid, 0) / 3600;
-        const two = [3, 4].reduce((t, i) => t + m.rows[i].paid, 0) / 3600;
-        return `<p>Hours are down with it, ${m.paidHours.toFixed(2)} paid against ${m.prevPaidH.toFixed(2)} the week before, on the same Monday to Saturday basis. Monday, Tuesday, Wednesday and Saturday paid ${four.toFixed(2)} hours between them, and 4.00 of that is the free hour on each of those four days. Thursday and Friday paid ${two.toFixed(2)} hours.</p>`;
+        const callPart = m.rows.reduce((t, r) => t + r.worked + r.credit, 0) / 3600;
+        const study = m.sum(m.rows, 'study') / 3600, held = m.sum(m.rows, 'held') / 3600, nol = m.sum(m.rows, 'noLeads') / 3600;
+        return `<p>Hours paid are ${m.paidHours.toFixed(2)} against ${m.prevPaidH.toFixed(2)} the week before, on the same Monday to Saturday basis. Of this week's hours, ${callPart.toFixed(2)} are call time plus the free hour on each day, ${study.toFixed(2)} are study time, ${held.toFixed(2)} are time we held you and ${nol.toFixed(2)} are time with no leads. The comparison table above counts calls only, so it shows the call side of the drop and not the paid study, hold and no leads time.</p>`;
       },
-      (m) => `<p>The honest other side. On the two days you dialled, you started dialling at 10:04 and 10:01. Across the whole week there were ${m.weekGaps} stops over 10 minutes, ${m.hm(m.B.idle)} in total, ${Math.round((100 * m.B.idle) / m.B.span)} percent of the shift, against ${Math.round((100 * m.A.idle) / m.A.span)} percent the week before. Talk time was ${m.hm(m.B.talk)} against ${m.hm(m.A.talk)}, and real conversations went from ${m.A.conversations} to ${m.B.conversations}. Friday, with ${m.week[4].conversations} real conversations and 12 reports sent, shows what a full day on the new calls looks like.</p>`,
+      (m) => `<p>The honest other side. On the two days you dialled, you started dialling at 10:04 and 10:01. On the call clock alone the week had ${m.weekGaps} stops over 10 minutes, ${m.hm(m.B.idle)} in total, ${Math.round((100 * m.B.idle) / m.B.span)} percent of the shift, against ${Math.round((100 * m.A.idle) / m.A.span)} percent the week before. That figure is high because study days and the days we held you or had no leads for you look like idle on the call clock, and those hours are paid. Talk time was ${m.hm(m.B.talk)} against ${m.hm(m.A.talk)}, and real conversations went from ${m.A.conversations} to ${m.B.conversations}. Friday, with ${m.week[4].conversations} real conversations and 12 reports sent, shows what a full day on the new calls looks like.</p>`,
     ],
     fairness: [
       (m) => `<div class="note fair"><strong>Numbers nobody answers are not your fault.</strong> ${m.B.dispo['Voicemail'] || 0} calls went to voicemail and ${m.B.dispo['No pickup'] || 0} had no pickup. Every one still counts as a call made and as time worked. Only the gaps between calls were counted, never the outcome of a call.</div>`,
       () => `<div class="note fair"><strong>Short pauses are free.</strong> Anything under 10 minutes, writing a note, getting a drink, finishing a text, is all paid as working time. Most of your gaps are under 30 seconds and none of those are even looked at.</div>`,
-      () => `<div class="note fair"><strong>A call that comes in after you have finished costs you nothing.</strong> On Monday, Thursday and Friday somebody rang you after your last call, the latest at 20:45 on Friday. It makes those days look longer on this page, but the time in between is counted as a stop, and each of those days already had more than its free hour of stops, so your pay is exactly what it would be without those calls.</div>`,
-      () => `<div class="note fair"><strong>Waiting on us is not idle you caused.</strong> There was no dialling on Monday, Tuesday, Wednesday or Saturday. If you were waiting on us for a list, or for the new calling set up to be ready, that is our problem and not a reason to dock you. Tell us the times it happened and those stops get paid.</div>`,
+      () => `<div class="note fair"><strong>A call that comes in after you have finished costs you nothing.</strong> On Monday, Thursday and Friday somebody rang you after your last call, the latest at 20:45 on Friday. It makes those days look longer on this page, but the time in between is counted as a stop, and your pay is exactly what it would be without those calls.</div>`,
+      () => `<div class="note fair"><strong>Our delays are paid, not held against you.</strong> The ${'2h 23m'} on Wednesday when the CRM was not ready and the ${'2h 46m'} on Thursday when the leads ran out are paid in full. If there were other times this week when you were waiting on us, tell us the times and those get paid too.</div>`,
       (m) => `<div class="note fair"><strong>Not pressing the outcome buttons costs you nothing here.</strong> ${m.cfg.noOutcome} calls this week have no outcome on the call itself. Your pay is worked out from the calls themselves, not from the buttons.</div>`,
       (m) => `<div class="note fair"><strong>The advance is separate from your hours.</strong> Every hour on this page is paid in full. The $${m.cfg.advance.deductNow}.00 taken off is the second and last half of the $${m.cfg.advance.total}.00 you were advanced, taken back the way you asked. The first $${m.cfg.advance.deductNow}.00 came off last week.</div>`,
       () => `<div class="note fair"><strong>You are not judged on results here.</strong> This page is about hours. The 12 reports sent on Friday are yours regardless of the pay figure.</div>`,
@@ -506,9 +522,18 @@ function renderWeek(cfg) {
   const prev = pick(cfg.prevRange);
   if (!week.length) throw new Error(`no days in range for ${cfg.id}`);
 
+  // Optional per day extras for one week (study time, time we held him, time with
+  // no leads). Hours in the config, seconds here. Study is counted net of any
+  // overlap with call time so no minute is paid twice. Old weeks have no extras
+  // and are unchanged.
+  const X = cfg.extras || null;
   const rows = week.map((d) => {
     const credit = Math.min(3600, d.idle); // the standing 1 hour free break
-    return { ...d, credit, deducted: d.idle - credit, paid: d.worked + credit };
+    const e = (X && X[d.date]) || {};
+    const study = ((e.study || 0) - (e.overlap || 0)) * 3600;
+    const held = (e.held || 0) * 3600;
+    const noLeads = (e.noLeads || 0) * 3600;
+    return { ...d, credit, deducted: d.idle - credit, study, held, noLeads, paid: d.worked + credit + study + held + noLeads };
   });
   const paidBeforeExtra = rows.reduce((t, r) => t + r.paid, 0);
   const paidTotal = paidBeforeExtra + cfg.extraBreakH * 3600;
@@ -569,8 +594,8 @@ function renderWeek(cfg) {
     return `<tr><td>${k}</td><td>${a}</td><td>${b}</td><td class="${d.cls}">${d.txt}</td></tr>`;
   })).join('\n            ');
 
-  const sumRows = rows.map((r) => `<tr><td>${r.label.replace(/ (Aug|Sept?)$/, '')}</td><td>${r.first}</td><td>${r.last}</td><td>${hm(r.span)}</td><td>${hm(r.idle)}</td><td>${hm(r.credit)}</td><td class="cut">${hm(r.deducted)}</td><td class="paid">${hm(r.paid)}</td></tr>`).join('\n            ');
-  const totalRow = `<tr class="total"><td>Week</td><td></td><td></td><td>${hm(sum(rows, 'span'))}</td><td>${hm(sum(rows, 'idle'))}</td><td>${hm(rows.reduce((t, r) => t + r.credit, 0))}</td><td class="cut">${hm(rows.reduce((t, r) => t + r.deducted, 0))}</td><td class="paid">${hm(paidBeforeExtra)}</td></tr>`;
+  const sumRows = rows.map((r) => `<tr><td>${r.label.replace(/ (Aug|Sept?)$/, '')}</td><td>${r.first}</td><td>${r.last}</td><td>${hm(r.span)}</td><td>${hm(r.idle)}</td><td>${hm(r.credit)}</td><td class="cut">${hm(r.deducted)}</td>${X ? `<td>${hm(r.study)}</td><td>${hm(r.held)}</td><td>${hm(r.noLeads)}</td>` : ''}<td class="paid">${hm(r.paid)}</td></tr>`).join('\n            ');
+  const totalRow = `<tr class="total"><td>Week</td><td></td><td></td><td>${hm(sum(rows, 'span'))}</td><td>${hm(sum(rows, 'idle'))}</td><td>${hm(rows.reduce((t, r) => t + r.credit, 0))}</td><td class="cut">${hm(rows.reduce((t, r) => t + r.deducted, 0))}</td>${X ? `<td>${hm(sum(rows, 'study'))}</td><td>${hm(sum(rows, 'held'))}</td><td>${hm(sum(rows, 'noLeads'))}</td>` : ''}<td class="paid">${hm(paidBeforeExtra)}</td></tr>`;
 
   const dayCards = rows.map((r) => {
     const startSec = secOfDay(r.first);
@@ -602,6 +627,9 @@ function renderWeek(cfg) {
       [r.conversations, 'Real conversations'], [good, 'Moved forward'],
       [r.dispo['Voicemail'] || 0, 'Voicemail'], [NOTES[r.date] || 0, 'Notes written'],
       [TEXTS[r.date] || 0, 'Texts sent'],
+      ...(X && r.study ? [[hm(r.study), 'Study time, paid']] : []),
+      ...(X && r.held ? [[hm(r.held), 'Time we held you, paid']] : []),
+      ...(X && r.noLeads ? [[hm(r.noLeads), 'No leads, paid']] : []),
     ].map(([v, k]) => `<div class="cell"><span class="v">${v}</span><span class="k">${k}</span></div>`).join('');
     const notes = (cfg.dayNotes[r.date] || []).map((n) => `<div class="note${n.fair ? ' fair' : ''}">${esc(n.text)}</div>`).join('\n        ');
     const bits = r.label.split(' '); // "Mon 07 Sept"
@@ -644,7 +672,7 @@ function renderWeek(cfg) {
     '<strong>Short gaps between calls all count as work.</strong> Anything under 10 minutes between calls is paid working time, no questions asked. Voicemails and numbers that did not pick up still count as calls made.',
     '<strong>A stop of more than 10 minutes counts as idle.</strong> Your normal pace is a call roughly every 30 seconds, so 10 minutes is 20 times slower than normal. It is a generous line, not a strict one.',
     '<strong>You get 1 hour of break free, every day.</strong> The first hour of stops each day is paid and never deducted.',
-    '<strong>A day with no calls is not paid.</strong>',
+    cfg.zeroDayRule || '<strong>A day with no calls is not paid.</strong>',
     ...cfg.rulesExtra.map((t) => `<strong>${t.split('.')[0]}.</strong>${t.slice(t.indexOf('.') + 1)}`),
   ].map((t) => `<li><span>${t}</span></li>`).join('\n        ');
 
@@ -657,7 +685,7 @@ function renderWeek(cfg) {
       <div class="sub">${cfg.sub}</div>
     </div>
     <div class="headline">
-      <div class="hstat"><div class="eyebrow">Hours paid</div><div class="val">${hm(paidTotal)}</div><div class="foot">Includes 1 hour of break on every day</div></div>
+      <div class="hstat"><div class="eyebrow">Hours paid</div><div class="val">${hm(paidTotal)}</div><div class="foot">${cfg.headFoot || 'Includes 1 hour of break on every day'}</div></div>
       <div class="hstat"><div class="eyebrow">Days worked</div><div class="val">${daysWorked} days</div><div class="foot">${cfg.daysLabel}</div></div>
       <div class="hstat"><div class="eyebrow">Calls made</div><div class="val">${B.calls}</div><div class="foot">${hm(B.talk)} of talk time</div></div>
       <div class="hstat pay"><div class="eyebrow">${adv ? 'To pay you' : 'Pay due'}</div><div class="val">$${toPay}.00</div><div class="foot">${adv ? `$${due}.00 earned, less $${adv.deductNow}.00 of your advance` : `${paidHours.toFixed(2)} hours at $${RATE.toFixed(2)}`}</div></div>
@@ -667,7 +695,7 @@ function renderWeek(cfg) {
   <section>
     <div class="sechead"><div class="eyebrow">The rules</div><h2>How this was worked out</h2></div>
     <div class="panel">
-      <p>Every figure on this page comes straight from the call system. Nothing is estimated and nothing is from memory. The rules are the same ones used for every timesheet since July.</p>
+      <p>${cfg.intro || 'Every figure on this page comes straight from the call system. Nothing is estimated and nothing is from memory. The rules are the same ones used for every timesheet since July.'}</p>
       <ol class="rule">
         ${RULES}
       </ol>
@@ -704,7 +732,7 @@ function renderWeek(cfg) {
     <div class="panel">
       <div class="tscroll">
         <table>
-          <thead><tr><th>Day</th><th>First call</th><th>Last call</th><th>On shift</th><th>Idle</th><th>Break free</th><th>Deducted</th><th>Paid</th></tr></thead>
+          <thead><tr><th>Day</th><th>First call</th><th>Last call</th><th>On shift</th><th>Idle</th><th>Break free</th><th>Deducted</th>${X ? '<th>Study time</th><th>Time we held you</th><th>No leads</th>' : ''}<th>Paid</th></tr></thead>
           <tbody>
             ${sumRows}
             ${totalRow}
@@ -762,12 +790,14 @@ ${dayCards}
   <section>
     <div class="sechead"><div class="eyebrow">Payment</div><h2>What you are owed</h2></div>
     <div class="panel">
-      <p>A standard week is 5 days at 8 hours, which is 40 hours for $100. That makes the rate <strong>$${RATE.toFixed(2)} an hour</strong>. You worked ${daysWorked} days this week. You are paid for every hour worked, plus your 1 hour break on each day.</p>
+      <p>A standard week is 5 days at 8 hours, which is 40 hours for $100. That makes the rate <strong>$${RATE.toFixed(2)} an hour</strong>. You worked ${daysWorked} days this week. You are paid for every hour worked, plus your 1 hour break on each day.${X ? ' This week also includes study time, time we held you and time with no leads, each shown on its own line below.' : ''}</p>
       <div class="maths">
         <div class="mrow"><span class="lbl">Time on shift, first call to last</span><span>${hm(sum(rows, 'span'))}</span></div>
         <div class="mrow"><span class="lbl">Idle over 10 minutes</span><span>-${hm(sum(rows, 'idle'))}</span></div>
         <div class="mrow"><span class="lbl">Break added back, 1 hour x ${daysWorked} days</span><span>+${hm(rows.reduce((t, r) => t + r.credit, 0))}</span></div>
-        ${cfg.extraBreakH ? `<div class="mrow"><span class="lbl">Breaks we asked you to take, paid in full</span><span>+${cfg.extraBreakH}h 00m</span></div>` : ''}
+        ${X ? `<div class="mrow"><span class="lbl">Study time in Hostunico University, paid at the same rate</span><span>+${hm(sum(rows, 'study'))}</span></div>
+        <div class="mrow"><span class="lbl">Time we held you, paid in full</span><span>+${hm(sum(rows, 'held'))}</span></div>
+        <div class="mrow"><span class="lbl">No leads, paid in full</span><span>+${hm(sum(rows, 'noLeads'))}</span></div>` : ''}${cfg.extraBreakH ? `<div class="mrow"><span class="lbl">Breaks we asked you to take, paid in full</span><span>+${cfg.extraBreakH}h 00m</span></div>` : ''}
         <div class="mrow"><span class="lbl">Hours paid</span><span>${hm(paidTotal)}</span></div>
         <div class="mrow"><span class="lbl">Hourly rate</span><span>$${RATE.toFixed(2)}</span></div>
         ${adv ? `<div class="mrow"><span class="lbl">Earned this week</span><span>$${due}.00</span></div>
@@ -787,7 +817,7 @@ ${dayCards}
   </section>
 
   <footer>
-    <div>Prepared from the call system on ${cfg.preparedOn}, counting every call up to ${cfg.cutoff} on the last day. Source: ${B.calls} call records, ${B.notes} call notes and ${B.texts} messages, timed to the second, Europe/London.</div>
+    <div>Prepared from the call system${X ? ' and the study clock' : ''} on ${cfg.preparedOn}, counting every call up to ${cfg.cutoff} on the last day. Source: ${B.calls} call records, ${B.notes} call notes and ${B.texts} messages, timed to the second, Europe/London.</div>
     <div>If you think any figure here is wrong, say so and it will be checked against the log.</div>
   </footer>
 
@@ -855,7 +885,8 @@ export const TIMESHEET_HTML: string = ${JSON.stringify(html)};
 fs.writeFileSync(path.join(HERE, '..', '..', 'api', 'lib', 'timesheet-html.ts'), ts);
 for (const w of WEEKS) {
   const wk = pick(w.range);
-  const paid = wk.reduce((t, d) => t + d.worked + Math.min(3600, d.idle), 0) / 3600 + w.extraBreakH;
+  const ex = (d) => { const e = (w.extras || {})[d.date] || {}; return ((e.study || 0) - (e.overlap || 0) + (e.held || 0) + (e.noLeads || 0)) * 3600; };
+  const paid = wk.reduce((t, d) => t + d.worked + Math.min(3600, d.idle) + ex(d), 0) / 3600 + w.extraBreakH;
   console.log(`${w.id}  ${wk.length} days  paid ${paid.toFixed(2)}h  due $${Math.ceil(paid * RATE)}`);
 }
 console.log('written', html.length, 'chars');
