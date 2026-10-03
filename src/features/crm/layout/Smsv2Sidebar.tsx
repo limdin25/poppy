@@ -19,6 +19,7 @@ import {
   Boxes,
   HardHat,
   Calculator,
+  MessageSquareQuote,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useIsMobile } from '@/core/hooks/useMediaQuery';
@@ -75,6 +76,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Dialer', path: '/admin/crm/dialer-pro', icon: Radio },
   { label: 'Inbox', path: '/admin/crm/inbox', icon: MessageSquare },
   { label: 'Report follow-ups', path: '/admin/crm/report-followups', icon: ListChecks },
+  { label: 'Objections', path: '/admin/crm/objections', icon: MessageSquareQuote },
   { label: 'Pipelines', path: '/admin/crm/pipelines', icon: Kanban },
   { label: 'Contacts', path: '/admin/crm/contacts', icon: Users },
   { label: 'Broadcasts', path: '/admin/crm/broadcasts', icon: Megaphone },
@@ -98,7 +100,7 @@ const HOUSES_ONLY = new Set([
   '/admin/crm/deal-process',
 ]);
 
-const SA_NAV = new Set(['Dashboard', 'Dialer', 'Inbox', 'Report follow-ups', 'Pipelines', 'Contacts', 'Reports', 'Leaderboard', 'Call history', 'Templates', 'Settings']);
+const SA_NAV = new Set(['Dashboard', 'Dialer', 'Inbox', 'Report follow-ups', 'Objections', 'Pipelines', 'Contacts', 'Reports', 'Leaderboard', 'Call history', 'Templates', 'Settings']);
 const deskLabel = (label: string, desk: string) => desk === 'sa' && label === 'Dialer' ? 'Calling room' : label;
 
 const MOBILE_TAB_ITEMS = NAV_ITEMS.filter(({ label }) =>
@@ -188,7 +190,7 @@ export default function Smsv2Sidebar({ collapsed, onCollapse }: Smsv2SidebarProp
           .filter(({ adminOnly }) => !adminOnly || isAdminOrWorkspaceAdmin)
           .filter(({ path }) => desk === 'houses' || !HOUSES_ONLY.has(path))
           .filter(({ label }) => desk !== 'sa' || SA_NAV.has(label))
-          .filter(({ label }) => desk === 'sa' || label !== 'Report follow-ups')
+          .filter(({ label }) => desk === 'sa' || !['Report follow-ups', 'Objections'].includes(label))
           .map(({ label, path, icon: Icon, adminOnly }) => (
           <Link
             key={path}

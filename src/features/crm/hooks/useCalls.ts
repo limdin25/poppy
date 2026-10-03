@@ -26,6 +26,7 @@ interface WkCallRow {
   agent_note: string | null;
   from_e164: string | null;
   to_e164: string | null;
+  training_material?: boolean | null;
 }
 
 interface WkRecordingRow {
@@ -81,6 +82,7 @@ export function rowToCall(
     agentNote: row.agent_note ?? undefined,
     fromE164: row.from_e164 ?? undefined,
     toE164: row.to_e164 ?? undefined,
+    trainingMaterial: row.training_material === true,
   };
 }
 
@@ -92,7 +94,7 @@ async function fetchCallPage(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let callsQ = (supabase.from('wk_calls' as any) as any)
     .select(
-      'id, contact_id, agent_id, direction, status, started_at, duration_sec, disposition_column_id, agent_note, from_e164, to_e164',
+      'id, contact_id, agent_id, direction, status, started_at, duration_sec, disposition_column_id, agent_note, from_e164, to_e164, training_material',
       { count: 'exact' }
     )
     // wk_calls carries its own desk, stamped when the call is made: an inbound

@@ -83,6 +83,8 @@ export interface CallRecord {
   aiSummary?: string;
   costPence: number;
   dispositionColumnId?: string;
+  /** Tagged "Good objections / training material" (Pedro, 3 Oct 2026). Never the outcome. */
+  trainingMaterial?: boolean;
   agentNote?: string;
   fromE164?: string;
   toE164?: string;

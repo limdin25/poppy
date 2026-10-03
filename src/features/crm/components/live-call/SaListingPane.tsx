@@ -17,6 +17,7 @@ import { supabase } from '@/integrations/supabase/browser';
 import { availableText, gbpMonth, useSaListings, type SaListing } from '../../hooks/useSaListings';
 import FollowupPromptModal from '../followups/FollowupPromptModal';
 import { useSmsV2 } from '../../store/SmsV2Store';
+import TrainingMaterialToggle from './TrainingMaterialToggle';
 
 /** What Pedro can press. Mirrors OUTCOMES in api/crm/sa-outcome.ts. */
 export const SA_OUTCOMES = [
@@ -246,6 +247,10 @@ function SaListingDetail({ listing: l, contactId, currentCallId, onSaved, review
             </button>
           ))}
         </div>
+        {currentCallId && <div className="border-t border-[#F3F4F6] pt-2" data-testid="sa-training-tag">
+          <TrainingMaterialToggle callId={currentCallId} />
+          <p className="mt-1 text-[10.5px] text-[#9CA3AF]">A separate tag for calls worth re-listening to. It does not change the outcome above.</p>
+        </div>}
         {saved && <div className="text-[11.5px] text-[#166534]">{saved}</div>}
         {reviewRequested && !reviewColumn && <p role="alert" className="text-xs text-red-700">The review-call stage has not loaded. Please refresh before saving the callback.</p>}
         {saveError && <div className="text-[11.5px] text-[#B91C1C]">{saveError}</div>}

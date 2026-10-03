@@ -49,6 +49,8 @@ describe('every list in the CRM is scoped by desk', () => {
     ['src/features/crm/hooks/useInboxNotifications.ts', /\(c\.desk \?\? 'houses'\) === desk/],
     ['src/features/crm/hooks/useFollowups.ts', /\(r\.wk_contacts\?\.desk \?\? 'houses'\) === desk/],
     ['src/features/crm/components/live-call/BranchSearchPanel.tsx', /\.eq\('desk', desk\)/],
+    // Objections list (3 Oct 2026): the Hostunico playbook never leaks into another desk.
+    ['src/features/crm/pages/ObjectionsPage.tsx', /\.eq\('desk', desk\)/],
   ]
   for (const [file, re] of PINS) {
     it(file, () => expect(read(file)).toMatch(re))

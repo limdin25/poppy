@@ -36,6 +36,9 @@ import { useContactPersistence } from '../hooks/useContactPersistence';
 import { useDemoMode } from '../lib/useDemoMode';
 import type { CallRecord, Contact } from '../types';
 import HostunicoReportButton from '../components/contacts/HostunicoReportButton';
+import TrainingMaterialToggle from '../components/live-call/TrainingMaterialToggle';
+import { TRAINING_LABEL } from '../lib/trainingMaterial';
+import { useDesk } from '../lib/DeskContext';
 
 const STATUS_ICON = {
   inbound: <PhoneIncoming className="w-3.5 h-3.5 text-[#3C5A87]" />,
@@ -52,6 +55,11 @@ export default function CallsPage() {
   const dateFrom = searchParams.get('from') ?? '';
   const dateTo = searchParams.get('to') ?? '';
   const agentFilter = searchParams.get('agent') ?? '';
+  // Pedro, 3 Oct 2026: re-listen to the calls tagged as training material.
+  const trainingOnly = searchParams.get('training') === '1';
+  const { desk } = useDesk();
+  const [trainingTags, setTrainingTags] = useState<Record<string, boolean>>({});
+  const isTraining = (c: CallRecord) => trainingTags[c.id] ?? c.trainingMaterial === true;
   const setSp = (key: string, value: string, fallback: string = '') => {
     const sp = new URLSearchParams(searchParams);
     if (value && value !== fallback) sp.set(key, value);
@@ -192,6 +200,7 @@ export default function CallsPage() {
           return false;
       }
       if (agentFilter && c.agentId !== agentFilter) return false;
+      if (trainingOnly && !isTraining(c)) return false;
       if (duration !== 'all') {
         if (duration === 'short' && c.durationSec >= 60) return false;
         if (duration === 'medium' && (c.durationSec < 60 || c.durationSec > 300))
@@ -205,7 +214,9 @@ export default function CallsPage() {
       }
       return true;
     });
-  }, [calls, contacts, findContact, search, duration, dateFrom, dateTo, agentFilter]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [calls, contacts, findContact, search, duration, dateFrom, dateTo, agentFilter, trainingOnly, trainingTags]);
+  const trainingCount = calls.filter(isTraining).length;
 
   return (
     <div className="p-6 max-w-[1400px] mx-auto space-y-5">
@@ -232,6 +243,13 @@ export default function CallsPage() {
             className="w-full pl-7 pr-2 py-1.5 text-[12px] bg-[#F3F3EE] border-0 rounded-[10px] focus:outline-none focus:ring-1 focus:ring-[#3C5A87]/30"
           />
         </div>
+        {desk === 'sa' && <button
+          type="button"
+          onClick={() => setSp('training', trainingOnly ? '' : '1')}
+          aria-pressed={trainingOnly}
+          data-testid="calls-training-filter"
+          className={cn('text-[12px] px-2 py-1.5 border rounded-[10px] font-medium', trainingOnly ? 'bg-[#FEF3C7] border-[#B45309] text-[#92400E]' : 'border-[#E5E7EB] text-[#374151] hover:bg-[#F3F3EE]')}
+        >{TRAINING_LABEL} ({trainingCount})</button>}
         <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
           <PopoverTrigger asChild>
             <button className={cn(
@@ -444,7 +462,7 @@ export default function CallsPage() {
                         </button>
                       )}
                     </td>
-                    <td className="px-2 py-2.5 text-[#6B7280]">{agent?.name ?? 'Unknown'}{contact?.customFields?.lead_type === 'hostunico_owner' && <div className="mt-1"><HostunicoReportButton contact={contact} /></div>}</td>
+                    <td className="px-2 py-2.5 text-[#6B7280]">{agent?.name ?? 'Unknown'}{contact?.customFields?.lead_type === 'hostunico_owner' && <div className="mt-1"><HostunicoReportButton contact={contact} /></div>}{desk === 'sa' && <div className="mt-1"><TrainingMaterialToggle callId={c.id} initial={isTraining(c)} compact onChange={(on) => setTrainingTags((t) => ({ ...t, [c.id]: on }))} /></div>}</td>
                     <td className="px-2 py-2.5">
                       <span className="text-[11px] font-medium capitalize text-[#6B7280]">
                         {c.status}
