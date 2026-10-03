@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { HOSTUNICO_ANSWERS, hostunicoAnswerCopy } from '../supabase/functions/_shared/hostunico-answer-bank';
+import { HOSTUNICO_ANSWERS, HOSTUNICO_SOFT_OBJECTION_KEYS, hostunicoAnswerCopy } from '../supabase/functions/_shared/hostunico-answer-bank';
 import { hostunicoInstantAnswer } from '../supabase/functions/_shared/hostunico-sales';
 import { hostunicoJevAnswer, hostunicoJevRequest } from '../supabase/functions/_shared/hostunico-jev';
 import { HOSTUNICO_COACH_PROMPT } from '../supabase/functions/_shared/hostunico-coach';
@@ -82,12 +82,14 @@ describe('prepared Hostunico conversations', () => {
     expect(hostunicoInstantAnswer(utterance)?.key).toBe(`hostunico-${key}`);
   });
 
-  it('keeps every approved answer available to Jev with the same wording and tailored question', () => {
+  // 3 Oct 2026: soft objections are rebutted once then accepted, which needs the
+  // call history, so they stay with the instant answer and contextual coach.
+  it('keeps every approved answer except soft objections available to Jev with the same wording and tailored question', () => {
     expect(HOSTUNICO_ANSWERS.length).toBeGreaterThanOrEqual(60);
     expect(new Set(HOSTUNICO_ANSWERS.map((a) => a.key)).size).toBe(HOSTUNICO_ANSWERS.length);
     for (const country of ['GB', 'US']) {
       const criteria = hostunicoJevRequest('A question', [], country).questions.approved_answer.criteria;
-      for (const answer of HOSTUNICO_ANSWERS.filter((a) => !['report', 'service'].includes(a.key))) {
+      for (const answer of HOSTUNICO_ANSWERS.filter((a) => !['report', 'service', ...HOSTUNICO_SOFT_OBJECTION_KEYS].includes(a.key))) {
         const payload = { answers: { approved_answer: { type: 'choice', choice: answer.key, confidence: 0.99, probabilities: { [answer.key]: 0.99 } } } };
         expect(criteria).toHaveProperty(answer.key);
         expect(hostunicoJevAnswer(payload, country)).toBe(`SAY: ${hostunicoAnswerCopy(answer, country)}\nASK: ${answer.nextQuestion || ''}`);
@@ -103,8 +105,10 @@ describe('prepared Hostunico conversations', () => {
       expect(hostunicoInstantAnswer(question)?.say).not.toMatch(/20%|registration|pending|billing/i);
     }
     expect(hostunicoInstantAnswer('What about VAT?')?.say).toContain('20% of our management fee');
-    expect(hostunicoInstantAnswer('I need to think about it')?.nextQuestion).toContain('clarify');
-    expect(hostunicoInstantAnswer('Not interested')?.nextQuestion).toBe('');
+    // 3 Oct 2026: a first soft no now offers the report; a second no is accepted.
+    expect(hostunicoInstantAnswer('I need to think about it')?.nextQuestion).toContain('report');
+    expect(hostunicoInstantAnswer('Not interested')?.nextQuestion).toContain('send it over');
+    expect(hostunicoInstantAnswer('Not interested', 'GB', undefined, ['No thanks'])?.nextQuestion).toBe('');
   });
 
   it('leaves corrections, mixed questions and unsupported facts to the conversational coach', () => {

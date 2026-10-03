@@ -44,7 +44,7 @@ describe('independent script and coach reading sizes', () => {
     const localStorage = storage();
     vi.stubGlobal('window', { localStorage });
     expect(readCallTextSize('script')).toBe(24);
-    expect(readCallTextSize('coach')).toBe(36);
+    expect(readCallTextSize('coach')).toBe(44);
     saveCallTextSize('script', 28);
     saveCallTextSize('coach', 36);
     expect(readCallTextSize('script')).toBe(28);
@@ -59,14 +59,14 @@ describe('independent script and coach reading sizes', () => {
   });
   it('bounds adjustments and survives invalid or blocked storage', () => {
     const local = storage();
-    expect(saveCallTextSize('coach', 100, local)).toBe(48);
+    expect(saveCallTextSize('coach', 100, local)).toBe(64);
     expect(saveCallTextSize('script', 0, local)).toBe(18);
     local.setItem('hostunico:script-font-size', 'not a number');
     expect(readCallTextSize('script', local)).toBe(24);
     const blocked = { getItem: () => { throw new Error('blocked'); }, setItem: () => { throw new Error('blocked'); } };
-    expect(readCallTextSize('coach', blocked)).toBe(36);
+    expect(readCallTextSize('coach', blocked)).toBe(44);
     expect(saveCallTextSize('coach', 34, blocked)).toBe(34);
-    const controls = renderToStaticMarkup(createElement(CallTextSizeControls, { pane: 'coach', size: 48, onChange: () => {} }));
+    const controls = renderToStaticMarkup(createElement(CallTextSizeControls, { pane: 'coach', size: 64, onChange: () => {} }));
     expect(controls).toMatch(/disabled="" aria-label="Increase coach text size"/);
   });
   it('enlarges notes, recent speech and history proportionally while keeping the next line dominant', () => {
@@ -85,12 +85,13 @@ describe('independent script and coach reading sizes', () => {
     expect(coach).toMatch(/font-size:17px[^>]*>Earlier advice\./);
     expect(coach).toMatch(/font-size:15px[^>]*>Then ask/);
     expect(coach).toMatch(/font-size:42px[^>]*>The next answer\./);
-    expect(coach).toMatch(/font-size:42px[^>]*>The next question\?/);
+    // 3 Oct 2026: SAY is the biggest thing on screen; the question is three quarters of it.
+    expect(coach).toMatch(/font-size:32px[^>]*>The next question\?/);
   });
 });
 
 describe('the next words stand apart from past speech', () => {
-  it('renders both next lines at 36px and past speech and suggestions at 14px', () => {
+  it('renders the next line at 44px, the question at 33px and past speech small', () => {
     const html = renderToStaticMarkup(createElement(HostunicoCoachView, {
       ...coachProps,
       lines: [{ id: 'spoken', speaker: 'agent', body: 'I can help with that.', ts: '1' }],
@@ -98,8 +99,8 @@ describe('the next words stand apart from past speech', () => {
     }));
     expect(html).toContain('Pedro just said');
     expect(html).toMatch(/text-xs[^>]*>I can help with that\./);
-    expect(html).toMatch(/font-size:36px[^>]*data-testid="hostunico-next-line"[^>]*>You keep your account\./);
-    expect(html).toMatch(/font-size:36px[^>]*data-testid="hostunico-next-question"[^>]*>When is it available\?/);
+    expect(html).toMatch(/font-size:44px[^>]*data-testid="hostunico-next-line"[^>]*>You keep your account\./);
+    expect(html).toMatch(/font-size:33px[^>]*data-testid="hostunico-next-question"[^>]*>When is it available\?/);
     expect(html).toMatch(/text-xs[^>]*>Earlier advice\./);
   });
   it('never promotes a stale suggestion after the lead speaks again', () => {
@@ -128,5 +129,31 @@ describe('the next words stand apart from past speech', () => {
     }));
     expect(streaming).toContain('Listening');
     expect(streaming).toContain('Picking the next answer...');
+  });
+});
+
+describe('Pedro, 3 Oct 2026: a bigger coach that does not jump about', () => {
+  it('lifts a size saved under the old smaller range and keeps a bigger one', () => {
+    const small = storage(); small.setItem('hostunico:coach-font-size', '30');
+    expect(readCallTextSize('coach', small)).toBe(44);
+    const big = storage(); big.setItem('hostunico:coach-font-size', '48');
+    expect(readCallTextSize('coach', big)).toBe(48);
+    const now = storage(); saveCallTextSize('coach', 30, now);
+    expect(readCallTextSize('coach', now)).toBe(30);
+  });
+  it('shows only whole sentences while a suggestion streams', () => {
+    vi.stubGlobal('window', { localStorage: storage() });
+    const coach = (body: string) => renderToStaticMarkup(createElement(HostunicoCoachView, { ...coachProps, lines: [{ id: 'c', speaker: 'caller', body: 'How does it work?', ts: '1' }], cards: [{ id: 'n', body, ts: '2', status: 'streaming' }] }));
+    const half = coach('SAY: We run the listing. Guests let themsel');
+    expect(half).toContain('We run the listing.');
+    expect(half).not.toContain('Guests let themsel');
+    expect(coach('SAY: We run the')).toContain('Picking the next answer');
+    expect(coach('SAY: We run it. Guests let themselves in\nASK: Is it furnis')).toContain('Guests let themselves in');
+    expect(coach('SAY: We run it.\nASK: Is it furnis')).not.toContain('Is it furnis');
+  });
+  it('gives the coach 60 percent of the room on desktop', async () => {
+    const { readFileSync } = await import('node:fs');
+    const room = readFileSync(new URL('../src/features/crm/components/live-call/SaCallRoom.tsx', import.meta.url), 'utf8');
+    expect(room).toContain('md:grid-cols-[2fr_3fr]');
   });
 });

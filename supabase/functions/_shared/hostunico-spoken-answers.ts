@@ -1,4 +1,5 @@
 import { HOSTUNICO_COMPANY } from './hostunico-company.ts';
+import { HOSTUNICO_MARKET_FEE_LINE } from './hostunico-pricing.ts';
 
 // The answer bank retains the factual reference. These are the ready-to-say
 // phone versions, shared by instant answers, Jev and the script quick answers.
@@ -8,7 +9,7 @@ export const HOSTUNICO_SPOKEN_ANSWERS: Readonly<Record<string, string>> = {
   'fee-basis': "It's 9% + VAT on the booking revenue, including any cleaning fee the guest pays, before the platform takes its fees. The actual cleaner and your property bills are separate costs.",
   'onboarding-fee': "No, there's no onboarding fee. If the property needs furniture, photos or repairs, we'd go through those costs with you separately.",
   'discount': "That's our standard offer. I can ask Hugo about your request, but I can't agree a different price myself on this call.",
-  'too-expensive': "I understand. Let's look at what you'd keep after the costs and compare that with the rent you're asking now.",
+  'too-expensive': `I understand. ${HOSTUNICO_MARKET_FEE_LINE} The report shows what you'd keep after that, compared with your rent.`,
   'hidden-costs': "There are property costs to allow for, like cleaning, platform fees, bills and repairs. Let's go through those in the report so you can see what you'd actually keep.",
   'guarantee': "No, we don't pay guaranteed rent. You keep the booking income, so you benefit when it does well. Income isn't guaranteed.",
   'account': "It's your Airbnb account. We help you set things up and manage it, but you keep the account. We'd start with Airbnb and look at other platforms after that.",
@@ -26,15 +27,16 @@ export const HOSTUNICO_SPOKEN_ANSWERS: Readonly<Record<string, string>> = {
   'notenant': "I'm calling about helping you manage it for short and mid-term stays through Airbnb. Would you be open to having a look at an earnings comparison?",
   'identity': "I'm with Hostunico.",
   'stop': "Understood, thanks for letting me know. I'll record that so we don't keep following up.",
+  'soft-no': "No problem, I'm not asking you to decide anything today. The report is free and just shows what your property could make on Airbnb compared with the rent.",
   'report': "Of course. I can send you a link, and it opens straight in your browser.",
   'service': "We handle the Airbnb listing, pricing, bookings and guest messages, and arrange cleaning. Guests let themselves in. You keep your Airbnb account.",
   'human-team': "The system helps the team do the work. I handle the sales side, Elsie coordinates operations, and Hugo oversees the business.",
   'owner-work': "You approve the setup and confirm permissions. We'll give you a checklist; you can prepare the property or we can assign a cleaner to help.",
-  'existing-manager': "That's fine. We'd need to work around your current agreement and any bookings you've already got.",
-  'self-manage': "That makes sense. If the day-to-day work is taking up too much of your time, that's where we can help.",
-  'long-term': "I understand. A regular tenant might suit you better. The report just gives you a way to compare the two before you decide.",
-  'think-about-it': "Of course, take your time with the numbers.",
-  'not-now': "No problem, we can leave it for now.",
+  'existing-manager': `That's fine. ${HOSTUNICO_MARKET_FEE_LINE} Any change would work around your current agreement and bookings.`,
+  'self-manage': "That makes sense. We can take the guest messages, pricing and cleaning coordination off your hands, and you still keep the booking income.",
+  'long-term': "I understand, a steady tenant is simple. The report just shows what the same property could make on Airbnb, so you can compare before you decide.",
+  'think-about-it': "Of course. It's easier to think it over with the numbers in front of you, and there's no obligation.",
+  'not-now': "No problem, there's no rush. The report is free, so you can keep it for when the timing suits.",
   'no-phone': "That's fine, we can put the details in writing.",
   'why-airbnb': "For the right property, short and mid-term stays can bring in more than a regular let. The report helps you compare that with the rent you're asking now.",
   'seasonality': "There can be quieter months. We keep reviewing the price and bookings, but income will vary with demand and how many nights are booked.",

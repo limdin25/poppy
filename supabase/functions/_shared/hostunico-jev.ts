@@ -1,8 +1,8 @@
-import { HOSTUNICO_ANSWERS, hostunicoAnswerCopy } from './hostunico-answer-bank.ts';
+import { HOSTUNICO_ANSWERS, HOSTUNICO_SOFT_OBJECTION_KEYS, hostunicoAnswerCopy } from './hostunico-answer-bank.ts';
 
 export const HOSTUNICO_JEV_MODEL = 'jev-1.13.0';
 export const HOSTUNICO_JEV_CONFIDENCE = 0.9;
-const fastAnswers = HOSTUNICO_ANSWERS.filter((answer) => !['report', 'service'].includes(answer.key));
+const fastAnswers = HOSTUNICO_ANSWERS.filter((answer) => !['report', 'service', ...HOSTUNICO_SOFT_OBJECTION_KEYS].includes(answer.key));
 
 export function hostunicoJevRequest(latestCaller: string, transcript: { speaker: string; body: string }[], country = 'GB', provisional = false) {
   return {

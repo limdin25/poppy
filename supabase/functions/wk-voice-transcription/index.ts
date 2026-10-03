@@ -22,6 +22,7 @@
 
 import { HOSTUNICO_STAGES, HOSTUNICO_RULES, HOSTUNICO_ANSWERS, hostunicoInstantAnswer } from '../_shared/hostunico-sales.ts';
 import { HOSTUNICO_COACH_PROMPT, cleanHostunicoCoach } from '../_shared/hostunico-coach.ts';
+import { hostunicoCoachRequest } from '../_shared/hostunico-coach-request.ts';
 import { reportPhoneKind } from '../_shared/hostunico-phone.ts';
 import { hostunicoReportDelivery } from '../_shared/hostunico-report-delivery.ts';
 import { hostunicoReportHook } from '../_shared/hostunico-report-pitch.ts';
@@ -1585,6 +1586,8 @@ async function streamCoachInternal(args: {
   onChunk: (accumulated: string, isFirst: boolean) => void;
   isAborted: () => boolean;
   hostunico?: boolean;
+  /** Hostunico turns use the trimmed request in _shared/hostunico-coach-request.ts. */
+  hostunicoTurn?: { latestCaller: string; transcript: { speaker: string; body: string }[]; country: string };
   signal?: AbortSignal;
 }): Promise<CoachOutput | null> {
   const { apiKey, model, systemMessages, userMsg, onChunk, isAborted } = args;
@@ -1597,7 +1600,7 @@ async function streamCoachInternal(args: {
       'Content-Type': 'application/json',
       'Accept': 'text/event-stream',
     },
-    body: JSON.stringify({
+    body: JSON.stringify(args.hostunicoTurn ? hostunicoCoachRequest({ model, userMsg, ...args.hostunicoTurn }) : {
       model,
       // v9 (PR D 2026-04-30): dropped temperature 0.55 → 0.4. Hugo's
       // call: coach is too noisy / too creative; with the SILENCE RULE
@@ -2164,7 +2167,11 @@ serve(async (req: Request) => {
             const fields = contact?.custom_fields || {};
             const listingId = fields.hostunico_listing_id;
             const rentQuestion = hostunicoRentQuestion(transcriptText);
-            const instant = rentQuestion ? null : hostunicoInstantAnswer(transcriptText, contact?.hostunico_country || 'GB', { phone: contact?.phone, mobile: contact?.hostunico_sms_phone });
+            // The caller's earlier lines decide whether a soft no is the first
+            // (rebut it) or the second (accept it). Drop the current line itself.
+            const callerHistory = [...(recent.data || [])].reverse().filter((line) => line.speaker === 'caller').map((line) => line.body as string);
+            if (callerHistory.at(-1) === transcriptText) callerHistory.pop();
+            const instant = rentQuestion ? null : hostunicoInstantAnswer(transcriptText, contact?.hostunico_country || 'GB', { phone: contact?.phone, mobile: contact?.hostunico_sms_phone }, callerHistory);
             const context = `${listingId || ''}:${fields.hostunico_script_mode || 'spareroom'}:${contact?.hostunico_country || 'GB'}`;
             const { data: cardId, error: cardError } = liveSpeech
               ? await supa.rpc('wk_hostunico_start_live_coach', { p_call_id: call.id, p_generation: generationId, p_context: context, p_sequence: liveSpeech.sequence, p_utterance: liveSpeech.utterance_id })
@@ -2175,7 +2182,9 @@ serve(async (req: Request) => {
             let aborted = false;
             const meta = { source_sequence: liveSpeech?.sequence, source_text: transcriptText, source_ts: liveSpeech?.ts, provisional: !isFinal, utterance_id: liveSpeech?.utterance_id };
             const writeAnswer = async (text: string, status: string) => {
-              const result = await supa.rpc('wk_hostunico_write_coach', { p_card: card.id, p_generation: generationId, p_body: cleanHostunicoCoach(text), p_status: status, p_meta: meta });
+              // ready_at and ready_ms let us measure, from the database, how long
+              // a complete suggestion took after this chunk arrived.
+              const result = await supa.rpc('wk_hostunico_write_coach', { p_card: card.id, p_generation: generationId, p_body: cleanHostunicoCoach(text), p_status: status, p_meta: status === 'final' ? { ...meta, ready_at: new Date().toISOString(), ready_ms: Date.now() - t0 } : meta });
               if (result.error || !result.data) aborted = true;
             };
             const writer = createThrottledWriter<string>(async (text) => {
@@ -2209,7 +2218,7 @@ serve(async (req: Request) => {
                     const scripted = hostunicoCallStep({ mode, leadName: contact?.name, latestCaller: transcriptText, transcript, report: reportContext });
                     if (scripted) { onChunk(scripted, true); return scripted; }
                     const approvedOpening = hostunicoReportHook(report.data?.state === 'ready' ? report.data.report_pitch : null);
-                    const generated = await streamCoachInternal({ apiKey: openaiKey, model: (ai.live_coach_model as string) || 'gpt-5.4-mini', hostunico: true, signal, systemMessages: [HOSTUNICO_COACH_PROMPT], userMsg: JSON.stringify({ lead: contact?.name, needsPersonalName: hostunicoNeedsName(contact?.name, transcript), country: contact?.hostunico_country || 'GB', recipient: { callingNumberType: reportPhoneKind(contact?.phone), confirmedMobile: contact?.hostunico_sms_phone || null }, mode, advertisedProperty: listing.data, report: reportContext, approvedOpening, transcript, latestCaller: transcriptText }), onChunk, isAborted: () => aborted || signal.aborted });
+                    const generated = await streamCoachInternal({ apiKey: openaiKey, model: (ai.live_coach_model as string) || 'gpt-5.4-mini', hostunico: true, hostunicoTurn: { latestCaller: transcriptText, transcript, country: contact?.hostunico_country || 'GB' }, signal, systemMessages: [HOSTUNICO_COACH_PROMPT], userMsg: JSON.stringify({ lead: contact?.name, needsPersonalName: hostunicoNeedsName(contact?.name, transcript), country: contact?.hostunico_country || 'GB', recipient: { callingNumberType: reportPhoneKind(contact?.phone), confirmedMobile: contact?.hostunico_sms_phone || null }, mode, advertisedProperty: listing.data, report: reportContext, approvedOpening, transcript, latestCaller: transcriptText }), onChunk, isAborted: () => aborted || signal.aborted });
                     return generated?.body || null;
                   },
                   onChunk: (text, first) => { if (first) log('Hostunico first words'); writer.schedule(text); },

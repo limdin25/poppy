@@ -46,8 +46,10 @@ describe('fast answers stay current', () => {
     expect(html).not.toContain('62%');
   });
   it('prioritises a refusal and does not confuse earning potential with our fee', () => {
-    expect(hostunicoInstantAnswer('Not interested, your fee is too much')?.key).toBe('hostunico-stop');
-    expect(hostunicoInstantAnswer('Not interested')?.nextQuestion).toBe('');
+    // 3 Oct 2026: a first soft no about price is rebutted with the market fee comparison.
+    expect(hostunicoInstantAnswer('Not interested, your fee is too much')?.key).toBe('hostunico-too-expensive');
+    expect(hostunicoInstantAnswer('Not interested, stop calling')?.key).toBe('hostunico-stop');
+    expect(hostunicoInstantAnswer('Stop calling me')?.nextQuestion).toBe('');
     expect(hostunicoInstantAnswer('How much can my property make?')).toBeNull();
     expect(hostunicoInstantAnswer('How much is it?', 'US')?.say).toContain('$29');
     expect(splitHostunicoCoach('SAY: One answer.\nASK: One question?')).toEqual({ say: 'One answer.', ask: 'One question?' });

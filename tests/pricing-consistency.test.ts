@@ -127,3 +127,18 @@ describe('the sales floor never quotes the monthly tiers', () => {
     expect(faq).not.toMatch(/nothing(’|')?s charged for \d+ days/i)
   })
 })
+
+// Hugo, 3 Oct 2026: the Hostunico price objection compares our 9% + VAT with
+// what most managers charge. That comparison is written once, in
+// hostunico-pricing.ts, and everything else imports it so it cannot drift.
+describe('the Hostunico market fee comparison has one source', () => {
+  const CANON_FEE = 'supabase/functions/_shared/hostunico-pricing.ts'
+  it('is defined once and nowhere else spells out the range', () => {
+    const files = [...SOURCE_FILES, ...walk('supabase/functions')]
+    const LINE = 'Most managers charge somewhere between 15 and 20 percent, ours is 9 percent plus VAT.'
+    // The generated objections module may quote the canon line verbatim, nothing else.
+    const offenders = files.filter((f) => f !== CANON_FEE && /\b15 (?:and|to) 20 ?(?:percent|%)/i.test(read(f).split(LINE).join('')))
+    expect(offenders).toEqual([])
+    expect(read(CANON_FEE)).toContain("HOSTUNICO_MARKET_FEE_LINE = 'Most managers charge somewhere between 15 and 20 percent, ours is 9 percent plus VAT.'")
+  })
+})

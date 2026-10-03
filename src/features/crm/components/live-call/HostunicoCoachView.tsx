@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { hostunicoInstantAnswer } from '../../../../../supabase/functions/_shared/hostunico-sales';
-import { splitHostunicoCoach } from '../../../../../supabase/functions/_shared/hostunico-coach';
+import { hostunicoSettledSay, splitHostunicoCoach } from '../../../../../supabase/functions/_shared/hostunico-coach';
 import CallTextSizeControls, { useCallTextSize } from './CallTextSizeControls';
 import SpokenText from './SpokenText';
 import type { HostunicoLiveSpeech, HostunicoSpeech } from '../../lib/hostunicoSpeech';
@@ -19,11 +19,18 @@ export default function HostunicoCoachView({ lines, speech = [], cards, active, 
   const lastCaller = callerSpeech || [...lines].reverse().find((line) => line.speaker !== 'agent');
   const lastAgent = [...lines].reverse().find((line) => line.speaker === 'agent');
   const latest = cards.at(-1);
-  const instant = lastCaller ? hostunicoInstantAnswer(lastCaller.body, country, { phone, mobile: reportMobile }) : null;
+  // Earlier caller lines decide whether a soft no is the first (rebut) or the second (accept).
+  const callerHistory = lastCaller ? lines.filter((line) => line.speaker !== 'agent' && line.id !== lastCaller.id && line.ts < lastCaller.ts && line.body !== lastCaller.body).map((line) => line.body) : [];
+  const instant = lastCaller ? hostunicoInstantAnswer(lastCaller.body, country, { phone, mobile: reportMobile }, callerHistory) : null;
   const sameSpeech = callerSpeech && latest?.meta?.utterance_id === callerSpeech.utterance_id;
   const growingSpeech = sameSpeech && latest?.meta?.provisional && !callerSpeech?.is_final && !!latest.meta.source_text && callerSpeech.body.toLowerCase().startsWith(latest.meta.source_text.toLowerCase()) && !/\b(actually|instead|i mean|but|not|sorry)\b/i.test(callerSpeech.body.slice(latest.meta.source_text.length));
   const current = latest && (callerSpeech ? sameSpeech && (latest.meta?.source_sequence === callerSpeech.sequence || growingSpeech) : !lastCaller || latest.ts >= lastCaller.ts);
-  const parsed = current ? splitHostunicoCoach(latest.body) : { say: '', ask: '' };
+  const streamed = current ? splitHostunicoCoach(latest.body) : { say: '', ask: '' };
+  // Pedro, 3 Oct 2026: half-typed words jumping about read as "still typing".
+  // While it streams, show whole sentences only; once ASK starts, SAY is done.
+  const streamingNow = !!current && latest?.status === 'streaming';
+  const sayDone = !streamingNow || /(?:\n|\s)ASK:/i.test(latest?.body || '');
+  const parsed = streamingNow ? { say: sayDone ? streamed.say : hostunicoSettledSay(streamed.say), ask: /[?.!]$/.test(streamed.ask) ? streamed.ask : '' } : streamed;
   const hasCurrentAnswer = !!parsed.say && !['...', '\u2026'].includes(parsed.say);
   const answer = hasCurrentAnswer ? parsed : instant ? { say: instant.say, ask: instant.nextQuestion } : { say: '', ask: '' };
   const thinking = !!lastCaller && !instant && (!current || (latest?.status === 'streaming' && (!answer.say || ['...', '\u2026'].includes(answer.say))));
@@ -46,12 +53,12 @@ export default function HostunicoCoachView({ lines, speech = [], cards, active, 
           {offline ? <p style={secondaryText} className="m-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">The AI coach is switched off. Use the script beside you.</p> : <section className="flex min-h-full flex-col border-l-4 border-emerald-500 p-5" data-testid="hostunico-current-answer">
             <p style={labelText} className="mb-3 text-[11px] font-bold uppercase tracking-wide text-emerald-800">{thinking ? 'Listening' : answer.say ? provisional ? 'Early suggestion' : 'Say this' : 'When they pick up'}</p>
             <p style={{ fontSize: thinking ? Math.max(18, Math.round(size * 0.6)) : size }} className="whitespace-pre-line font-semibold leading-[1.4] tracking-tight text-slate-900" data-testid="hostunico-next-line">{thinking ? 'Picking the next answer...' : <SpokenText text={answer.say || opener} spoken={spoken} />}</p>
-            {answer.ask && <div className="mt-5 border-t border-emerald-100 pt-4"><p style={labelText} className="mb-2 text-[11px] font-bold uppercase tracking-wide text-blue-700">Then ask</p><p style={{ fontSize: size }} className="font-semibold leading-[1.4] text-slate-800" data-testid="hostunico-next-question"><SpokenText text={answer.ask} spoken={spoken} /></p></div>}
+            {answer.ask && <div className="mt-5 border-t border-emerald-100 pt-4"><p style={labelText} className="mb-2 text-[11px] font-bold uppercase tracking-wide text-blue-700">Then ask</p><p style={{ fontSize: Math.round(size * 0.75) }} className="font-semibold leading-[1.4] text-slate-800" data-testid="hostunico-next-question"><SpokenText text={answer.ask} spoken={spoken} /></p></div>}
             <p style={secondaryText} className="mt-auto pt-5 text-xs text-slate-500">{current && latest?.status === 'streaming' ? 'Updating as they speak' : 'Answer, pause, then listen.'}</p>
             {!active && <p style={secondaryText} className="mt-2 text-xs leading-relaxed text-slate-500">The coach listens during your call and shows words you can say. It never speaks to the lead or sends a message.</p>}
           </section>}
         </div>
-        {!offline && (lastCaller || lastAgent || earlierCards.length > 0) && <footer className="max-h-[25%] shrink-0 space-y-2 overflow-y-auto border-t bg-slate-50 px-3 py-2" aria-label="Recent speech and earlier suggestions">
+        {!offline && (lastCaller || lastAgent || earlierCards.length > 0) && <footer className="max-h-[20%] shrink-0 space-y-2 overflow-y-auto border-t bg-slate-50 px-3 py-2" aria-label="Recent speech and earlier suggestions">
           <div className="grid grid-cols-2 gap-3">
             {lastAgent && <div className="min-w-0" data-testid="hostunico-recent-agent-speech"><p style={labelText} className="mb-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">{agentName} just said</p><p style={secondaryText} className="line-clamp-2 text-xs leading-relaxed text-slate-500" title={lastAgent.body}>{lastAgent.body}</p></div>}
             {lastCaller && <div className="min-w-0"><p style={labelText} className="mb-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">They just said</p><p style={secondaryText} className="line-clamp-2 text-xs leading-relaxed text-slate-500" title={lastCaller.body}>{lastCaller.body}</p></div>}

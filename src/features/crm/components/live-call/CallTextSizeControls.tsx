@@ -2,7 +2,8 @@ import { useState } from 'react';
 
 export const CALL_TEXT_SIZES = {
   script: { initial: 24, min: 18, max: 36 },
-  coach: { initial: 36, min: 22, max: 48 },
+  // Pedro, 3 Oct 2026: the coach was not big enough. Raised from 36 (max 48).
+  coach: { initial: 44, min: 24, max: 64 },
 } as const;
 type Pane = keyof typeof CALL_TEXT_SIZES;
 type TextStorage = Pick<Storage, 'getItem' | 'setItem'>;
@@ -12,11 +13,20 @@ function browserStorage(): TextStorage | undefined {
   catch { return undefined; }
 }
 
+// The coach moved to a new key when its sizes grew, so a size saved under the
+// old, smaller range is lifted to the new default instead of shrinking it.
+const storageKey = (pane: Pane) => pane === 'coach' ? 'hostunico:coach-font-size-v2' : `hostunico:${pane}-font-size`;
+
 export function readCallTextSize(pane: Pane, storage = browserStorage()): number {
   const bounds = CALL_TEXT_SIZES[pane];
   try {
-    const saved = Number(storage?.getItem(`hostunico:${pane}-font-size`));
-    return Number.isFinite(saved) && saved >= bounds.min && saved <= bounds.max
+    const raw = storage?.getItem(storageKey(pane));
+    if (raw == null && pane === 'coach') {
+      const old = Number(storage?.getItem('hostunico:coach-font-size'));
+      return Number.isFinite(old) && old > bounds.initial && old <= bounds.max ? old : bounds.initial;
+    }
+    const saved = Number(raw);
+    return raw != null && Number.isFinite(saved) && saved >= bounds.min && saved <= bounds.max
       ? saved : bounds.initial;
   } catch { return bounds.initial; }
 }
@@ -24,7 +34,7 @@ export function readCallTextSize(pane: Pane, storage = browserStorage()): number
 export function saveCallTextSize(pane: Pane, value: number, storage = browserStorage()): number {
   const bounds = CALL_TEXT_SIZES[pane];
   const next = Number.isFinite(value) ? Math.max(bounds.min, Math.min(bounds.max, value)) : bounds.initial;
-  try { storage?.setItem(`hostunico:${pane}-font-size`, String(next)); }
+  try { storage?.setItem(storageKey(pane), String(next)); }
   catch { /* Text controls still work when local storage is unavailable. */ }
   return next;
 }
