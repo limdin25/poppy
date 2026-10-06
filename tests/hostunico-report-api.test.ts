@@ -3,7 +3,7 @@ const fixture = vi.hoisted(() => {
   process.env.SUPABASE_URL = 'https://test.supabase.co';
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'test';
   process.env.HOSTUNICO_CRM_TOKEN = 'test-token';
-  return { tables: {} as Record<string, any[]>, admin: false, smsRequests: 0 };
+  return { tables: {} as Record<string, any[]>, admin: false, smsRequests: 0, worked: [] as string[] };
 });
 vi.mock('@supabase/supabase-js', () => {
   class Query {
@@ -40,6 +40,7 @@ vi.mock('@supabase/supabase-js', () => {
     auth: { getUser: async (token: string) => ({ data: { user: token === 'good' ? { id: 'pedro' } : null } }) },
     rpc: async (name: string, args?: any) => {
       if (name === 'wk_hostunico_call_context') fixture.tables.wk_contacts.find((row) => row.id === args.p_contact).custom_fields = { hostunico_listing_id: args.p_listing, hostunico_script_mode: args.p_mode };
+      if (name === 'wk_dialer_servable_contacts') return { data: args.p_contact_ids.filter((id: string) => !(fixture.worked || []).includes(id)), error: null };
       return { data: name === 'wk_is_admin' ? fixture.admin : true, error: null };
     },
     from: (table: string) => new Query(table),
@@ -51,7 +52,7 @@ function request(action: string, extra: Record<string, unknown> = {}, token = 'g
   return new Request('https://app.heyelsie.com/api/crm/sa-report', { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ action, listing_id: listingId, ...extra }) });
 }
 beforeEach(() => {
-  fixture.admin = false; fixture.smsRequests = 0;
+  fixture.admin = false; fixture.smsRequests = 0; fixture.worked = [];
   fixture.tables = {
     wk_contacts: [{ id: 'contact', desk: 'sa', owner_agent_id: 'pedro', do_not_call: false, phone: '+447700900123' }],
     sa_listings: [{ id: listingId, wk_contact_id: 'contact', rent_pcm: 1000, hostunico_call_eligible: true }],
@@ -157,6 +158,25 @@ describe('human report sends', () => {
     expect(await response.json()).toMatchObject({ ready: 2, ahead: 108, nextOffset: 106 });
     expect(fetch).toHaveBeenCalledTimes(2);
     expect(fixture.tables.sa_property_reports).toHaveLength(108);
+    expect(fixture.smsRequests).toBe(0);
+  });
+  it('does not prepare reports for contacts the dialler would not serve (worked, no follow-up due)', async () => {
+    const campaign = '5d9657f9-d9b4-4e27-a2d1-83db80867f92';
+    const property = { postcode: 'E14', bedrooms: 1, bathrooms: 1, wholeProperty: true, areaEstimate: true };
+    fixture.tables.wk_campaign_agents = [{ campaign_id: campaign, agent_id: 'pedro' }];
+    fixture.tables.wk_contacts = Array.from({ length: 4 }, (_, i) => ({ id: `lead-${i}`, desk: 'sa', owner_agent_id: 'pedro', do_not_call: false }));
+    fixture.tables.wk_dialer_queue = fixture.tables.wk_contacts.map((contact) => ({ campaign_id: campaign, contact_id: contact.id, status: 'pending', scheduled_for: null, wk_contacts: contact }));
+    fixture.tables.sa_listings = fixture.tables.wk_contacts.map((contact, i) => ({ id: `${i}`.padStart(36, '0'), wk_contact_id: contact.id, source: 'spareroom', hostunico_call_eligible: true, report_property: property, rent_pcm: 1000, source_price: '£1000 pcm' }));
+    fixture.tables.sa_property_reports = [];
+    fixture.worked = ['lead-0', 'lead-1'];
+    const started: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init: RequestInit) => {
+      started.push(JSON.parse(String(init.body)).id);
+      return Response.json({ stage: 'ready', reportUrl: 'https://hostunico.com/r/A1b2C', reportPitch: { monthlyGbpPence: 200000, askingRentGbpPence: 100000 } });
+    }));
+    const response = await handler(request('prepare_queue', { campaign_id: campaign, offset: 0 }));
+    expect(await response.json()).toMatchObject({ ahead: 2, nextOffset: null });
+    expect(started.sort()).toEqual(['000000000000000000000000000000000002', '000000000000000000000000000000000003']);
     expect(fixture.smsRequests).toBe(0);
   });
   it('repairs the current failed report on opening it, with no retry click or outbound message', async () => {

@@ -97,9 +97,34 @@ async function fetchQueueRows(campaignId: string | null): Promise<QueueLead[]> {
 
   const { data, error } = await q;
   if (error) throw new Error(error.message);
-  return ((data ?? []) as QueueRow[])
+  const leads = ((data ?? []) as QueueRow[])
     .map(rowToLead)
     .filter((l): l is QueueLead => l !== null);
+  return keepServable(leads);
+}
+
+// 2026-10-06: a contact Pedro has already worked (Report sent, Not interested
+// and so on) stays off the list unless a call follow-up is due. The server
+// decides, through the same SQL function wk_pick_next_lead and
+// wk_claim_queue_row use, so the stage list lives in one place. If the check
+// fails the list is shown as is: the claim still refuses a worked contact.
+async function keepServable(leads: QueueLead[]): Promise<QueueLead[]> {
+  if (leads.length === 0) return leads;
+  const ids = [...new Set(leads.map((l) => l.contactId))];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase as any).rpc('wk_dialer_servable_contacts', {
+    p_contact_ids: ids,
+  });
+  if (error || !Array.isArray(data)) {
+    console.warn('[dialer-pro] servable check failed, showing the queue unfiltered', error?.message);
+    return leads;
+  }
+  const servable = new Set(
+    (data as Array<string | { wk_dialer_servable_contacts?: string }>).map((r) =>
+      typeof r === 'string' ? r : r?.wk_dialer_servable_contacts ?? '',
+    ),
+  );
+  return leads.filter((l) => servable.has(l.contactId));
 }
 
 export function useQueuePro(campaignId: string | null) {

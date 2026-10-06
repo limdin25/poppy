@@ -77,7 +77,14 @@ export default async function handler(req: Request): Promise<Response> {
         .or(`scheduled_for.is.null,scheduled_for.lte.${now}`).order('priority', { ascending: false }).order('scheduled_for', { ascending: true, nullsFirst: true }).order('attempts').order('created_at').order('id').limit(REPORT_SCAN_LIMIT);
       if (!admin) q = q.eq('wk_contacts.owner_agent_id', auth.user.id);
       if (body.contact_id) q = q.neq('contact_id', body.contact_id);
-      const queue = check(await q);
+      const scanned = check(await q);
+      // Worked contacts (Report sent, Not interested and so on) with no call
+      // follow-up due are not served by the dialler, so no report is prepared
+      // for them either. Same SQL function the dialler uses.
+      // If the check fails the scan is used as before.
+      const servable = await supa.rpc('wk_dialer_servable_contacts', { p_contact_ids: scanned.map((r) => r.contact_id) });
+      const servableIds = !servable.error && Array.isArray(servable.data) ? new Set(servable.data as string[]) : null;
+      const queue = servableIds ? scanned.filter((r) => servableIds.has(r.contact_id)) : scanned;
       let prepared = 0, ready = 0, preparing = 0, needsDetails = 0, failed = 0;
       // One pair per request stays below the edge response deadline. The desk
       // continues until twenty reports are ready, going past unavailable leads.

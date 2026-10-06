@@ -407,8 +407,15 @@ export function CallerPad() {
       if (!claimedRow) {
         // Row is stuck at a non-pending status (e.g. 'dialing' from a
         // previous skip without cleanup). Mark it 'missed' so it stops
-        // blocking position #1 in the queue.
-        void updateQueueStatus(row.id, 'missed');
+        // blocking position #1 in the queue. A row still 'pending' was held
+        // back on purpose (worked contact, no follow-up due, 2026-10-06), so
+        // it is left alone to come back when the follow-up is due.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data: still } = await (supabase.from('wk_dialer_queue' as any) as any)
+          .select('status')
+          .eq('id', row.id)
+          .maybeSingle();
+        if (still?.status !== 'pending') void updateQueueStatus(row.id, 'missed');
         continue;
       }
 
@@ -1972,7 +1979,7 @@ function CallHistoryRow({ call: c, onSaved: _onSaved, onEditContact }: { call: i
   };
 
   const dateStr = c.startedAt
-    ? new Date(c.startedAt).toLocaleString('en-GB', {
+    ? new Date(c.startedAt).toLocaleString('en-GB', { timeZone: 'Europe/London',
         day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
       })
     : '';

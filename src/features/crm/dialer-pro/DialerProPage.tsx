@@ -586,9 +586,7 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
     }
     if (spend.isLimitReached) { onToast('Daily spend limit reached', 'error'); return; }
     if (ks.allDialers) { onToast('All dialers paused (kill switch)', 'error'); return; }
-    const next = await machine.pickNextLead(queue);
-    if (!next) { onToast('No leads in queue', 'info'); return; }
-    void machine.dialLead(next);
+    if (!(await machine.dialNext(queue))) onToast('No leads in queue', 'info');
   }, [camp, deviceReady, reconnectDevice, spend.isLimitReached, ks.allDialers, machine, queue, onToast]);
 
   // Live call timer
@@ -662,7 +660,7 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
       .maybeSingle();
     const existing = (data?.custom_fields as Record<string, string>) ?? {};
     const prev = existing.notes ?? '';
-    const stamp = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' });
+    const stamp = new Date().toLocaleDateString('en-GB', { timeZone: 'Europe/London', day: '2-digit', month: 'short', year: '2-digit' });
     const updated = prev ? `${notes.trim()} [${stamp}]\n${prev}` : `${notes.trim()} [${stamp}]`;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (supabase.from('wk_contacts' as any) as any)
@@ -782,9 +780,7 @@ export function DialerProContent({ autoCallContactId, pipelineColumnId, scriptKe
         }
         return;
       }
-      const next = await machine.pickNextLead(queue);
-      if (next) void machine.dialLead(next);
-      else onToast('Queue empty', 'info');
+      if (!(await machine.dialNext(queue))) onToast('Queue empty', 'info');
     }, 200);
   }, [machine, queue, onToast, state.currentLead, state.pauseAfterCall, saveNotesToContact, removeFromQueue, pipelineColumnId, dialColumnContact]);
 
@@ -1508,7 +1504,7 @@ function DialerDebugOverlay(props: DialerDebugOverlayProps) {
   }, []);
   if (!enabled) return null;
 
-  const ts = (n: number) => new Date(n).toLocaleTimeString();
+  const ts = (n: number) => new Date(n).toLocaleTimeString(undefined, { timeZone: 'Europe/London' });
   const copyAll = () => {
     const lines = [
       `phase=${props.phase}`,

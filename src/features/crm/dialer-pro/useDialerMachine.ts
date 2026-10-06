@@ -202,9 +202,10 @@ export function useDialerMachine({ userId, campaignId, pipelineId: _pipelineId, 
     []
   );
 
-  // Dial a lead
+  // Dial a lead. Resolves 'refused' only when the server would not hand the
+  // row over, so the auto-advance paths can move on to the next lead.
   const dialLead = useCallback(
-    async (lead: QueueLead) => {
+    async (lead: QueueLead): Promise<'refused' | void> => {
       if (phaseRef.current !== 'idle' && phaseRef.current !== 'paused') return;
 
       // PR 46 (Hugo 2026-04-26) regression match: pre-dial
@@ -226,8 +227,17 @@ export function useDialerMachine({ userId, campaignId, pipelineId: _pipelineId, 
       }
       const claimedRow = Array.isArray(claimed) ? claimed[0] : claimed;
       if (!claimedRow) {
-        void updateQueueStatus(lead.queueRowId, 'missed');
-        return;
+        // Refused. If the row is still pending, the server held it back on
+        // purpose (a worked contact with no call follow-up due yet, 2026-10-06),
+        // so leave it pending: it comes back by itself when the follow-up is
+        // due. Anything else is a stuck row and is retired as before.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data: row } = await (supabase.from('wk_dialer_queue' as any) as any)
+          .select('status')
+          .eq('id', lead.queueRowId)
+          .maybeSingle();
+        if (row?.status !== 'pending') void updateQueueStatus(lead.queueRowId, 'missed');
+        return 'refused';
       }
 
       // Which script is on the agent's screen for THIS lead. Persisted onto
@@ -365,6 +375,22 @@ export function useDialerMachine({ userId, campaignId, pipelineId: _pipelineId, 
       return null;
     },
     []
+  );
+
+  // Pick and dial the next lead, stepping past any the server refuses so the
+  // dialler never stalls on one. Resolves false when nothing could be dialled.
+  const dialNext = useCallback(
+    async (queue: QueueLead[]): Promise<boolean> => {
+      const refused = new Set<string>();
+      for (let i = 0; i <= queue.length; i += 1) {
+        const next = await pickNextLead(queue.filter((l) => !refused.has(l.queueRowId)));
+        if (!next) return false;
+        if ((await dialLead(next)) !== 'refused') return true;
+        refused.add(next.queueRowId);
+      }
+      return false;
+    },
+    [pickNextLead, dialLead]
   );
 
   // Hang up
@@ -544,11 +570,9 @@ export function useDialerMachine({ userId, campaignId, pipelineId: _pipelineId, 
   const dialNow = useCallback(
     async (queue: QueueLead[]) => {
       dispatch({ type: 'PACING_CLEARED' });
-      const next = await pickNextLead(queue);
-      if (next) void dialLead(next);
-      else onToast('Queue empty', 'info');
+      if (!(await dialNext(queue))) onToast('Queue empty', 'info');
     },
-    [pickNextLead, dialLead, onToast]
+    [dialNext, onToast]
   );
 
   return {
@@ -560,6 +584,7 @@ export function useDialerMachine({ userId, campaignId, pipelineId: _pipelineId, 
     applying,
     dialLead,
     pickNextLead,
+    dialNext,
     hangUp,
     muteToggle,
     holdToggle,
