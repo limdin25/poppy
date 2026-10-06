@@ -81,7 +81,7 @@ describe('the webhook', () => {
     const builder = find.indexOf('matchBuilderBySender(supa, email, contactName)')
     expect(builder).toBeGreaterThan(0)
     expect(builder).toBeLessThan(find.indexOf('matchByNamedHouse(supa, emailText)'))
-    expect(builder).toBeLessThan(find.indexOf(".from('wk_contacts')\n    .insert("))
+    expect(builder).toBeLessThan(find.indexOf(".rpc('wk_ingest_contacts'"))
   })
 
   it('only accepts a builder we messaged, and refuses on two', () => {

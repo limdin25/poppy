@@ -585,10 +585,10 @@ async function main() {
     // Upsert by phone with ignoreDuplicates: wk_contacts.phone is globally
     // UNIQUE, so a plain upsert would OVERWRITE somebody else's lead if an
     // estate agency number is already in the CRM. Never do that.
-    await db.from('wk_contacts').upsert({
+    await db.rpc('wk_ingest_contacts', { p_contacts: {
       name: branch.agency, phone: branch.phone,
       owner_agent_id: agentId, custom_fields: facts, is_hot: false,
-    }, { onConflict: 'phone', ignoreDuplicates: true })
+    } })
 
     const { data: contact } = await db.from('wk_contacts')
       .select('id, owner_agent_id').eq('phone', branch.phone).maybeSingle()

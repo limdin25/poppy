@@ -315,8 +315,7 @@ export async function ensureBuilderContact(
     await tagBuilderHouse(sb, existing.id as string, tag);
     return existing.id as string;
   }
-  const { data: created, error } = await (sb.from('wk_contacts') as any)
-    .insert({
+  const { data: created, error } = await sb.rpc('wk_ingest_contacts', { p_contacts: {
       name: builder.name,
       phone: builder.phone,
       owner_agent_id: ownerAgentId,
@@ -324,7 +323,7 @@ export async function ensureBuilderContact(
         lead_type: 'builder', builder_id: builder.id,
         ...(tag ? { builder_property: tag } : {}),
       },
-    })
+    } })
     .select('id')
     .single();
   if (error) { console.error('[builder-outreach] contact create failed', error.message); return null; }

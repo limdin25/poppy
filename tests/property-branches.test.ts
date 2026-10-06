@@ -174,7 +174,7 @@ describe('the queue script avoids its siblings two traps', () => {
   it('never overwrites a contact another agent owns', () => {
     // wk_contacts.phone is globally unique and wk_contact_locked_agent has no
     // unlock, so stealing a row permanently blocks one of the two agents.
-    expect(SCRIPT).toMatch(/ignoreDuplicates: true/)
+    expect(SCRIPT).toContain("rpc('wk_ingest_contacts'")
     expect(SCRIPT).toMatch(/contact\.owner_agent_id !== agentId/)
     expect(SCRIPT).toMatch(/already owned by another agent/)
   })

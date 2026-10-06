@@ -869,9 +869,7 @@ async function findOrCreateContact(
     if (ownerDesk === 'auction' || ownerDesk === 'sa') newDesk = ownerDesk;
   }
 
-  const { data: inserted, error: insErr } = await supa
-    .from('wk_contacts')
-    .insert({
+  const { data: inserted, error: insErr } = await supa.rpc('wk_ingest_contacts', { p_contacts: {
       desk: newDesk,
       name: contactName || email,
       email,
@@ -884,7 +882,7 @@ async function findOrCreateContact(
         received_at_mailbox: toEmail || null,
       },
       is_hot: false,
-    })
+    } })
     .select('id')
     .single();
 

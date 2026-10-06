@@ -97,17 +97,12 @@ async function upsertContact(
 
   // Atomic insert; on partial-index collision (race with a concurrent
   // poll), the upsert no-ops and we re-read to get the existing id.
-  const { data: inserted, error: insErr } = await supa
-    .from('wk_contacts')
-    .upsert(
-      {
+  const { data: inserted, error: insErr } = await supa.rpc('wk_ingest_contacts', { p_contacts: {
         name: phone,
         phone,
         custom_fields: { source: 'unipile_poll', first_message_id: firstMessageId },
         is_hot: false,
-      },
-      { onConflict: 'phone', ignoreDuplicates: true }
-    )
+      } })
     .select('id')
     .maybeSingle();
 

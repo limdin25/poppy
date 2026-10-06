@@ -222,13 +222,11 @@ serve(async (req) => {
       }
       return json(200, { ok: true, wk_contact_id: existing.id, created: false });
     }
-    const { data: created, error: createErr } = await supa
-      .from('wk_contacts')
-      .insert({
+    const { data: created, error: createErr } = await supa.rpc('wk_ingest_contacts', { p_contacts: {
         name: firstName || phone,
         phone,
         custom_fields: { product: 'heypubli', owner_name: firstName, source: 'heypubli_funnel' },
-      })
+      } })
       .select('id')
       .maybeSingle();
     if (createErr) {
@@ -512,13 +510,11 @@ serve(async (req) => {
           .eq('id', existing.id);
       }
     } else {
-      const { data: created, error: createErr } = await supa
-        .from('wk_contacts')
-        .insert({
+      const { data: created, error: createErr } = await supa.rpc('wk_ingest_contacts', { p_contacts: {
           name: firstName || toE164,
           phone: toE164,
           custom_fields: { product: 'heypubli', owner_name: firstName, source: 'heypubli_funnel' },
-        })
+        } })
         .select('id')
         .maybeSingle();
       if (createErr) {

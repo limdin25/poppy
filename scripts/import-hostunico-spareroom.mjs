@@ -31,8 +31,8 @@ const timestamp = Date.now();
 for (const [index, c] of plan.contacts.entries()) {
   let contact = existing.find((row) => row.phone === c.phone);
   if (!contact) {
-    contact = check(await supa.from('wk_contacts').insert({ name: c.name, phone: c.phone, desk: 'sa', owner_agent_id: pedro.id, pipeline_column_id: stage.id, ai_enabled: false,
-      custom_fields: { lead_type: 'hostunico_owner', source: 'spareroom', owner_name: c.name, advertiser_type: c.advertiserType, next_step: 'Offer the property report', property_count: String(c.properties.length) } }).select('id,do_not_call').single());
+    contact = check(await supa.rpc('wk_ingest_contacts', { p_contacts: { name: c.name, phone: c.phone, desk: 'sa', owner_agent_id: pedro.id, pipeline_column_id: stage.id, ai_enabled: false,
+      custom_fields: { lead_type: 'hostunico_owner', source: 'spareroom', owner_name: c.name, advertiser_type: c.advertiserType, next_step: 'Offer the property report', property_count: String(c.properties.length) } } }).select('id,do_not_call').single());
     contactsAdded++;
   }
   for (const [pIndex, property] of c.properties.entries()) {

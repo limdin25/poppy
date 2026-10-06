@@ -51,3 +51,6 @@ video/node_modules/
 
 # 12GB of scrape output, never the repo (2026-08-25)
 exports/
+
+# Local operational reports can contain contact data.
+/_brain/

@@ -319,9 +319,7 @@ serve(async (req: Request) => {
       } catch (e) {
         console.warn('[wk-sms-incoming] desk lookup failed (filing under houses):', e);
       }
-      const { data: inserted, error: insErr } = await supa
-        .from('wk_contacts')
-        .insert({
+      const { data: inserted, error: insErr } = await supa.rpc('wk_ingest_contacts', { p_contacts: {
           desk: newDesk,
           // The lead's own name when the form carried one, the number
           // otherwise. Naming a contact after its phone number is what made
@@ -337,7 +335,7 @@ serve(async (req: Request) => {
             ...(leadName ? { owner_name: leadName } : {}),
           },
           is_hot: false,
-        })
+        } })
         .select('id')
         .single();
 

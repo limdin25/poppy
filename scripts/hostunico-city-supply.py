@@ -252,6 +252,11 @@ def import_property(api, item, owner, stage):
                                    'rightmove_id': 'eq.spareroom:' + item['advert_id']})
     existing = api.db('wk_contacts', {'select': 'id,desk,owner_agent_id,do_not_call',
                                      'or': '(phone.eq.' + item['phone'] + ',hostunico_sms_phone.eq.' + item['phone'] + ')'})
+    if existing and not listing:
+        api.db('rpc/wk_ingest_contacts', body={'p_contacts': {
+            'name': item['name'], 'phone': item['phone'], 'desk': 'sa', 'owner_agent_id': owner,
+            'custom_fields': {'listing_url': item['url'], 'property_address': item['title'],
+                              'source': 'spareroom', 'source_batch': BATCH}}})
     if len(existing) > 1 or any(x['desk'] != 'sa' or x['owner_agent_id'] != owner for x in existing):
         raise Rejected('number_conflict_or_another_owner')
     new_contact = not existing
@@ -262,11 +267,11 @@ def import_property(api, item, owner, stage):
     if listing and Decimal(str(listing[0]['rent_pcm'])) != Decimal(str(item['rent_pcm'])):
         raise Rejected('existing_listing_price_changed')
     if not existing:
-        existing = api.db('wk_contacts', body={'name': item['name'], 'phone': item['phone'], 'desk': 'sa',
+        existing = api.db('rpc/wk_ingest_contacts', body={'p_contacts': {'name': item['name'], 'phone': item['phone'], 'desk': 'sa',
                            'owner_agent_id': owner, 'pipeline_column_id': stage, 'ai_enabled': False,
                            'custom_fields': {'lead_type': 'hostunico_owner', 'source': 'spareroom',
                                              'source_batch': BATCH, 'owner_name': item['name'],
-                                             'advertiser_type': item['authority'], 'next_step': 'Offer the property report'}})
+                                             'advertiser_type': item['authority'], 'next_step': 'Offer the property report'}}})
     contact_id = existing[0]['id']
     new_property = not listing
     if not listing:

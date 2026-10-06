@@ -159,6 +159,19 @@ async function main() {
     const { data: c } = await db.from('wk_contacts').select('id, phone, desk, custom_fields').in('phone', chunk)
     for (const r of c ?? []) others.set(r.phone, r)
   }
+  if (APPLY) {
+    const seenListings = new Set([...history.values()].flat().map((l) => l.rightmove_id))
+    for (const listing of all) {
+      if (!others.has(listing.agency_phone) || seenListings.has(listing.rightmove_id)) continue
+      const { error } = await db.rpc('wk_ingest_contacts', { p_contacts: {
+        name: listing.agency, phone: listing.agency_phone, desk: 'sa',
+        custom_fields: { source: 'rightmove', listing_url: listing.listing_url,
+          property_address: listing.address, listing: listing },
+      } })
+      if (error) throw new Error(`Could not retain additional listing: ${error.message}`)
+      seenListings.add(listing.rightmove_id)
+    }
+  }
   const branches = [...perAgency.values()].map((l) => l.branch_id).filter(Boolean)
   const byBranch = new Map()
   for (let i = 0; i < branches.length; i += 200) {
@@ -223,19 +236,12 @@ async function main() {
       listing_url: p.listing_url,
     }
 
-    let contactId = p.contact?.id ?? null
-    if (!contactId) {
-      const { data: made, error } = await db.from('wk_contacts').insert({
-        name: p.agency, phone: p.agency_phone, owner_agent_id: agent.id,
-        desk: 'sa', custom_fields: facts, is_hot: false,
-      }).select('id').single()
-      if (error) { failed++; say(`  FAIL ${label}: ${error.message}`); continue }
-      contactId = made.id
-    } else {
-      await db.from('wk_contacts')
-        .update({ custom_fields: { ...(p.contact.custom_fields ?? {}), ...facts }, owner_agent_id: agent.id })
-        .eq('id', contactId)
-    }
+    const { data: made, error } = await db.rpc('wk_ingest_contacts', { p_contacts: {
+      name: p.agency, phone: p.agency_phone, owner_agent_id: agent.id,
+      desk: 'sa', custom_fields: facts, is_hot: false,
+    } }).select('id').single()
+    if (error) { failed++; say(`  FAIL ${label}: ${error.message}`); continue }
+    const contactId = made.id
 
     const { error: lErr } = await db.from('sa_listings').insert({
       rightmove_id: p.rightmove_id, branch_id: p.branch_id, agency: p.agency, agency_phone: p.agency_phone,

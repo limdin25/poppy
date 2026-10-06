@@ -225,7 +225,7 @@ async function processBatch(batch, leads) {
   let inserted = 0;
   for (let i = 0; !ORDER_ONLY && i < leads.length; i += CHUNK) {
     const rows = leads.slice(i, i + CHUNK).map((l) => ({ name: l.name, phone: l.phone, owner_agent_id: batch.agentId, pipeline_column_id: null, custom_fields: l.customFields, is_hot: false }));
-    const { data, error } = await sb.from('wk_contacts').upsert(rows, { onConflict: 'phone', ignoreDuplicates: true }).select('id, phone');
+    const { data, error } = await sb.rpc('wk_ingest_contacts', { p_contacts: rows }).select('id, phone');
     if (error) { console.error(`[${batch.label}] upsert:`, error.message); process.exit(1); }
     inserted += (data ?? []).length;
   }

@@ -290,8 +290,7 @@ async function sendToCrm(rows: Row[], tag: string, onProgress: (done: number, to
   for (let i = 0; i < inserts.length; i += CHUNK) {
     const slice = inserts.slice(i, i + CHUNK)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data, error } = await (supabase.from('wk_contacts' as any) as any)
-      .upsert(slice, { onConflict: 'phone', ignoreDuplicates: true })
+    const { data, error } = await (supabase as any).rpc('wk_ingest_contacts', { p_contacts: slice })
       .select('id')
     if (error) { errors.push(error.message); continue }
     inserted += ((data ?? []) as unknown[]).length

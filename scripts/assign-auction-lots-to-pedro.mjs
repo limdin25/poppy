@@ -160,16 +160,16 @@ async function main() {
     }
     let contactId = existing?.id ?? null
     if (!contactId) {
-      const { data: made, error } = await db.from('wk_contacts').insert({
+      const { data: made, error } = await db.rpc('wk_ingest_contacts', { p_contacts: {
         name: office.agency, phone: office.phone, email: a.office_email || null,
         owner_agent_id: agent.id, desk: 'auction', custom_fields: facts, is_hot: false,
-      }).select('id').single()
+      } }).select('id').single()
       if (error) {
         // An email already on another contact is the usual cause: file without it.
-        const { data: retry, error: e2 } = await db.from('wk_contacts').insert({
+        const { data: retry, error: e2 } = await db.rpc('wk_ingest_contacts', { p_contacts: {
           name: office.agency, phone: office.phone, owner_agent_id: agent.id,
           desk: 'auction', custom_fields: facts, is_hot: false,
-        }).select('id').single()
+        } }).select('id').single()
         if (e2) { say(`  SKIP ${label}: could not create the contact (${e2.message})`); continue }
         contactId = retry.id
       } else {

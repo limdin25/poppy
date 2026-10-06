@@ -231,7 +231,7 @@ describe('the paid gate is wired into every lead path, and runs LAST', () => {
 
   it('screens before anything is written to the CRM', () => {
     const src = readFileSync(resolve(root, 'scripts/feed-maria-leads.mjs'), 'utf8')
-    expect(src.indexOf('dropDeadNumbers(')).toBeLessThan(src.indexOf(".from('wk_contacts')\n    .insert("))
+    expect(src.indexOf('dropDeadNumbers(')).toBeLessThan(src.indexOf(".rpc('wk_ingest_contacts'"))
   })
 
   it('prints a cost estimate BEFORE it spends, and can be turned off entirely', () => {

@@ -262,9 +262,9 @@ async function handleCrmWarmupCall(
     if (existing) {
       contactId = existing.id;
     } else {
-      const { data: created } = await supabase.from('wk_contacts').insert({
+      const { data: created } = await supabase.rpc('wk_ingest_contacts', { p_contacts: {
         name: 'New lead', phone: fromNumber, custom_fields: { source: 'ai_voice_inbound' },
-      }).select('id').single();
+      } }).select('id').single();
       contactId = created?.id;
       if (!contactId) return { ok: false, crm_warmup: true, skipped: 'contact_failed' };
     }

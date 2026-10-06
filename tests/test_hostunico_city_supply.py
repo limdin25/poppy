@@ -174,6 +174,16 @@ class HistoryTests(unittest.TestCase):
                 module.import_property(api, self.item(), 'pedro', 'new-lead')
             self.assertEqual(api.writes, [])
 
+    def test_blocked_new_property_is_attached_as_a_note_without_reassigning_or_queuing(self):
+        for api in [self.Api(desk='auction'), self.Api(opted_out=True)]:
+            original = api.db
+            api.db = lambda table, *a, **k: [] if table == 'sa_listings' and k.get('body') is None else original(table, *a, **k)
+            item = module.screen(ScreeningTests().row(), advert())
+            with self.assertRaises(module.Rejected):
+                module.import_property(api, item, 'pedro', 'new-lead')
+            self.assertEqual([table for table, _ in api.writes], ['rpc/wk_ingest_contacts'])
+            self.assertEqual(api.writes[0][1]['p_contacts']['custom_fields']['listing_url'], item['url'])
+
     def test_changed_listing_phone_does_not_leave_an_orphan_contact(self):
         api = self.Api()
         original = api.db

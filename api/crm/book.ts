@@ -78,12 +78,12 @@ export default async function handler(req: Request): Promise<Response> {
       last_contact_at: new Date().toISOString(),
     }).eq('id', contactId);
   } else {
-    const { data: created, error: cErr } = await supabase.from('wk_contacts').insert({
+    const { data: created, error: cErr } = await supabase.rpc('wk_ingest_contacts', { p_contacts: {
       name: name || 'New lead', phone, is_hot: true,
       ...(bookedColId ? { pipeline_column_id: bookedColId } : {}),
       ...aiOff,
       custom_fields: { source: 'ai_voice_booking' },
-    }).select('id').single();
+    } }).select('id').single();
     if (cErr || !created) return json(500, { error: cErr?.message ?? 'contact create failed' });
     contactId = created.id;
   }

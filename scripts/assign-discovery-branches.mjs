@@ -434,13 +434,13 @@ async function main() {
 
     let contactId = existing?.id
     if (!contactId) {
-      const { data: created, error } = await db.from('wk_contacts').insert({
+      const { data: created, error } = await db.rpc('wk_ingest_contacts', { p_contacts: {
         name: branch.agency || branch.phone,
         phone: branch.phone,
         owner_agent_id: agent.id,
         custom_fields: facts,
         is_hot: false,
-      }).select('id').single()
+      } }).select('id').single()
       if (error || !created) { say(`  FAILED to create ${branch.agency}: ${error?.message}`); continue }
       contactId = created.id
     } else {

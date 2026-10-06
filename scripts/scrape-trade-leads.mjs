@@ -342,9 +342,7 @@ for (const l of picked) {
   // merge, don't clobber — scraped fields win, everything else survives
   const merged = { ...(existingCf.get(phone) || {}), ...custom_fields }
 
-  const { error } = await supa
-    .from('wk_contacts')
-    .upsert({ name: l.name, phone, custom_fields: merged }, { onConflict: 'phone', ignoreDuplicates: false })
+  const { error } = await supa.rpc('wk_ingest_contacts', { p_contacts: { name: l.name, phone, custom_fields: merged } })
   if (error) { console.warn(`  ! ${l.name}: ${error.message}`); skipped++; continue }
   imported++
 }

@@ -143,12 +143,11 @@ export async function ensureOpsContact(
     }
     return existing.id as string;
   }
-  const { data: created, error } = await (sb.from('wk_contacts') as any)
-    .insert({
+  const { data: created, error } = await sb.rpc('wk_ingest_contacts', { p_contacts: {
       name: contact.name,
       phone: contact.e164,
       custom_fields: { lead_type: 'ops', ops_name: contact.name, ops_role: contact.role },
-    })
+    } })
     .select('id')
     .single();
   if (error) {

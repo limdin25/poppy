@@ -269,27 +269,17 @@ export default function QueueManagerPro({ queue, campaignId, onRefresh, onToast 
                 onToast?.('Phone number is required', 'error');
                 return;
               }
-              // Check if contact with this phone already exists
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              const { data: existing } = await (supabase.from('wk_contacts' as any) as any)
-                .select('id')
-                .eq('phone', draft.phone.trim())
-                .maybeSingle();
-
               let contactId: string;
-              if (existing) {
-                contactId = existing.id;
-              } else {
+              {
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const { data, error } = await (supabase.from('wk_contacts' as any) as any)
-                  .insert({
+                const { data, error } = await (supabase as any).rpc('wk_ingest_contacts', { p_contacts: {
                     name: draft.name.trim() || null,
                     phone: draft.phone.trim(),
                     email: draft.email || null,
                     pipeline_column_id: draft.pipelineColumnId || null,
                     is_hot: draft.isHot,
                     custom_fields: draft.customFields,
-                  })
+                  } })
                   .select('id')
                   .single();
                 if (error || !data) {
@@ -303,7 +293,7 @@ export default function QueueManagerPro({ queue, campaignId, onRefresh, onToast 
                 if (draft.tags.length > 0) {
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   await (supabase.from('wk_contact_tags' as any) as any)
-                    .insert(draft.tags.map((t) => ({ contact_id: contactId, tag: t })));
+                    .upsert(draft.tags.map((t) => ({ contact_id: contactId, tag: t })), { onConflict: 'contact_id,tag', ignoreDuplicates: true });
                 }
               }
               await addToQueue(contactId);

@@ -186,8 +186,7 @@ const contactRows = keepers.map((l) => ({
 let inserted = 0;
 const CHUNK = 50;
 for (let i = 0; i < contactRows.length; i += CHUNK) {
-  const { data, error } = await sb.from('wk_contacts')
-    .upsert(contactRows.slice(i, i + CHUNK), { onConflict: 'phone', ignoreDuplicates: true })
+  const { data, error } = await sb.rpc('wk_ingest_contacts', { p_contacts: contactRows.slice(i, i + CHUNK) })
     .select('id, phone');
   if (error) { console.error('contact upsert:', error.message); process.exit(1); }
   inserted += (data ?? []).length;

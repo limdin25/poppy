@@ -191,9 +191,7 @@ let inserted = 0;
 const CHUNK = 50;
 for (let i = 0; i < contactRows.length; i += CHUNK) {
   const slice = contactRows.slice(i, i + CHUNK);
-  const { data, error } = await sb
-    .from('wk_contacts')
-    .upsert(slice, { onConflict: 'phone', ignoreDuplicates: true })
+  const { data, error } = await sb.rpc('wk_ingest_contacts', { p_contacts: slice })
     .select('id, phone');
   if (error) { console.error('contact upsert error:', error.message); process.exit(1); }
   inserted += (data ?? []).length;

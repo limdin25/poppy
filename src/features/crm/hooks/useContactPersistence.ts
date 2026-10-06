@@ -12,6 +12,7 @@
 import { useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/browser';
 import { useDesk } from '../lib/DeskContext';
+import { toE164 } from '../lib/phone';
 
 export const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -185,27 +186,16 @@ export function useContactPersistence(): ContactPersistAPI {
     // Mock id "col-interested" from MOCK_PIPELINES → null.
     const pipelineColumnId = uuidOrNull(input.pipelineColumnId ?? null);
 
-    // PR 119 (Hugo 2026-04-28): wk_contacts.phone is UNIQUE (PR 118
-    // promoted the partial index to full). A plain INSERT throws a 409
-    // "duplicate key value violates unique constraint" the moment the
-    // agent types a phone that already exists — even when the existing
-    // row is filtered out of view by stage/owner/search filters. Make
-    // creation idempotent: look up first; if a contact already exists
-    // for this phone, return its id (agent goes straight to the
-    // existing record); otherwise insert.
+    // Always submit the new facts, including when this person already exists.
+    let existed = false;
     if (input.phone) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data: existing } = await (supabase.from('wk_contacts' as any) as any)
-        .select('id')
-        .eq('phone', input.phone)
-        .maybeSingle();
-      const existingId = (existing as { id: string } | null)?.id ?? null;
-      if (existingId) return { id: existingId, existed: true };
+        .select('id').eq('normalized_phone', toE164(input.phone)).maybeSingle();
+      existed = Boolean(existing);
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data, error } = await (supabase.from('wk_contacts' as any) as any)
-      .insert({
+    const { data, error } = await (supabase as any).rpc('wk_ingest_contacts', { p_contacts: {
         name: input.name,
         phone: input.phone,
         email: normalizeContactEmail(input.email),
@@ -215,7 +205,7 @@ export function useContactPersistence(): ContactPersistAPI {
         is_hot: false,
         // A contact made on the Auction desk belongs to Auction.
         desk,
-      })
+      } })
       .select('id')
       .single();
     if (error) {
@@ -235,7 +225,7 @@ export function useContactPersistence(): ContactPersistAPI {
       return null;
     }
     const newId = (data as { id: string } | null)?.id ?? null;
-    return newId ? { id: newId, existed: false } : null;
+    return newId ? { id: newId, existed } : null;
   }, [desk]);
 
   return { moveToColumn, patchContact, replaceTags, createContact };

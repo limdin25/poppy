@@ -242,9 +242,7 @@ serve(async (req: Request) => {
       if ((existing as { id?: string } | null)?.id) {
         contactId = (existing as { id: string }).id;
       } else {
-        const { data: inserted } = await supa
-          .from('wk_contacts')
-          .insert({
+        const { data: inserted } = await supa.rpc('wk_ingest_contacts', { p_contacts: {
             name: ev.sender?.name ?? fromE164,
             phone: channel === 'email' ? `email:${senderProviderId}` : fromE164,
             email: channel === 'email' ? senderProviderId : null,
@@ -252,7 +250,7 @@ serve(async (req: Request) => {
               source: `inbound_${channel}_unipile`,
               first_message_id: ev.message.id,
             },
-          })
+          } })
           .select('id')
           .single();
         contactId = (inserted as { id?: string } | null)?.id ?? null;

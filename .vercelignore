@@ -35,3 +35,6 @@ bridge
 /openrent-worker
 /tmp-unsold*
 /tmp-allsop*
+
+# Local operational reports can contain contact data.
+/_brain/

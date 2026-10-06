@@ -231,7 +231,6 @@ export default function BulkUploadModal({
       skipEmptyLines: true,
       complete: (parsed) => {
         const errs: string[] = [];
-        const seen = new Set<string>();
         const seenEmails = new Set<string>();
         const accepted: ParsedRow[] = [];
         for (const [i, raw] of parsed.data.entries()) {
@@ -246,11 +245,7 @@ export default function BulkUploadModal({
             errs.push(`Row ${i + 2}: cannot parse phone "${phoneRaw}"`);
             continue;
           }
-          if (seen.has(phone)) {
-            errs.push(`Row ${i + 2}: duplicate phone "${phone}" — skipped`);
-            continue;
-          }
-          seen.add(phone);
+          // Keep every property row. The database attaches repeat phones to one contact.
 
           const nameKey = pickKey(raw, NAME_KEYS);
           const name = nameKey ? raw[nameKey].trim() : phone;
@@ -350,15 +345,13 @@ export default function BulkUploadModal({
     for (let i = 0; i < inserts.length; i += CHUNK) {
       const slice = inserts.slice(i, i + CHUNK);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      let { data, error } = await (supabase.from('wk_contacts' as any) as any)
-        .upsert(slice, { onConflict: 'phone', ignoreDuplicates: true })
+      let { data, error } = await (supabase as any).rpc('wk_ingest_contacts', { p_contacts: slice })
         .select('id, phone');
 
       if (error?.message?.includes('wk_contacts_email_uniq')) {
         const stripped = slice.map((r: Record<string, unknown>) => ({ ...r, email: null }));
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        ({ data, error } = await (supabase.from('wk_contacts' as any) as any)
-          .upsert(stripped, { onConflict: 'phone', ignoreDuplicates: true })
+        ({ data, error } = await (supabase as any).rpc('wk_ingest_contacts', { p_contacts: stripped })
           .select('id, phone'));
       }
 
@@ -416,8 +409,8 @@ export default function BulkUploadModal({
         if (idErr) {
           errors.push(`queue lookup: ${idErr.message}`);
         } else {
-          const contactIds = ((idRows ?? []) as Array<{ id: string; phone: string }>)
-            .map((r) => r.id);
+          const contactIds = [...new Set(((idRows ?? []) as Array<{ id: string; phone: string }>)
+            .map((r) => r.id))];
 
           // Find which of these are already pending in this campaign so
           // we don't double-enqueue on a re-upload of the same CSV.
@@ -428,8 +421,7 @@ export default function BulkUploadModal({
               supabase.from('wk_dialer_queue' as any) as any
             )
               .select('contact_id')
-              .eq('campaign_id', campaignId)
-              .eq('status', 'pending')
+              .in('status', ['pending', 'dialing', 'connected', 'review'])
               .in('contact_id', contactIds);
             if (existErr) {
               errors.push(`queue dedupe: ${existErr.message}`);
@@ -478,7 +470,7 @@ export default function BulkUploadModal({
       ? ` · ${queued} queued for dial`
       : '';
     pushToast(
-      `Imported ${inserted} contacts (${skipped} skipped)${queuedNote}`,
+      `Saved ${inserted} lead rows (${skipped} skipped)${queuedNote}`,
       inserted > 0 ? 'success' : 'info'
     );
   };

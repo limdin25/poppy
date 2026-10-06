@@ -296,9 +296,7 @@ for (const p of sendable) {
     if (error) { console.error(`update ${p.company}: ${error.message}`); continue; }
     p.contact_id = prior.id;
   } else {
-    const { data, error } = await sb
-      .from('wk_contacts')
-      .insert({ name: p.company, phone: p.phone, owner_agent_id: MARIA_ID, custom_fields: p.custom_fields })
+    const { data, error } = await sb.rpc('wk_ingest_contacts', { p_contacts: { name: p.company, phone: p.phone, owner_agent_id: MARIA_ID, custom_fields: p.custom_fields } })
       .select('id')
       .single();
     if (error) { console.error(`insert ${p.company}: ${error.message}`); continue; }
