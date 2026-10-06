@@ -5,7 +5,7 @@ const fixture = vi.hoisted(() => {
   process.env.SUPABASE_URL = 'https://test.supabase.co';
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'test';
   process.env.HOSTUNICO_CRM_TOKEN = 'test-token';
-  return { tables: {} as Record<string, any[]>, admin: false, smsRequests: 0, worked: [] as string[], plans: [] as any[], planError: '' };
+  return { tables: {} as Record<string, any[]>, admin: false, smsRequests: 0, worked: [] as string[], plans: [] as any[], planError: '', rpcs: [] as string[] };
 });
 vi.mock('@supabase/supabase-js', () => {
   class Query {
@@ -41,6 +41,7 @@ vi.mock('@supabase/supabase-js', () => {
   return { createClient: () => ({
     auth: { getUser: async (token: string) => ({ data: { user: token === 'good' ? { id: 'pedro' } : null } }) },
     rpc: async (name: string, args?: any) => {
+      fixture.rpcs.push(name);
       if (name === 'sa_save_report_followup_plan') { fixture.plans.push(args); return { data: null, error: fixture.planError ? { message: fixture.planError } : null }; }
       if (name === 'sa_report_followup_stop_reason') return { data: null, error: null };
       if (name === 'wk_hostunico_call_context') fixture.tables.wk_contacts.find((row) => row.id === args.p_contact).custom_fields = { hostunico_listing_id: args.p_listing, hostunico_script_mode: args.p_mode };
@@ -56,7 +57,7 @@ function request(action: string, extra: Record<string, unknown> = {}, token = 'g
   return new Request('https://app.heyelsie.com/api/crm/sa-report', { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ action, listing_id: listingId, followups: buildFollowupPlan(HOSTUNICO_FOLLOWUP, { name: 'Alex', property: 'Test Street', reportUrl: 'https://hostunico.com/r/A1b2C', channel: action === 'send_email' ? 'email' : 'sms' }), ...extra }) });
 }
 beforeEach(() => {
-  fixture.admin = false; fixture.smsRequests = 0; fixture.worked = []; fixture.plans = []; fixture.planError = '';
+  fixture.admin = false; fixture.smsRequests = 0; fixture.worked = []; fixture.plans = []; fixture.planError = ''; fixture.rpcs = [];
   fixture.tables = {
     wk_contacts: [{ id: 'contact', name: 'Alex', desk: 'sa', owner_agent_id: 'pedro', do_not_call: false, phone: '+447700900123' }],
     sa_listings: [{ id: listingId, wk_contact_id: 'contact', rent_pcm: 1000, hostunico_call_eligible: true }],
@@ -69,6 +70,64 @@ beforeEach(() => {
     fixture.smsRequests++;
     return Response.json({ twilio_sid: 'test-sid', message_id: 'test-message', status: 'queued' });
   }));
+});
+// A CRM tab loaded before 6 Oct 13:48 posts exactly this: no followups field.
+function oldClientRequest(action: string, extra: Record<string, unknown> = {}) {
+  return new Request('https://app.heyelsie.com/api/crm/sa-report', { method: 'POST', headers: { Authorization: 'Bearer good', 'Content-Type': 'application/json' }, body: JSON.stringify({ action, listing_id: listingId, ...extra }) });
+}
+describe('tabs opened before the follow-up review update', () => {
+  it('sends the SMS for an old client body without saving or arming a reviewed plan', async () => {
+    const response = await handler(oldClientRequest('send_sms', { permission: true, replace: false, property: null }));
+    expect(response.status).toBe(200);
+    expect(fixture.smsRequests).toBe(1);
+    expect(fixture.plans).toHaveLength(0);
+    expect(fixture.rpcs).not.toContain('sa_save_report_followup_plan');
+    expect(fixture.rpcs).not.toContain('sa_arm_report_followups');
+    expect(fixture.tables.sa_property_reports[0]).toMatchObject({ sms_state: 'queued', sms_sid: 'test-sid', sms_requested_at: expect.any(String) });
+  });
+  it('new client flow: followup_plan output passes dialog validation and sends with followups', async () => {
+    const { validateFollowupPlan } = await import('../src/core/hostunicoFollowupPlan');
+    const plan = await (await handler(oldClientRequest('followup_plan', { channel: 'sms' }))).json();
+    expect(validateFollowupPlan(plan.items)).toBeNull();
+    expect(fixture.smsRequests).toBe(0);
+    const response = await handler(oldClientRequest('send_sms', { permission: true, followups: plan.items }));
+    expect(response.status).toBe(200);
+    expect(fixture.plans[0]).toMatchObject({ p_channel: 'sms', p_recipient: '+447700900123', p_items: plan.items });
+    expect(fixture.rpcs.indexOf('sa_save_report_followup_plan')).toBeLessThan(fixture.rpcs.indexOf('sa_arm_report_followups'));
+    expect(fixture.smsRequests).toBe(1);
+  });
+  it('arms the reviewed plan only on the new path', async () => {
+    expect((await handler(request('send_sms', { permission: true }))).status).toBe(200);
+    expect(fixture.plans).toHaveLength(1);
+    expect(fixture.rpcs).toContain('sa_arm_report_followups');
+  });
+  it('still rejects a present but malformed followups value, before any send', async () => {
+    for (const followups of ['x', null, 3, { step1: true }]) {
+      expect((await handler(request('send_sms', { permission: true, followups }))).status).toBe(400);
+      expect((await handler(request('send_email', { to_email: 'test@example.invalid', subject: 'Report', email_body: 'Here it is: https://hostunico.com/r/A1b2C', followups }))).status).toBe(400);
+    }
+    expect(fixture.smsRequests).toBe(0); expect(fixture.plans).toHaveLength(0);
+    expect(fixture.tables.sa_property_reports[0]).toMatchObject({ sms_state: 'unsent', email_state: 'unsent' });
+  });
+  it('keeps the 1ac2ab2 rule for an empty array: refresh the plan, nothing sent', async () => {
+    const response = await handler(request('send_sms', { permission: true, followups: [] }));
+    expect(response.status).toBe(409);
+    expect((await response.json()).error).toBe('Refresh the follow-up plan.');
+    expect(fixture.smsRequests).toBe(0);
+    expect(fixture.tables.sa_property_reports[0].sms_state).toBe('unsent');
+  });
+  it('sends the email for a body without followups, again with no plan saved or armed', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.includes('crm-estimates/status')) return Response.json({ stage: 'ready', reportUrl: fixture.tables.sa_property_reports[0].report_url, reportPitch: fixture.tables.sa_property_reports[0].report_pitch });
+      expect(url).toContain('wk-email-send');
+      fixture.smsRequests++; return Response.json({ external_id: 'email-receipt', status: 'queued' });
+    }));
+    const response = await handler(oldClientRequest('send_email', { to_email: 'test@example.invalid', subject: 'Report', email_body: 'Here it is: https://hostunico.com/r/A1b2C' }));
+    expect(response.status).toBe(200);
+    expect(fixture.smsRequests).toBe(1); expect(fixture.plans).toHaveLength(0);
+    expect(fixture.rpcs).not.toContain('sa_arm_report_followups');
+    expect(fixture.tables.sa_property_reports[0].email_state).toBe('queued');
+  });
 });
 describe('human report sends', () => {
   it('does not send anything while loading the personalised follow-up preview', async () => {

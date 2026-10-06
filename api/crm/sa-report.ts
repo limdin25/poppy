@@ -31,6 +31,7 @@ async function remote(action: string, payload: Record<string, unknown>) {
 }
 
 export default async function handler(req: Request): Promise<Response> {
+  let action = 'unknown';
   try {
     if (!['GET', 'POST'].includes(req.method)) throw new Problem(405, 'Method not allowed');
     const jwt = req.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ?? '';
@@ -43,7 +44,7 @@ export default async function handler(req: Request): Promise<Response> {
     const admin = check(await caller.rpc('wk_is_admin'));
     const body = (req.method === 'POST' ? await req.json() : Object.fromEntries(new URL(req.url).searchParams)) as { action?: string; campaign_id?: string; contact_id?: string; listing_id?: string; country?: string; property?: unknown; replace?: boolean; permission?: boolean; mobile?: string; mobile_confirmed?: boolean; mode?: string; offset?: number; channel?: string; to_email?: string; subject?: string; email_body?: string; followups?: ReportFollowupItem[] };
     if (!body || typeof body !== 'object') throw new Problem(400, 'A request object is required.');
-    const action = String(body.action || 'status');
+    action = String(body.action || 'status');
     const contact = async (id: string) => {
       const c = check(await supa.from('wk_contacts').select('id,name,email,desk,owner_agent_id,do_not_call,phone,hostunico_sms_phone,hostunico_country,custom_fields,pipeline_column_id').eq('id', id).maybeSingle());
       if (!c || c.desk !== 'sa' || (!admin && c.owner_agent_id !== auth.user!.id)) throw new Problem(403, 'This contact is not assigned to your serviced accommodation desk.');
@@ -198,9 +199,14 @@ export default async function handler(req: Request): Promise<Response> {
       if (email && (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(recipient) || !body.subject?.trim() || !body.email_body?.includes(row.report_url))) throw new Problem(400, 'Check the email address, subject and report link.');
       const stateField = email ? 'email_state' : 'sms_state';
       if (row[stateField] && row[stateField] !== 'unsent') throw new Problem(409, 'This report has already been sent or is being sent. Check the inbox.');
-      if (!Array.isArray(body.followups)) throw new Problem(400, 'Review the follow-ups before sending the report.');
-      try { await saveReportFollowupPlan(supa, { contact: c.id, listing: listingId, channel: email ? 'email' : 'sms', recipient, items: body.followups, agent: auth.user.id }); }
-      catch (e) { throw new Problem(409, e instanceof Error ? e.message : 'Review the follow-up plan.'); }
+      // A CRM tab opened before the follow-up review shipped sends no followups
+      // field. It sends the report as before, with no reviewed plan saved or armed.
+      const reviewed = body.followups !== undefined;
+      if (reviewed && !Array.isArray(body.followups)) throw new Problem(400, 'Review the follow-ups before sending the report.');
+      if (reviewed) {
+        try { await saveReportFollowupPlan(supa, { contact: c.id, listing: listingId, channel: email ? 'email' : 'sms', recipient, items: body.followups!, agent: auth.user.id }); }
+        catch (e) { throw new Problem(409, e instanceof Error ? e.message : 'Review the follow-up plan.'); }
+      }
       const callback = await hostunicoCallback(supa, auth.user.id);
       const sms = reportSms(row.report_url, row.property?.areaEstimate === true, callback);
       const claim = check(await supa.from('sa_property_reports').update({ [stateField]: 'sending', ...(email ? {} : { sms_requested_at: new Date().toISOString() }) }).eq('listing_id', listingId).eq('remote_id', row.remote_id).eq(stateField, 'unsent').select('listing_id'));
@@ -214,7 +220,7 @@ export default async function handler(req: Request): Promise<Response> {
         const providerId = email ? result.external_id : result.twilio_sid;
         if (!sent.ok || result.error || !providerId) throw new Error(result.error || 'Send status could not be confirmed. Check the inbox before retrying.');
         check(await supa.from('sa_property_reports').update(email ? { email_state: result.status || 'queued', email_id: providerId } : { sms_state: result.status || 'queued', sms_sid: providerId, sms_message_id: result.message_id ?? null }).eq('listing_id', listingId).eq('remote_id', row.remote_id));
-        const armed = await supa.rpc('sa_arm_report_followups', { p_contact: c.id, p_listing: listingId });
+        const armed = reviewed ? await supa.rpc('sa_arm_report_followups', { p_contact: c.id, p_listing: listingId }) : { error: null };
         if (armed.error) result.warning = 'Report sent. Follow-ups are paused because scheduling could not finish. Check the contact card.';
         const { data: stage } = await supa.from('wk_pipeline_columns').select('id').eq('pipeline_id', HOSTUNICO_PIPELINE).eq('name', 'Report sent').maybeSingle();
         let warning = result.warning;
@@ -244,6 +250,8 @@ export default async function handler(req: Request): Promise<Response> {
     if (!qualified && qualification.status === 'eligible') qualification = { status: 'pending', message: 'This property or its asking price needs checking. Calling and sending are blocked.' };
     return json({ ...sendingPolicy, qualification, eligibilityBlocked: !qualified, stage: row.state, message: qualified ? row.message : qualification.message, reportUrl: row.state === 'ready' ? row.report_url : undefined, smsDraft: qualified && row.report_url ? reportSms(row.report_url, row.property?.areaEstimate === true, callback) : undefined, callback: callback ? { number: callback.number, name: callback.name } : null, reportPitch: row.state === 'ready' ? { ...row.report_pitch, eligibility: qualified ? 'eligible' : qualification.status === 'eligible' ? 'excluded' : qualification.status } : null, property: row.property, smsStatus, emailStatus: row.email_state, receivedAt: row.received_at, mobile: c.hostunico_sms_phone || (reportPhoneKind(c.phone) === 'mobile' ? reportPhone(c.phone) : '') });
   } catch (error) {
+    // Reason only: no message bodies, phone numbers or tokens.
+    if (error instanceof Problem && error.status >= 400 && error.status < 500) console.warn('[sa-report] rejected', { action, status: error.status, reason: error.message.slice(0, 160) });
     return json({ error: error instanceof Problem ? error.message : 'Could not complete this report action. Please try again.' }, { status: error instanceof Problem ? error.status : 503 });
   }
 }
