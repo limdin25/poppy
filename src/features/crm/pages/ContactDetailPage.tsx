@@ -37,6 +37,7 @@ import { useDialerProModal } from '../layout/DialerProModalContext';
 import type { Contact } from '../types';
 import { useDesk } from '../lib/DeskContext';
 import { signCallRecording } from '../hooks/useCalls';
+import ReportFollowupCard from '../components/followups/ReportFollowupCard';
 import HostunicoReportButton from '../components/contacts/HostunicoReportButton';
 
 export default function ContactDetailPage() {
@@ -213,7 +214,7 @@ export default function ContactDetailPage() {
               <StageMoveChip contact={contact} size="sm" className="mt-1" />
             </div>
             {!isHostunico && <><ContactAiToggle contactId={contact.id} /><ContactFollowupScheduler contactId={contact.id} /></>}
-            {isHostunico && <Link to="/admin/crm/report-followups" className="block text-xs text-blue-700">Report follow-ups, Pedro sends manually</Link>}
+            {isHostunico && <ReportFollowupCard contactId={contact.id} />}
             <div>
               <div className="text-[10px] uppercase tracking-wide text-[#9CA3AF] font-semibold">
                 Tags

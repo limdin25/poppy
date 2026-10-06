@@ -1,3 +1,4 @@
+import { reportFollowupStageChanged } from '../followups/ReportFollowupStageNotice';
 // The Flat tab: the rental Pedro is ringing a letting agent about, on the
 // Serviced Accommodation desk (Hugo, 2026-09-23).
 //
@@ -150,6 +151,7 @@ function SaListingDetail({ listing: l, contactId, currentCallId, onSaved, review
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || `failed (${res.status})`);
       setSaved(json.board_warning || 'Saved');
+      reportFollowupStageChanged(contactId);
       setNote('');
       onSaved();
     } catch (e) {

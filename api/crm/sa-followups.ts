@@ -6,6 +6,9 @@ import { hostunicoOutreachAllowed, HOSTUNICO_UPLIFT_PENDING } from '../../supaba
 import { REPLY_CLASSIFIER_PROMPT, safeReplyClassification, explicitOptOut } from '../lib/hostunico-reply-intent.js';
 import { validFollowupConfig, sequencePosition, hostunicoFollowupSms } from '../../src/core/hostunicoFollowup.js';
 
+import { saveReportFollowupPlan } from '../lib/hostunico-followup-plan.js';
+import type { ReportFollowupItem } from '../../src/core/hostunicoFollowupPlan.js';
+
 export const config = { runtime: 'edge' };
 const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { 'Cache-Control': 'private, no-store' } });
 function checked<T>({ data, error }: { data: T; error: unknown }): T { if (error) throw new Error('Could not save or load follow-ups.'); return data; }
@@ -21,7 +24,7 @@ export default async function handler(req: Request) {
     const caller = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { global: { headers: { Authorization: `Bearer ${jwt}` } } });
     if (!internal && !checked(await caller.rpc('wk_is_agent_or_admin'))) return json({ error: 'CRM access required.' }, 403);
     const admin = !internal && checked(await caller.rpc('wk_is_admin'));
-    const body = (req.method === 'POST' ? await req.json() : {}) as { action?: string; config?: unknown; contact_id?: string; intent?: string; step?: string };
+    const body = (req.method === 'POST' ? await req.json() : Object.fromEntries(new URL(req.url).searchParams)) as { action?: string; config?: unknown; contact_id?: string; intent?: string; step?: string; items?: ReportFollowupItem[]; item_id?: string };
     if (!body || typeof body !== 'object') return json({ error: 'A request object is required.' }, 400);
     const action = body.action || 'list';
     if (internal && action !== 'classify') return json({ error: 'Classification only.' }, 403);
@@ -33,14 +36,36 @@ export default async function handler(req: Request) {
       checked(await db.from('sa_followup_config').update({ config: body.config, updated_at: new Date().toISOString() }).eq('id', true));
       return json({ ok: true });
     }
-    let contactsQuery = db.from('wk_contacts').select('id,name,phone,do_not_call').eq('desk', 'sa');
+    let contactsQuery = db.from('wk_contacts').select('id,name,phone,do_not_call,pipeline_column_id').eq('desk', 'sa');
     if (!internal && !admin) contactsQuery = contactsQuery.eq('owner_agent_id', auth.user!.id);
     if (body.contact_id) contactsQuery = contactsQuery.eq('id', body.contact_id);
     const contacts = checked(await contactsQuery);
     const ids = contacts.map((c) => c.id);
     if (!ids.length) return action === 'list' ? json({ leads: [], config: savedConfig, admin }) : json({ error: 'Lead not assigned to your serviced accommodation desk.' }, 403);
+    if (['items', 'save_items', 'cancel_items'].includes(action)) {
+      if (!body.contact_id || ids.length !== 1 || internal) return json({ error: 'Choose your contact.' }, 403);
+      const existing = checked(await db.from('sa_report_followup_items').select('*').eq('contact_id', body.contact_id).order('step_key'));
+      if (action === 'items') {
+        const stopReason = checked(await db.rpc('sa_report_followup_stop_reason', { p_contact: body.contact_id }));
+        const stage = contacts[0].pipeline_column_id ? checked(await db.from('wk_pipeline_columns').select('name').eq('id', contacts[0].pipeline_column_id).maybeSingle())?.name : null;
+        return json({ name: contacts[0].name, stage, stopReason, items: existing.map(i => ({ ...i, enabled: ['scheduled', 'edited'].includes(i.status) })) });
+      }
+      if (req.method !== 'POST') return json({ error: 'Use POST.' }, 405);
+      if (action === 'cancel_items') {
+        if (body.item_id) checked(await db.from('sa_report_followup_items').update({ status: 'cancelled', cancel_reason: 'Cancelled by Pedro', updated_at: new Date().toISOString() }).eq('contact_id', body.contact_id).eq('id', body.item_id).in('status', ['scheduled', 'edited', 'skipped']));
+        else checked(await db.rpc('sa_cancel_report_followups', { p_contact: body.contact_id, p_reason: 'Cancelled by Pedro' }));
+      } else {
+        if (!existing.length || !Array.isArray(body.items) || body.items.some(i => !existing.some(e => e.step_key === i.step_key))) return json({ error: 'Refresh the follow-up plan.' }, 400);
+        try { await saveReportFollowupPlan(db, { contact: body.contact_id, listing: existing[0].listing_id, channel: existing[0].channel, recipient: existing[0].recipient, agent: auth.user!.id, items: body.items }); }
+        catch (e) { return json({ error: e instanceof Error ? e.message : 'Refresh the follow-up plan.' }, 409); }
+      }
+      return json({ ok: true });
+    }
     let rows = checked(await db.from('sa_report_followups').select('*').in('contact_id', ids).order('report_sent_at', { ascending: false }));
-    if (action === 'list') return json({ config: savedConfig, admin, leads: rows.map((r) => ({ ...r, ...contacts.find((c) => c.id === r.contact_id) })) });
+    if (action === 'list') {
+      const reviewed = checked(await db.from('sa_report_followup_items').select('contact_id').in('contact_id', ids));
+      return json({ config: savedConfig, admin, leads: rows.map((r) => ({ ...r, ...contacts.find((c) => c.id === r.contact_id), reviewed_plan: reviewed.some(i => i.contact_id === r.contact_id) })) });
+    }
     if (req.method !== 'POST') return json({ error: 'Use POST.' }, 405);
     if (action === 'classify') {
       const pending = rows.filter((r) => r.classification_pending && !r.overridden_at).slice(0, 3);

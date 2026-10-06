@@ -4,6 +4,9 @@ import { hostunicoCountry } from '../../supabase/functions/_shared/hostunico-pri
 import { reportPhone, reportPhoneKind } from '../../supabase/functions/_shared/hostunico-phone.js';
 import { hostunicoUplift, hostunicoOutreachAllowed } from '../../supabase/functions/_shared/hostunico-uplift.js';
 
+import { reportFollowupPlan, saveReportFollowupPlan } from '../lib/hostunico-followup-plan.js';
+import type { ReportFollowupItem } from '../../src/core/hostunicoFollowupPlan.js';
+
 export const config = { runtime: 'edge' };
 const db = () => createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 const json = (value: unknown, options?: { status?: number }) => Response.json(value, { ...options, headers: { 'Cache-Control': 'private, no-store' } });
@@ -38,11 +41,11 @@ export default async function handler(req: Request): Promise<Response> {
     const allowed = check(await caller.rpc('wk_is_agent_or_admin'));
     if (!allowed) throw new Problem(403, 'CRM access required.');
     const admin = check(await caller.rpc('wk_is_admin'));
-    const body = (req.method === 'POST' ? await req.json() : Object.fromEntries(new URL(req.url).searchParams)) as { action?: string; campaign_id?: string; contact_id?: string; listing_id?: string; country?: string; property?: unknown; replace?: boolean; permission?: boolean; mobile?: string; mobile_confirmed?: boolean; mode?: string; offset?: number };
+    const body = (req.method === 'POST' ? await req.json() : Object.fromEntries(new URL(req.url).searchParams)) as { action?: string; campaign_id?: string; contact_id?: string; listing_id?: string; country?: string; property?: unknown; replace?: boolean; permission?: boolean; mobile?: string; mobile_confirmed?: boolean; mode?: string; offset?: number; channel?: string; to_email?: string; subject?: string; email_body?: string; followups?: ReportFollowupItem[] };
     if (!body || typeof body !== 'object') throw new Problem(400, 'A request object is required.');
     const action = String(body.action || 'status');
     const contact = async (id: string) => {
-      const c = check(await supa.from('wk_contacts').select('id,desk,owner_agent_id,do_not_call,phone,hostunico_sms_phone,hostunico_country,custom_fields,pipeline_column_id').eq('id', id).maybeSingle());
+      const c = check(await supa.from('wk_contacts').select('id,name,email,desk,owner_agent_id,do_not_call,phone,hostunico_sms_phone,hostunico_country,custom_fields,pipeline_column_id').eq('id', id).maybeSingle());
       if (!c || c.desk !== 'sa' || (!admin && c.owner_agent_id !== auth.user!.id)) throw new Problem(403, 'This contact is not assigned to your serviced accommodation desk.');
       return c;
     };
@@ -159,6 +162,10 @@ export default async function handler(req: Request): Promise<Response> {
       row = check(await supa.from('sa_property_reports').select('*').eq('listing_id', listingId).single());
     }
     if (!row) return json({ ...sendingPolicy, stage: 'needs_details', message: 'Confirm property details to prepare this report.', property: reportProperty(listing.report_property), mobile: c.hostunico_sms_phone || (reportPhoneKind(c.phone) === 'mobile' ? reportPhone(c.phone) : '') });
+    if (action === 'followup_plan' && req.method === 'POST') {
+      if (row.state !== 'ready' || !row.report_url) throw new Problem(409, 'Wait for the report to be ready.');
+      return json(await reportFollowupPlan(supa, c, listing, row.report_url, body.channel === 'email' ? 'email' : 'sms'));
+    }
     if (action === 'retry' && req.method === 'POST') {
       if (row.state !== 'review' || row.sms_state !== 'unsent') throw new Problem(409, 'Only an unfinished, unsent report can be retried.');
       const result = await remote('retry', { id: row.remote_id, token: row.access_token });
@@ -179,33 +186,47 @@ export default async function handler(req: Request): Promise<Response> {
       check(await supa.from('sa_property_reports').update({ state: result.stage, message: result.message, report_url: result.reportUrl ?? null, report_pitch: pitch, updated_at: new Date().toISOString() }).eq('listing_id', listingId).eq('remote_id', row.remote_id));
       row = { ...row, state: result.stage, message: result.message, report_url: result.reportUrl ?? null, report_pitch: pitch };
     }
-    if (action === 'send_sms' && req.method === 'POST') {
-      if (body.permission !== true) throw new Problem(400, 'Confirm that they agreed to receive the report by SMS.');
-      if (!c.hostunico_sms_phone && reportPhoneKind(c.phone) !== 'mobile') throw new Problem(400, 'Ask for their mobile number and save it, or use email.');
+    if (['send_sms', 'send_email'].includes(action) && req.method === 'POST') {
+      const email = action === 'send_email';
+      if (!email && body.permission !== true) throw new Problem(400, 'Confirm that they agreed to receive the report by SMS.');
+      if (!email && !c.hostunico_sms_phone && reportPhoneKind(c.phone) !== 'mobile') throw new Problem(400, 'Ask for their mobile number and save it, or use email.');
       if (row.state !== 'ready' || !row.report_url) throw new Problem(409, 'The report is not ready yet.');
       const qualification = hostunicoUplift(row.state, row.report_pitch, listing.rent_pcm);
       if (qualification.status !== 'eligible') throw new Problem(409, qualification.message);
       if (!await hostunicoOutreachAllowed(supa, c.id, '', listingId)) throw new Problem(409, 'This property or its asking price needs checking. Sending is blocked.');
+      const recipient = email ? String(body.to_email || c.email || '').trim().toLowerCase() : (c.hostunico_sms_phone || reportPhone(c.phone));
+      if (email && (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(recipient) || !body.subject?.trim() || !body.email_body?.includes(row.report_url))) throw new Problem(400, 'Check the email address, subject and report link.');
+      const stateField = email ? 'email_state' : 'sms_state';
+      if (row[stateField] && row[stateField] !== 'unsent') throw new Problem(409, 'This report has already been sent or is being sent. Check the inbox.');
+      if (!Array.isArray(body.followups)) throw new Problem(400, 'Review the follow-ups before sending the report.');
+      try { await saveReportFollowupPlan(supa, { contact: c.id, listing: listingId, channel: email ? 'email' : 'sms', recipient, items: body.followups, agent: auth.user.id }); }
+      catch (e) { throw new Problem(409, e instanceof Error ? e.message : 'Review the follow-up plan.'); }
       const callback = await hostunicoCallback(supa, auth.user.id);
       const sms = reportSms(row.report_url, row.property?.areaEstimate === true, callback);
-      const claim = check(await supa.from('sa_property_reports').update({ sms_state: 'sending', sms_requested_at: new Date().toISOString() }).eq('listing_id', listingId).eq('remote_id', row.remote_id).eq('sms_state', 'unsent').select('listing_id'));
+      const claim = check(await supa.from('sa_property_reports').update({ [stateField]: 'sending', ...(email ? {} : { sms_requested_at: new Date().toISOString() }) }).eq('listing_id', listingId).eq('remote_id', row.remote_id).eq(stateField, 'unsent').select('listing_id'));
       if (!claim.length) throw new Problem(409, 'This report has already been sent or is being sent. Check its message status before trying again.');
-      // There is deliberately no automatic retry after a provider request: a lost response could still mean sent.
+      // Once a provider request starts, an uncertain result is never retried automatically.
       try {
-        const sent = await fetch(`${process.env.SUPABASE_URL}/functions/v1/wk-sms-send`, { method: 'POST', headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ contact_id: c.id, campaign_id: HOSTUNICO_CAMPAIGN, channel: 'sms', body: sms }), signal: AbortSignal.timeout(20000) });
-        const result = await sent.json() as { twilio_sid?: string; error?: string; status?: string; message_id?: string; warning?: string };
-        if (!sent.ok || !result.twilio_sid) throw new Error(result.error || 'SMS status could not be confirmed. Check the inbox before retrying.');
-        check(await supa.from('sa_property_reports').update({ sms_state: result.status || 'queued', sms_sid: result.twilio_sid, sms_message_id: result.message_id ?? null }).eq('listing_id', listingId).eq('remote_id', row.remote_id));
+        const sent = await fetch(`${process.env.SUPABASE_URL}/functions/v1/${email ? 'wk-email-send' : 'wk-sms-send'}`, { method: 'POST', headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' }, body: JSON.stringify(email
+          ? { contact_id: c.id, campaign_id: HOSTUNICO_CAMPAIGN, to_email: recipient, subject: body.subject!.trim(), body: body.email_body!.trim() }
+          : { contact_id: c.id, campaign_id: HOSTUNICO_CAMPAIGN, channel: 'sms', body: sms }), signal: AbortSignal.timeout(20000) });
+        const result = await sent.json() as { twilio_sid?: string; external_id?: string; error?: string; status?: string; message_id?: string; warning?: string };
+        const providerId = email ? result.external_id : result.twilio_sid;
+        if (!sent.ok || result.error || !providerId) throw new Error(result.error || 'Send status could not be confirmed. Check the inbox before retrying.');
+        check(await supa.from('sa_property_reports').update(email ? { email_state: result.status || 'queued', email_id: providerId } : { sms_state: result.status || 'queued', sms_sid: providerId, sms_message_id: result.message_id ?? null }).eq('listing_id', listingId).eq('remote_id', row.remote_id));
+        const armed = await supa.rpc('sa_arm_report_followups', { p_contact: c.id, p_listing: listingId });
+        if (armed.error) result.warning = 'Report sent. Follow-ups are paused because scheduling could not finish. Check the contact card.';
         const { data: stage } = await supa.from('wk_pipeline_columns').select('id').eq('pipeline_id', HOSTUNICO_PIPELINE).eq('name', 'Report sent').maybeSingle();
         let warning = result.warning;
         const { data: currentStage } = c.pipeline_column_id ? await supa.from('wk_pipeline_columns').select('name').eq('id', c.pipeline_column_id).maybeSingle() : { data: null };
         if (stage && (!currentStage || ['New lead', 'Report requested', 'Report sent'].includes(currentStage.name))) {
-          const { error } = await supa.from('wk_contacts').update({ pipeline_column_id: stage.id, stage_moved_at: new Date().toISOString(), stage_moved_by: auth.user.id, stage_move_source: 'agent' }).eq('id', c.id);
-          if (error) warning = 'SMS submitted. The board stage could not be updated.';
+          const update = supa.from('wk_contacts').update({ pipeline_column_id: stage.id, stage_moved_at: new Date().toISOString(), stage_moved_by: auth.user.id, stage_move_source: 'agent' }).eq('id', c.id);
+          const { error } = await (c.pipeline_column_id ? update.eq('pipeline_column_id', c.pipeline_column_id) : update.is('pipeline_column_id', null));
+          if (error) warning = 'Report submitted. The board stage could not be updated.';
         }
         return json({ ok: true, smsStatus: result.status || 'queued', warning });
       } catch (error) {
-        await supa.from('sa_property_reports').update({ sms_state: 'check_inbox' }).eq('listing_id', listingId).eq('remote_id', row.remote_id);
+        await supa.from('sa_property_reports').update({ [stateField]: 'check_inbox' }).eq('listing_id', listingId).eq('remote_id', row.remote_id);
         throw new Problem(502, error instanceof Error ? error.message : 'Check the inbox for the send result.');
       }
     }
@@ -221,7 +242,7 @@ export default async function handler(req: Request): Promise<Response> {
     let qualification = hostunicoUplift(row.state, row.report_pitch, listing.rent_pcm);
     const qualified = listing.hostunico_call_eligible === true && qualification.status === 'eligible' && await hostunicoOutreachAllowed(supa, c.id, '', listingId);
     if (!qualified && qualification.status === 'eligible') qualification = { status: 'pending', message: 'This property or its asking price needs checking. Calling and sending are blocked.' };
-    return json({ ...sendingPolicy, qualification, eligibilityBlocked: !qualified, stage: row.state, message: qualified ? row.message : qualification.message, reportUrl: row.state === 'ready' ? row.report_url : undefined, smsDraft: qualified && row.report_url ? reportSms(row.report_url, row.property?.areaEstimate === true, callback) : undefined, callback: callback ? { number: callback.number, name: callback.name } : null, reportPitch: row.state === 'ready' ? { ...row.report_pitch, eligibility: qualified ? 'eligible' : qualification.status === 'eligible' ? 'excluded' : qualification.status } : null, property: row.property, smsStatus, receivedAt: row.received_at, mobile: c.hostunico_sms_phone || (reportPhoneKind(c.phone) === 'mobile' ? reportPhone(c.phone) : '') });
+    return json({ ...sendingPolicy, qualification, eligibilityBlocked: !qualified, stage: row.state, message: qualified ? row.message : qualification.message, reportUrl: row.state === 'ready' ? row.report_url : undefined, smsDraft: qualified && row.report_url ? reportSms(row.report_url, row.property?.areaEstimate === true, callback) : undefined, callback: callback ? { number: callback.number, name: callback.name } : null, reportPitch: row.state === 'ready' ? { ...row.report_pitch, eligibility: qualified ? 'eligible' : qualification.status === 'eligible' ? 'excluded' : qualification.status } : null, property: row.property, smsStatus, emailStatus: row.email_state, receivedAt: row.received_at, mobile: c.hostunico_sms_phone || (reportPhoneKind(c.phone) === 'mobile' ? reportPhone(c.phone) : '') });
   } catch (error) {
     return json({ error: error instanceof Problem ? error.message : 'Could not complete this report action. Please try again.' }, { status: error instanceof Problem ? error.status : 503 });
   }

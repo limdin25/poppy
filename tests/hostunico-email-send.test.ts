@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
+import { loadReviewedFollowup, claimReviewedFollowup, finishReviewedFollowup } from '../supabase/functions/_shared/hostunico-followup-delivery';
 import { HOSTUNICO_COMPANY } from '../supabase/functions/_shared/hostunico-company';
 import { hostunicoOutreachAllowed, HOSTUNICO_UPLIFT_PENDING } from '../supabase/functions/_shared/hostunico-uplift';
 
@@ -37,7 +38,7 @@ beforeEach(() => {
   const createClient = () => ({ auth: { getUser: async (token: string) => ({ data: { user: token === 'valid' ? { id: 'pedro' } : null }, error: null }) }, rpc: async (name: string) => ({ data: name === 'wk_is_admin' ? isAdmin : name === 'wk_hostunico_outreach_allowed' ? salesAllowed : true, error: null }), from: (table: string) => new Query(table) });
   const source = readFileSync('supabase/functions/wk-email-send/index.ts', 'utf8').replace(/^import .*;\n/gm, '');
   const js = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None } }).outputText;
-  new Function('serve', 'createClient', 'Deno', 'HOSTUNICO_COMPANY', 'hostunicoOutreachAllowed', 'HOSTUNICO_UPLIFT_PENDING', js)((fn: typeof handler) => { handler = fn; }, createClient, { env: { get: () => 'test-only' } }, HOSTUNICO_COMPANY, hostunicoOutreachAllowed, HOSTUNICO_UPLIFT_PENDING);
+  new Function('serve', 'createClient', 'Deno', 'HOSTUNICO_COMPANY', 'hostunicoOutreachAllowed', 'HOSTUNICO_UPLIFT_PENDING', 'loadReviewedFollowup', 'claimReviewedFollowup', 'finishReviewedFollowup', js)((fn: typeof handler) => { handler = fn; }, createClient, { env: { get: () => 'test-only' } }, HOSTUNICO_COMPANY, hostunicoOutreachAllowed, HOSTUNICO_UPLIFT_PENDING, loadReviewedFollowup, claimReviewedFollowup, finishReviewedFollowup);
   vi.stubGlobal('fetch', vi.fn(async () => Response.json({ id: 'provider-id' })));
 });
 const request = (extra = {}, token = 'valid') => new Request('https://example.com/email', { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ contact_id: 'lead', subject: 'Your report', body: 'Your report: https://hostunico.com/r/A1b2C', ...extra }) });

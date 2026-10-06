@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from 'react';
-import { supabase } from '@/integrations/supabase/browser';
 import type { SaListing } from '../../hooks/useSaListings';
 import { reportPhoneKind } from '../../../../../supabase/functions/_shared/hostunico-phone';
 import HostunicoReportActivity from './HostunicoReportActivity';
@@ -7,26 +6,16 @@ import type { HostunicoReportPitch } from '../../lib/hostunicoReportPitch';
 import SaEmailPane from './SaEmailPane';
 import HostunicoCallMessages from './HostunicoCallMessages';
 
-export async function reportAction(action: string, values: Record<string, unknown>) {
-  const { data } = await supabase.auth.getSession();
-  if (!data.session) throw new Error('Please sign in.');
-  const status = action === 'status';
-  const query = new URLSearchParams({ action, listing_id: String(values.listing_id ?? '') });
-  const response = await fetch(`/api/crm/sa-report${status ? `?${query}` : ''}`, {
-    method: status ? 'GET' : 'POST',
-    headers: { Authorization: `Bearer ${data.session.access_token}`, 'Content-Type': 'application/json' },
-    ...(status ? {} : { body: JSON.stringify({ action, ...values }) }),
-  });
-  const result = await response.json();
-  if (!response.ok) throw new Error(result.error || 'Could not complete this report action.');
-  return result;
-}
+export { reportAction } from '../../lib/hostunicoReportApi';
+import { reportAction } from '../../lib/hostunicoReportApi';
+import { useReportFollowupReview } from '../../hooks/useReportFollowupReview';
+import ReportFollowupCard from '../followups/ReportFollowupCard';
 
 interface ReportState {
   stage: string; message?: string; reportUrl?: string; smsStatus?: string; receivedAt?: string; mobile?: string;
   property?: { postcode: string; bedrooms: number; bathrooms: number; advertisedRentPcm?: number; areaEstimate?: boolean; areaLabel?: string };
   reportPitch?: HostunicoReportPitch | null;
-  smsDraft?: string; callback?: { number: string; name: string } | null; smsBlocked?: boolean; contactBlocked?: boolean; eligibilityBlocked?: boolean;
+  emailStatus?: string; smsDraft?: string; callback?: { number: string; name: string } | null; smsBlocked?: boolean; contactBlocked?: boolean; eligibilityBlocked?: boolean;
 }
 export default function SaReportPanel({ listing, phone, contactId, contactEmail, agentName = 'Pedro', country = 'GB', onReportPitch, onReportMobile }: { listing: SaListing | null; phone?: string; contactId?: string; contactEmail?: string; agentName?: string; country?: string; onReportPitch?: (listingId: string, country: string, pitch: HostunicoReportPitch | null) => void; onReportMobile?: (listingId: string, mobile: string) => void }) {
   const [channel, setChannel] = useState<'sms' | 'email'>('sms');
@@ -91,6 +80,11 @@ export default function SaReportPanel({ listing, phone, contactId, contactEmail,
     } catch (e) { setError(e instanceof Error ? e.message : 'Could not complete action.'); }
     finally { setBusy(false); }
   }
+  const review = useReportFollowupReview(listing?.id, 'sms', async (result) => {
+    setMessageVersion(v => v + 1);
+    try { setReport(await refresh()); } catch { setError('Report sent. Reload the contact to see its updated status.'); }
+    if (result.warning) setError(result.warning);
+  });
   if (!listing) return <section className="rounded-xl border bg-white p-3" aria-label="Report and inbox"><h2 className="text-sm font-semibold">Report and inbox</h2><p className="mt-2 text-xs text-amber-800">No eligible property is attached yet. Choose a property before preparing or sending its report.</p>{contactId && <HostunicoCallMessages contactId={contactId} />}</section>;
   const needsDetails = report?.stage === 'needs_details';
   const area = report?.property?.areaEstimate;
@@ -132,12 +126,14 @@ export default function SaReportPanel({ listing, phone, contactId, contactEmail,
         try { const result = await reportAction('recipient', { listing_id: listing.id, mobile, mobile_confirmed: mobileConfirmed }); setMobile(result.mobile); setSavedMobile(result.mobile); } catch (e) { setError(e instanceof Error ? e.message : 'Could not save their mobile.'); } finally { setBusy(false); }
       }} className="rounded-lg border px-3 py-2 text-xs font-medium disabled:opacity-40">Save confirmed mobile</button></>}
       <label className="flex items-start gap-2 text-xs text-slate-600"><input type="checkbox" disabled={!canText} checked={permission} onChange={(e) => setPermission(e.target.checked)} />They agreed to receive this report{savedMobile ? ` at ${savedMobile}` : ' by SMS'}.</label>
-      <button onClick={() => void act('send_sms')} disabled={busy || !canText || !permission || report?.stage !== 'ready'} className="w-full rounded-lg bg-slate-900 px-3 py-2.5 text-sm font-semibold text-white disabled:opacity-40">{busy ? 'Working...' : 'Send report by SMS'}</button>
+      <button onClick={() => void review.openReview({ permission })} disabled={busy || review.open || !canText || !permission || report?.stage !== 'ready'} className="w-full rounded-lg bg-slate-900 px-3 py-2.5 text-sm font-semibold text-white disabled:opacity-40">{busy ? 'Working...' : 'Send report by SMS'}</button>
     </div>}
     {alreadySent && <div className="mt-3 flex flex-wrap items-center gap-3 text-xs"><span>SMS status: <b>{report?.smsStatus?.replaceAll('_', ' ')}</b></span>{report?.receivedAt ? <span className="text-green-700">They confirmed receipt</span> : <button disabled={busy || report?.contactBlocked || ['sending', 'check_inbox'].includes(report?.smsStatus || '')} onClick={() => void act('received')} className="rounded-lg border px-3 py-1.5 disabled:opacity-40">They confirmed receipt</button>}</div>}
       </>}
-      {channel === 'email' && <SaEmailPane key={`${contactId}:${listing.id}:${report?.reportUrl || ''}:${country}:${report?.callback?.number || ''}`} contactId={contactId} contactEmail={contactEmail} listing={listing} agentFirstName={agentName} reportUrl={report?.reportUrl} callbackNumber={report?.callback?.number} country={country} requireReport blocked={report?.contactBlocked !== false || report?.eligibilityBlocked !== false} onSent={() => setMessageVersion((v) => v + 1)} />}
+      {channel === 'email' && <SaEmailPane key={`${contactId}:${listing.id}:${report?.reportUrl || ''}:${country}:${report?.callback?.number || ''}`} contactId={contactId} contactEmail={contactEmail} listing={listing} agentFirstName={agentName} reportUrl={report?.reportUrl} callbackNumber={report?.callback?.number} country={country} requireReport alreadySent={!!report?.emailStatus && report.emailStatus !== 'unsent'} blocked={report?.contactBlocked !== false || report?.eligibilityBlocked !== false} onSent={() => setMessageVersion((v) => v + 1)} />}
     </div>
+    {review.dialog}
+    {contactId && <ReportFollowupCard contactId={contactId} refreshVersion={messageVersion} />}
     {contactId && <HostunicoCallMessages key={contactId} contactId={contactId} refreshVersion={messageVersion} />}
     {report?.reportUrl && <HostunicoReportActivity load={loadActivity} />}
     {error && <p role="alert" className="mt-2 text-xs text-red-700">{error}</p>}

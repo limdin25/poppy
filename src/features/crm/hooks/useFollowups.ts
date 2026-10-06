@@ -1,3 +1,4 @@
+import { reportFollowupStageChanged } from '../components/followups/ReportFollowupStageNotice';
 // useFollowups — agent-scoped follow-up timer queue.
 //
 // Hugo 2026-04-26 (PR 19): Nurturing / Callback / Interested all carry
@@ -174,6 +175,7 @@ export function useFollowups() {
         setError(e.message);
         return null;
       }
+      if (data) reportFollowupStageChanged(input.contact_id);
       return data;
     },
     [agentId]

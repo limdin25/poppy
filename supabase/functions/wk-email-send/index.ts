@@ -30,6 +30,8 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 import { HOSTUNICO_COMPANY } from '../_shared/hostunico-company.ts';
 import { hostunicoOutreachAllowed, HOSTUNICO_UPLIFT_PENDING } from '../_shared/hostunico-uplift.ts';
 
+import { loadReviewedFollowup, claimReviewedFollowup, finishReviewedFollowup } from '../_shared/hostunico-followup-delivery.ts';
+
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY') ?? '';
@@ -88,16 +90,15 @@ serve(async (req: Request) => {
     if (!jwt) return json(401, { error: 'Missing bearer token' });
 
     const supa = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
-    const { data: userResp, error: userErr } = await supa.auth.getUser(jwt);
+    let requestBody: Record<string, unknown>;
+    try { requestBody = await req.json(); } catch { return json(400, { error: 'Invalid JSON' }); }
+    const reviewed = await loadReviewedFollowup(supa, jwt, Deno.env.get('CRM_JOBS_KEY') || '', requestBody, 'email');
+    const { data: userResp, error: userErr } = reviewed
+      ? { data: { user: { id: reviewed.agent_id, email: '' } }, error: null }
+      : await supa.auth.getUser(jwt);
     if (userErr || !userResp?.user) return json(401, { error: 'Invalid token' });
     const agentId = userResp.user.id;
-
-    let payload: SendBody;
-    try {
-      payload = (await req.json()) as SendBody;
-    } catch {
-      return json(400, { error: 'Invalid JSON' });
-    }
+    const payload: SendBody = reviewed ? { contact_id: reviewed.contact_id, body: reviewed.body, subject: reviewed.subject, to_email: reviewed.recipient, channel: 'sms', campaign_id: '5d9657f9-d9b4-4e27-a2d1-83db80867f92' } as SendBody : requestBody as unknown as SendBody;
 
     const contactId = (payload.contact_id ?? '').trim();
     const subject = (payload.subject ?? '').trim();
@@ -116,9 +117,11 @@ serve(async (req: Request) => {
     if (!contact) return json(404, { error: 'Contact not found' });
     if (contact.desk === 'sa' && !await hostunicoOutreachAllowed(supa, contactId, `${body}\n${payload.html || ''}`)) return json(409, { error: HOSTUNICO_UPLIFT_PENDING });
     if (contact.desk === 'sa') {
+      if (!reviewed) {
       const caller = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, { global: { headers: { Authorization: `Bearer ${jwt}` } } });
       const [staff, admin] = await Promise.all([caller.rpc('wk_is_agent_or_admin'), caller.rpc('wk_is_admin')]);
       if (staff.error || admin.error || !staff.data || (!admin.data && contact.owner_agent_id !== agentId)) return json(403, { error: 'This Hostunico contact is not assigned to you.' });
+      }
       if (contact.do_not_call) return json(409, { error: 'This lead has asked not to be contacted.' });
     }
 
@@ -262,11 +265,13 @@ serve(async (req: Request) => {
 
     // 3. POST to Resend.
     const finalHtml = payload.html ?? body.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br/>');
+    await claimReviewedFollowup(supa, reviewed);
     const rsResp = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${RESEND_API_KEY}`,
         'Content-Type': 'application/json',
+        ...(reviewed ? { 'Idempotency-Key': `hostunico-followup-${reviewed.id}` } : {}),
       },
       body: JSON.stringify({
         from: fromEmail,
@@ -309,6 +314,8 @@ serve(async (req: Request) => {
     } catch {
       console.warn('[wk-email-send] could not parse resend response', rsBody.slice(0, 200));
     }
+
+    await finishReviewedFollowup(supa, reviewed, rsJson.id);
 
     // 4. Persist outbound row.
     const { data: inserted, error: insErr } = await supa

@@ -1,3 +1,4 @@
+import ReportFollowupStageNotice from '../components/followups/ReportFollowupStageNotice';
 import { useEffect, useRef, useState } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { ArrowLeft, LogOut } from 'lucide-react';
@@ -194,6 +195,7 @@ function CrmShell() {
               <DialerProModal />
               <IncomingCallModal />
               <GlobalToasts />
+              <ReportFollowupStageNotice />
             </div>
           </DialerProModalProvider>
         </ActiveCallProvider>

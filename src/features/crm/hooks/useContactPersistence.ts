@@ -1,3 +1,4 @@
+import { reportFollowupStageChanged } from '../components/followups/ReportFollowupStageNotice';
 // useContactPersistence — write-through helpers for wk_contacts mutations.
 //
 // The SmsV2Store reducer is purely local. Pages need to optimistically
@@ -113,6 +114,7 @@ export function useContactPersistence(): ContactPersistAPI {
       console.warn('[contact-persist] moveToColumn failed:', error.message);
       return false;
     }
+    reportFollowupStageChanged(contactId);
     return true;
   }, []);
 

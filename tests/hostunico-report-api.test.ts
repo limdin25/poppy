@@ -1,9 +1,11 @@
+import { buildFollowupPlan } from '../src/core/hostunicoFollowupPlan';
+import { HOSTUNICO_FOLLOWUP } from '../src/core/hostunicoFollowup';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 const fixture = vi.hoisted(() => {
   process.env.SUPABASE_URL = 'https://test.supabase.co';
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'test';
   process.env.HOSTUNICO_CRM_TOKEN = 'test-token';
-  return { tables: {} as Record<string, any[]>, admin: false, smsRequests: 0, worked: [] as string[] };
+  return { tables: {} as Record<string, any[]>, admin: false, smsRequests: 0, worked: [] as string[], plans: [] as any[], planError: '' };
 });
 vi.mock('@supabase/supabase-js', () => {
   class Query {
@@ -39,6 +41,8 @@ vi.mock('@supabase/supabase-js', () => {
   return { createClient: () => ({
     auth: { getUser: async (token: string) => ({ data: { user: token === 'good' ? { id: 'pedro' } : null } }) },
     rpc: async (name: string, args?: any) => {
+      if (name === 'sa_save_report_followup_plan') { fixture.plans.push(args); return { data: null, error: fixture.planError ? { message: fixture.planError } : null }; }
+      if (name === 'sa_report_followup_stop_reason') return { data: null, error: null };
       if (name === 'wk_hostunico_call_context') fixture.tables.wk_contacts.find((row) => row.id === args.p_contact).custom_fields = { hostunico_listing_id: args.p_listing, hostunico_script_mode: args.p_mode };
       if (name === 'wk_dialer_servable_contacts') return { data: args.p_contact_ids.filter((id: string) => !(fixture.worked || []).includes(id)), error: null };
       return { data: name === 'wk_is_admin' ? fixture.admin : true, error: null };
@@ -49,15 +53,15 @@ vi.mock('@supabase/supabase-js', () => {
 import handler from '../api/crm/sa-report';
 const listingId = '11111111-1111-4111-8111-111111111111';
 function request(action: string, extra: Record<string, unknown> = {}, token = 'good') {
-  return new Request('https://app.heyelsie.com/api/crm/sa-report', { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ action, listing_id: listingId, ...extra }) });
+  return new Request('https://app.heyelsie.com/api/crm/sa-report', { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ action, listing_id: listingId, followups: buildFollowupPlan(HOSTUNICO_FOLLOWUP, { name: 'Alex', property: 'Test Street', reportUrl: 'https://hostunico.com/r/A1b2C', channel: action === 'send_email' ? 'email' : 'sms' }), ...extra }) });
 }
 beforeEach(() => {
-  fixture.admin = false; fixture.smsRequests = 0; fixture.worked = [];
+  fixture.admin = false; fixture.smsRequests = 0; fixture.worked = []; fixture.plans = []; fixture.planError = '';
   fixture.tables = {
-    wk_contacts: [{ id: 'contact', desk: 'sa', owner_agent_id: 'pedro', do_not_call: false, phone: '+447700900123' }],
+    wk_contacts: [{ id: 'contact', name: 'Alex', desk: 'sa', owner_agent_id: 'pedro', do_not_call: false, phone: '+447700900123' }],
     sa_listings: [{ id: listingId, wk_contact_id: 'contact', rent_pcm: 1000, hostunico_call_eligible: true }],
-    sa_property_reports: [{ listing_id: listingId, remote_id: listingId, access_token: 'a'.repeat(64), state: 'ready', report_url: 'https://hostunico.com/r/A1b2C', sms_state: 'unsent', report_pitch: { monthly: '£2,000', monthlyGbpPence: 200000, askingRentGbpPence: 100000 } }],
-    wk_pipeline_columns: [], wk_sms_messages: [],
+    sa_property_reports: [{ listing_id: listingId, remote_id: listingId, access_token: 'a'.repeat(64), state: 'ready', report_url: 'https://hostunico.com/r/A1b2C', sms_state: 'unsent', email_state: 'unsent', report_pitch: { monthly: '£2,000', monthlyGbpPence: 200000, askingRentGbpPence: 100000 } }],
+    wk_pipeline_columns: [], wk_sms_messages: [], sa_report_followup_items: [], sa_followup_config: [{ id: true, config: HOSTUNICO_FOLLOWUP }],
   };
   vi.stubGlobal('fetch', vi.fn(async (url: string) => {
     if (url.includes('crm-estimates/status')) return Response.json({ stage: 'ready', message: 'Ready', reportUrl: fixture.tables.sa_property_reports[0].report_url, reportPitch: fixture.tables.sa_property_reports[0].report_pitch });
@@ -67,6 +71,35 @@ beforeEach(() => {
   }));
 });
 describe('human report sends', () => {
+  it('does not send anything while loading the personalised follow-up preview', async () => {
+    const result = await (await handler(request('followup_plan'))).json();
+    expect(result.items).toHaveLength(3); expect(result.items[0].body).toContain('Hi Alex,');
+    expect(fixture.smsRequests).toBe(0);
+  });
+  it('requires a reviewed plan and stops before sending if scheduling fails', async () => {
+    expect((await handler(request('send_sms', { permission: true, followups: null }))).status).toBe(400);
+    fixture.planError = 'The follow-up changed. Refresh before saving';
+    expect((await handler(request('send_sms', { permission: true }))).status).toBe(409);
+    expect(fixture.smsRequests).toBe(0);
+    expect(fixture.tables.sa_property_reports[0].sms_state).toBe('unsent');
+  });
+  it('saves exact edits and individual skips before the report is submitted', async () => {
+    const plan = buildFollowupPlan(HOSTUNICO_FOLLOWUP, { name: 'Alex', property: 'Test Street', reportUrl: 'https://hostunico.com/r/A1b2C', channel: 'sms' });
+    plan[0].body = 'My exact follow-up'; plan[1].enabled = false;
+    expect((await handler(request('send_sms', { permission: true, followups: plan }))).status).toBe(200);
+    expect(fixture.plans[0].p_items).toEqual(plan); expect(fixture.smsRequests).toBe(1);
+  });
+  it('email uses the same review and saves a skip-all plan before sending', async () => {
+    const plan = buildFollowupPlan(HOSTUNICO_FOLLOWUP, { name: 'Alex', property: 'Test Street', reportUrl: 'https://hostunico.com/r/A1b2C', channel: 'email' }).map(i=>({...i,enabled:false}));
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.includes('crm-estimates/status')) return Response.json({ stage: 'ready', reportUrl: fixture.tables.sa_property_reports[0].report_url, reportPitch: fixture.tables.sa_property_reports[0].report_pitch });
+      expect(url).toContain('wk-email-send'); expect(fixture.plans[0].p_items.every((i:any)=>!i.enabled)).toBe(true);
+      fixture.smsRequests++; return Response.json({ external_id: 'email-receipt', status: 'queued' });
+    }));
+    const response = await handler(request('send_email', { to_email: 'test@example.invalid', subject: 'Report', email_body: 'Here it is: https://hostunico.com/r/A1b2C', followups: plan }));
+    expect(response.status).toBe(200); expect(fixture.smsRequests).toBe(1);
+    expect(fixture.tables.sa_property_reports[0].email_state).toBe('queued');
+  });
   it.each([129999, 100000, 83000])('blocks a ready report with %s pence earnings from every send attempt', async (monthlyGbpPence) => {
     Object.assign(fixture.tables.sa_property_reports[0].report_pitch, { monthlyGbpPence });
     const preview = await (await handler(request('status'))).json();

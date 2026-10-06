@@ -26,7 +26,7 @@ export default function HostunicoReportButton({ contact }: { contact: ReportCont
   const [open, setOpen] = useState(false);
   useEffect(() => {
     if (!open) return;
-    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') { event.stopPropagation(); setOpen(false); } };
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape' && !document.querySelector('[data-report-followups-dialog]')) { event.stopPropagation(); setOpen(false); } };
     document.addEventListener('keydown', onKey, true);
     return () => document.removeEventListener('keydown', onKey, true);
   }, [open]);

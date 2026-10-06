@@ -107,6 +107,14 @@ people the AI never even spoke to. Check the trunk before you believe anything.
 
 ### What still sends, and it is not automation
 
+**Hostunico report exception, Hugo, 2026-10-06:** automatic report follow-ups
+are now authorised only after Pedro reviews the exact per-contact plan in the
+Send report popup. The new `sa_report_followup_items` sender is deliberately
+separate from general CRM automation. Replies, bookings and closed stages stop
+it. Existing unreviewed report reminders remain manual. Do not enable the old
+SA job worker or any other automation as part of this exception. See
+[docs/HOSTUNICO_REPORT_FOLLOWUPS.md](docs/HOSTUNICO_REPORT_FOLLOWUPS.md).
+
 A human pressing send: the CRM inbox, the dialer, the Find Builders desk. That
 is Pedro doing his job and it stays. The line is simple: **a person chose to send
 it, or it does not go.**

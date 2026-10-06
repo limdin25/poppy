@@ -21,7 +21,7 @@ export interface SequenceLead {
   replied_at?: string | null; intent?: ReplyIntent | null; reason?: string | null;
   confidence?: number | null; classification_pending?: boolean; overridden_at?: string | null;
   reply_body?: string | null; reply_kind?: string | null; cold_at?: string | null;
-  send_state?: string | null; name?: string; phone?: string;
+  reviewed_plan?: boolean; send_state?: string | null; name?: string; phone?: string;
 }
 export function sequencePosition(lead: SequenceLead, config = HOSTUNICO_FOLLOWUP, now = Date.now()) {
   if (lead.replied_at) {

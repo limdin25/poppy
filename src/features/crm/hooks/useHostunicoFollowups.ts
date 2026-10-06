@@ -4,7 +4,9 @@ import { HOSTUNICO_FOLLOWUP, type FollowupConfig, type SequenceLead } from '@/co
 export async function followupAction(action: string, values: Record<string, unknown> = {}) {
   const { data } = await supabase.auth.getSession();
   if (!data.session) throw new Error('Please sign in.');
-  const r = await fetch('/api/crm/sa-followups', { method: action === 'list' ? 'GET' : 'POST', headers: { Authorization: `Bearer ${data.session.access_token}`, 'Content-Type': 'application/json' }, ...(action === 'list' ? {} : { body: JSON.stringify({ action, ...values }) }) });
+  const read = action === 'list' || action === 'items';
+  const query = new URLSearchParams({ action, ...(values.contact_id ? { contact_id: String(values.contact_id) } : {}) });
+  const r = await fetch(`/api/crm/sa-followups${read ? `?${query}` : ''}`, { method: read ? 'GET' : 'POST', headers: { Authorization: `Bearer ${data.session.access_token}`, 'Content-Type': 'application/json' }, ...(read ? {} : { body: JSON.stringify({ action, ...values }) }) });
   const result = await r.json();
   if (!r.ok) throw new Error(result.error || 'Could not load follow-ups.');
   return result;

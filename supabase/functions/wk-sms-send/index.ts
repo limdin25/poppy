@@ -17,6 +17,8 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 import { reportPhoneKind } from '../_shared/hostunico-phone.ts';
 import { hostunicoOutreachAllowed, HOSTUNICO_UPLIFT_PENDING } from '../_shared/hostunico-uplift.ts';
 
+import { loadReviewedFollowup, claimReviewedFollowup, finishReviewedFollowup } from '../_shared/hostunico-followup-delivery.ts';
+
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const TWILIO_ACCOUNT_SID = Deno.env.get('TWILIO_ACCOUNT_SID') ?? '';
@@ -128,16 +130,15 @@ serve(async (req: Request) => {
     if (!jwt) return json(401, { error: 'Missing bearer token' });
 
     const supa = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
-    const { data: userResp, error: userErr } = await supa.auth.getUser(jwt);
+    let requestBody: Record<string, unknown>;
+    try { requestBody = await req.json(); } catch { return json(400, { error: 'Invalid JSON' }); }
+    const reviewed = await loadReviewedFollowup(supa, jwt, Deno.env.get('CRM_JOBS_KEY') || '', requestBody, 'sms');
+    const { data: userResp, error: userErr } = reviewed
+      ? { data: { user: { id: reviewed.agent_id, email: '' } }, error: null }
+      : await supa.auth.getUser(jwt);
     if (userErr || !userResp?.user) return json(401, { error: 'Invalid token' });
     const agentId = userResp.user.id;
-
-    let payload: SendBody;
-    try {
-      payload = await req.json() as SendBody;
-    } catch {
-      return json(400, { error: 'Invalid JSON' });
-    }
+    const payload: SendBody = reviewed ? { contact_id: reviewed.contact_id, body: reviewed.body, subject: reviewed.subject, to_email: reviewed.recipient, channel: 'sms', campaign_id: '5d9657f9-d9b4-4e27-a2d1-83db80867f92' } as SendBody : requestBody as unknown as SendBody;
 
     const contactId = (payload.contact_id ?? '').trim();
     const body = (payload.body ?? '').trim();
@@ -163,7 +164,7 @@ serve(async (req: Request) => {
     if (contact.desk === 'sa' && (contact.do_not_call || (!reportMobile && reportPhoneKind(contact.phone) !== 'mobile'))) {
       return json(409, { error: contact.do_not_call ? 'This lead has asked not to be contacted.' : 'Save a confirmed mobile number for this lead, or use email.' });
     }
-    const toE164 = normalizeE164((reportMobile || contact.phone as string | null) ?? '');
+    const toE164 = normalizeE164(reviewed?.recipient || ((reportMobile || contact.phone as string | null) ?? ''));
     if (!toE164) return json(400, { error: 'Contact has no phone number' });
 
     // A recorded opt-out (they texted STOP, wk-sms-incoming tagged them)
@@ -414,6 +415,7 @@ serve(async (req: Request) => {
     } else {
       form.set('Body', smsBody);
     }
+    await claimReviewedFollowup(supa, reviewed);
     const twResp = await fetch(url, {
       method: 'POST',
       headers: {
@@ -439,6 +441,8 @@ serve(async (req: Request) => {
       sid?: string;
       status?: string;
     };
+
+    await finishReviewedFollowup(supa, reviewed, twJson.sid);
 
     // Persist the outbound row. We always write, even if Twilio's
     // response is unparseable — the message has left.

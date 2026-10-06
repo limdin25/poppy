@@ -2,11 +2,10 @@
 //
 // Letting agents nearly always say "send me an email". So Pedro asks for the
 // address, it goes in the box, he presses send while they are still on the
-// phone. A PERSON presses send, every time: nothing on this desk texts or
-// emails anybody by itself.
+// phone. Report sends include a reviewed automatic follow-up plan.
 //
 // The current property's browser report is linked in the draft. Pedro reviews
-// the address and text before sending. No attachment or automatic follow-up.
+// the address, text and follow-ups before sending.
 
 import { useEffect, useRef, useState } from 'react';
 import { Check, Loader2, Mail, Send, AlertTriangle } from 'lucide-react';
@@ -14,6 +13,7 @@ import { supabase } from '@/integrations/supabase/browser';
 import { useSmsV2 } from '../../store/SmsV2Store';
 import { useContactPersistence } from '../../hooks/useContactPersistence';
 import type { SaListing } from '../../hooks/useSaListings';
+import { useReportFollowupReview } from '../../hooks/useReportFollowupReview';
 import { gbpMonth, spokenStreet } from '../../hooks/useSaListings';
 
 /** The company Pedro says on the phone (src/core/content/sa-call-script.html). */
@@ -62,12 +62,13 @@ interface Props {
   callbackNumber?: string | null;
   requireReport?: boolean;
   blocked?: boolean;
+  alreadySent?: boolean;
   onSent?: () => void;
 }
 
 const VALID = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
-export default function SaEmailPane({ contactId, contactEmail, agentFirstName, listing, reportUrl, country, callbackNumber, requireReport = false, blocked = false, onSent }: Props) {
+export default function SaEmailPane({ contactId, contactEmail, agentFirstName, listing, reportUrl, country, callbackNumber, requireReport = false, blocked = false, alreadySent = false, onSent }: Props) {
   const { pushToast, patchContact } = useSmsV2();
   const persist = useContactPersistence();
   const [email, setEmail] = useState(contactEmail ?? '');
@@ -91,12 +92,23 @@ export default function SaEmailPane({ contactId, contactEmail, agentFirstName, l
     setBody(t.body);
   }, [address, street, rent, listing?.city, person, agentFirstName, reportUrl, country, callbackNumber]);
 
+  async function finishSent(warning?: string) {
+    const clean = email.trim().toLowerCase();
+    setSent(true); onSent?.();
+    if (warning) setNote(warning);
+    pushToast('Email sent', 'success');
+    patchContact(contactId!, { email: clean });
+    const saved = await persist.patchContact(contactId!, { email: clean });
+    if (typeof saved === 'string') setNote(`Sent. The address was not saved to the lead: ${saved.toLowerCase()}`);
+  }
+  const review = useReportFollowupReview(listing?.id, 'email', async result => { await finishSent(result.warning); });
   const valid = VALID.test(email.trim());
   const reportAttached = !!reportUrl && body.includes(reportUrl);
-  const canSend = valid && !!subject.trim() && !!body.trim() && !sending && !sent && !blocked && !!contactId && (!requireReport || reportAttached);
+  const canSend = valid && !!subject.trim() && !!body.trim() && !sending && !sent && !alreadySent && !review.open && !blocked && !!contactId && (!requireReport || reportAttached);
 
   async function send() {
     if (!canSend || !contactId) return;
+    if (reportAttached && listing) { await review.openReview({ to_email: email.trim().toLowerCase(), subject: subject.trim(), email_body: body.trim() }); return; }
     setSending(true);
     setNote(null);
     try {
@@ -115,14 +127,7 @@ export default function SaEmailPane({ contactId, contactEmail, agentFirstName, l
         pushToast(`Email failed: ${detail}`, 'error');
         return;
       }
-      setSent(true);
-      onSent?.();
-      if (data?.warning) setNote('Email submitted, but its inbox record could not be saved. Check delivery before sending again.');
-      pushToast('Email sent', 'success');
-      // Remember the address. Best effort: the email has gone either way.
-      patchContact(contactId, { email: clean });
-      const saved = await persist.patchContact(contactId, { email: clean });
-      if (typeof saved === 'string') setNote(`Sent. The address was not saved to the lead: ${saved.toLowerCase()}`);
+      await finishSent(data?.warning);
     } catch (e) {
       setNote(`It did not send: ${e instanceof Error ? e.message : 'unknown'}`);
     } finally {
@@ -132,6 +137,7 @@ export default function SaEmailPane({ contactId, contactEmail, agentFirstName, l
 
   return (
     <div className="flex h-full flex-col overflow-y-auto" data-testid="sa-email-pane">
+      {review.dialog}
       <div className="border-b border-[#E5E7EB] px-3 py-2">
         <div className="flex items-center gap-1.5">
           <Mail className="h-3.5 w-3.5 text-[#3C5A87]" />
@@ -197,7 +203,7 @@ export default function SaEmailPane({ contactId, contactEmail, agentFirstName, l
           className="inline-flex items-center justify-center gap-1.5 rounded-md bg-[#2E7D43] px-3 py-2 text-[13px] font-bold text-white transition hover:bg-[#276b39] disabled:cursor-not-allowed disabled:opacity-40"
         >
           {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : sent ? <Check className="h-3.5 w-3.5" /> : <Send className="h-3.5 w-3.5" />}
-          {sending ? 'Sending' : sent ? 'Sent, ask them to confirm it landed' : 'Send it now'}
+          {sending ? 'Sending' : sent || alreadySent ? 'Sent, ask them to confirm it landed' : reportAttached ? 'Send report by email' : 'Send it now'}
         </button>
         {requireReport && !reportAttached && <p className="text-xs text-amber-800">The ready report link must be included before sending.</p>}
         {!contactId && (

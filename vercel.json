@@ -234,6 +234,10 @@
     {
       "path": "/api/cron/transcribe-calls",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/hostunico-followups",
+      "schedule": "* * * * *"
     }
   ]
 }
