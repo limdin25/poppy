@@ -22,6 +22,7 @@ import TrainingMaterialToggle from './TrainingMaterialToggle';
 /** What Pedro can press. Mirrors OUTCOMES in api/crm/sa-outcome.ts. */
 export const SA_OUTCOMES = [
   { key: 'report_requested', label: 'Wants the report' },
+  { key: 'interested', label: 'Interested' },
   { key: 'review_booked', label: 'Arrange review call' },
   { key: 'onboarding', label: 'Ready for onboarding' },
   { key: 'not_interested', label: 'Not interested' },
@@ -122,6 +123,10 @@ function SaListingDetail({ listing: l, contactId, currentCallId, onSaved, review
   const { columns } = useSmsV2();
   const [followupOpen, setFollowupOpen] = useState(false);
   const reviewColumn = columns.find((c) => c.name === 'Review call booked');
+  // Interested (6 Oct 2026): a warm lead, not onboarded yet. Like a review
+  // call it needs a callback time, so the reminder and the dialler fire.
+  const interestedColumn = columns.find((c) => c.name === 'Interested');
+  const [interestedOpen, setInterestedOpen] = useState(false);
   const [person, setPerson] = useState('');
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState<string | null>(null);
@@ -236,6 +241,9 @@ function SaListingDetail({ listing: l, contactId, currentCallId, onSaved, review
                 if (o.key === 'review_booked') {
                   if (!reviewColumn) { setSaveError('The review-call stage has not loaded. Please refresh.'); return; }
                   setFollowupOpen(true);
+                } else if (o.key === 'interested') {
+                  if (!interestedColumn) { setSaveError('The Interested stage has not loaded. Please refresh.'); return; }
+                  setInterestedOpen(true);
                 } else void save(o.key);
               }}
               data-testid={`sa-outcome-${o.key}`}
@@ -254,6 +262,7 @@ function SaListingDetail({ listing: l, contactId, currentCallId, onSaved, review
         {saved && <div className="text-[11.5px] text-[#166534]">{saved}</div>}
         {reviewRequested && !reviewColumn && <p role="alert" className="text-xs text-red-700">The review-call stage has not loaded. Please refresh before saving the callback.</p>}
         {saveError && <div className="text-[11.5px] text-[#B91C1C]">{saveError}</div>}
+        {interestedColumn && <FollowupPromptModal open={interestedOpen} onOpenChange={setInterestedOpen} contactId={contactId} contactName={l.agency} columnId={interestedColumn.id} columnName="Interested" callId={currentCallId} initialNote={note || `Interested in Hostunico for ${l.address}. Ring back`} onSaved={() => { setInterestedOpen(false); void save('interested'); }} />}
         {reviewColumn && <FollowupPromptModal open={followupOpen || reviewRequested} onOpenChange={(open) => { setFollowupOpen(open); if (!open) onReviewClosed?.(); }} contactId={contactId} contactName={l.agency} columnId={reviewColumn.id} columnName="Review call booked" callId={currentCallId} initialNote={note || `Review the Hostunico report for ${l.address}`} onSaved={() => { setFollowupOpen(false); onReviewClosed?.(); void save('review_booked'); }} />}
       </div>
     </div>

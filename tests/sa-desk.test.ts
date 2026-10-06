@@ -21,7 +21,7 @@ import { saEmailTemplate } from '../src/features/crm/components/live-call/SaEmai
 import { isSaDay } from '../api/cron/daily-agent-reports'
 
 const read = (p: string) => readFileSync(join(__dirname, '..', p), 'utf8')
-const MIG = read('supabase/migrations/20260923000001_sa_desk.sql') + read('supabase/migrations/20260930000002_hostunico_sales_desk.sql')
+const MIG = read('supabase/migrations/20260923000001_sa_desk.sql') + read('supabase/migrations/20260930000002_hostunico_sales_desk.sql') + read('supabase/migrations/20261006000002_hostunico_interested_stage.sql')
 const HTML = read('src/core/content/sa-call-script.html')
 const PAGE = HTML.slice(HTML.indexOf('id="page"'))
 const COACH = read('supabase/functions/wk-voice-transcription/index.ts')

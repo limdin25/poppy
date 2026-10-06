@@ -27,12 +27,13 @@ const supabase = createClient(
 );
 
 /** Mirrors SA_OUTCOMES in src/features/crm/components/live-call/SaListingPane.tsx. */
-export const OUTCOMES = ['report_requested', 'review_booked', 'onboarding', 'not_interested', 'do_not_contact', 'yes_in_principle', 'checking_with_landlord', 'said_no', 'no_company_lets', 'already_let', 'no_answer'] as const;
+export const OUTCOMES = ['report_requested', 'interested', 'review_booked', 'onboarding', 'not_interested', 'do_not_contact', 'yes_in_principle', 'checking_with_landlord', 'said_no', 'no_company_lets', 'already_let', 'no_answer'] as const;
 type Outcome = (typeof OUTCOMES)[number];
 
 /** The agency card's next step after each outcome. undefined = leave it. */
 export const STEP_FOR_OUTCOME: Record<Outcome, string | undefined> = {
   report_requested: 'Confirm property details and send the report',
+  interested: 'Warm lead, not onboarded yet. Ring back at the agreed callback time',
   review_booked: 'Review the property report together',
   onboarding: 'Agree the property readiness checklist and onboarding steps',
   not_interested: 'Not interested. Do not follow up unless invited.',
@@ -50,6 +51,7 @@ export const STEP_FOR_OUTCOME: Record<Outcome, string | undefined> = {
  *  Voicemail / No pickup handling. */
 export const BOARD_COLUMN_FOR: Partial<Record<Outcome, string>> = {
   report_requested: 'Report requested',
+  interested: 'Interested',
   review_booked: 'Review call booked',
   onboarding: 'Preparing to onboard',
   not_interested: 'Not interested',
