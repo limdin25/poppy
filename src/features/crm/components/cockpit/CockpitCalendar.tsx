@@ -251,7 +251,7 @@ export default function CockpitCalendar({ items, overdue, loading, onOpen }: {
       {/* The opened day, in full: every booking with its note. */}
       <div data-testid="cockpit-calendar-day">
         <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-ink-subtle bg-elevated border-b border-border">
-          {selectedDay === todayKey ? 'Today' : new Date(`${selectedDay}T12:00:00Z`).toLocaleDateString('en-GB', {
+          {selectedDay === todayKey ? 'Today' : new Date(`${selectedDay}T12:00:00Z`).toLocaleDateString('en-GB', { timeZone: 'Europe/London',
             weekday: 'long', day: 'numeric', month: 'long',
           })}
         </div>

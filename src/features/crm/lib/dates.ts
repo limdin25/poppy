@@ -1,3 +1,5 @@
+import { ukDateKey, ukInputToIso } from './ukTime'
+
 /**
  * Minimal date helpers replacing the single date-fns import in CallsPage.
  * Only the tokens actually used are supported: 'yyyy-MM-dd', 'd MMM yyyy',
@@ -47,4 +49,29 @@ export function startOfYesterday(): Date {
 
 export function endOfYesterday(): Date {
   return endOfDay(subDays(new Date(), 1))
+}
+
+// London calendar days for the Calls page date filters (6 Oct 2026). The
+// local-time helpers above put "today" on the laptop's day, so an agent in
+// another zone filtered the wrong hours.
+
+/** "2026-10-06", London's date for the instant (now by default). */
+export function londonDayKey(date: Date = new Date()): string {
+  return ukDateKey(date)
+}
+
+/** Calendar arithmetic on a "yyyy-MM-dd" key, no zone involved. */
+export function shiftDayKey(key: string, days: number): string {
+  const [y, m, d] = key.split('-').map(Number)
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10)
+}
+
+/** The instant London's day starts. */
+export function londonDayStartMs(key: string): number {
+  return Date.parse(ukInputToIso(`${key}T00:00`))
+}
+
+/** The last millisecond of London's day. */
+export function londonDayEndMs(key: string): number {
+  return londonDayStartMs(shiftDayKey(key, 1)) - 1
 }

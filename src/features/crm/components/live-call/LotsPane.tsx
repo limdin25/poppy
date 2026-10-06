@@ -54,7 +54,7 @@ export default function LotsPane({ contactPhone, selectedLotId, onSelectLot, cur
     <div className="h-full overflow-y-auto" data-testid="auction-lots-pane">
       {lastCall && (
         <div className="mx-3 mt-3 rounded-[10px] border border-[#F0DFB0] bg-[#FFF8EC] px-3 py-2 text-[11.5px] text-[#5a4a20]" data-testid="office-last-call">
-          <b>You have rung this office before</b>, {new Date(lastCall.at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+          <b>You have rung this office before</b>, {new Date(lastCall.at).toLocaleDateString('en-GB', { timeZone: 'Europe/London', day: 'numeric', month: 'short' })}
           {lastCall.outcome ? `, ${lastCall.outcome}` : ''}{lastCall.note ? `: ${lastCall.note}` : ''}
         </div>
       )}

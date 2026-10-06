@@ -70,3 +70,28 @@ export function ukLabel(iso: string): string {
   });
   return `${day}, ${time}`;
 }
+
+// Display formatters. Every date or time the CRM shows is London time, so a
+// laptop set to another zone cannot shift it. Pedro, 6 Oct 2026: a call at
+// 11:44 London showed as 06:44, the same instant in his laptop's zone.
+
+/** "6 Oct, 11:44" in London time. */
+export function ukDateTime(iso: string | Date): string {
+  return new Date(iso).toLocaleString('en-GB', {
+    timeZone: LONDON, day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+  });
+}
+
+/** "11:44" in London time. */
+export function ukTime(iso: string | Date): string {
+  return new Date(iso).toLocaleTimeString('en-GB', {
+    timeZone: LONDON, hour: '2-digit', minute: '2-digit',
+  });
+}
+
+/** "6 Oct" in London time. */
+export function ukDate(iso: string | Date): string {
+  return new Date(iso).toLocaleDateString('en-GB', {
+    timeZone: LONDON, day: 'numeric', month: 'short',
+  });
+}

@@ -14,14 +14,15 @@ import { FileText, CalendarDays } from 'lucide-react';
 import { cn } from '@/core/lib/cn';
 import { useDailyReports } from '../hooks/useDailyReports';
 import { useCurrentAgent } from '../hooks/useCurrentAgent';
+import { ukDateKey } from '../lib/ukTime';
 
 function formatDay(key: string): string {
   const d = new Date(`${key}T12:00:00Z`);
-  const today = new Date().toISOString().slice(0, 10);
-  const yday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+  const today = ukDateKey(new Date());
+  const yday = ukDateKey(new Date(Date.now() - 86_400_000));
   if (key === today) return 'Today';
   if (key === yday) return 'Yesterday';
-  return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+  return d.toLocaleDateString('en-GB', { timeZone: 'Europe/London', weekday: 'short', day: 'numeric', month: 'short' });
 }
 
 /** Minimal markdown: **bold** and paragraph breaks. The report is written to

@@ -446,7 +446,7 @@ export default function AgentOnboardingCard() {
                           </span>
                         </td>
                         <td className="py-2 text-right text-[#6B7280] tabular-nums">
-                          {new Date(s.signed_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                          {new Date(s.signed_at).toLocaleDateString('en-GB', { timeZone: 'Europe/London', day: 'numeric', month: 'short' })}
                         </td>
                       </tr>
                     );

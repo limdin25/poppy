@@ -44,7 +44,7 @@ function formatFileSize(bytes: number): string {
 }
 
 function formatTime(dateStr: string): string {
-  return new Date(dateStr).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+  return new Date(dateStr).toLocaleTimeString('en-GB', { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit' })
 }
 
 function cleanWhatsAppIds(text: string): string {

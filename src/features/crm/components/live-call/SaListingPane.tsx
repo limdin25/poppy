@@ -45,7 +45,7 @@ interface Props {
 }
 
 const shortDate = (iso: string | null | undefined) =>
-  iso ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '';
+  iso ? new Date(iso).toLocaleDateString('en-GB', { timeZone: 'Europe/London', day: 'numeric', month: 'short' }) : '';
 
 export default function SaListingPane({ contactId, selectedId, onSelect, currentCallId, reviewRequested = false, onReviewClosed }: Props) {
   const { listings, loading, error, refetch } = useSaListings(contactId);

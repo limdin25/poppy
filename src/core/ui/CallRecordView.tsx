@@ -20,9 +20,9 @@ function fmtDateTime(dateStr: string | null): string {
   if (!dateStr) return ''
   const d = new Date(dateStr)
   return (
-    d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) +
+    d.toLocaleDateString('en-GB', { timeZone: 'Europe/London', day: 'numeric', month: 'short' }) +
     ' at ' +
-    d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+    d.toLocaleTimeString('en-GB', { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit' })
   )
 }
 

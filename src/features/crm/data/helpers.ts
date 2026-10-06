@@ -22,7 +22,7 @@ export function formatRelativeTime(iso: string): string {
 
 export function formatTimeOnly(iso: string): string {
   const d = new Date(iso);
-  return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/London' });
 }
 
 /** Absolute date + time, pinned to Europe/London.

@@ -34,7 +34,7 @@ export function ObjectionsList({ rows, query, myCalls }: { rows: ObjectionRow[];
   const generated = rows.map((r) => r.created_at).sort().at(-1);
   return <>
     {rows.length > 0 && <p className="rounded-xl bg-[#EEF2F8] px-4 py-3 text-sm leading-relaxed text-[#3C5A87]" data-testid="objections-note">
-      Generated on {generated ? new Date(generated).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : 'an unknown date'} from {calls.size} real calls where owners raised objections, plus the standard owner objections. The answers are suggestions in your own words: adapt them, never promise guaranteed income.
+      Generated on {generated ? new Date(generated).toLocaleDateString('en-GB', { timeZone: 'Europe/London', day: 'numeric', month: 'long', year: 'numeric' }) : 'an unknown date'} from {calls.size} real calls where owners raised objections, plus the standard owner objections. The answers are suggestions in your own words: adapt them, never promise guaranteed income.
     </p>}
     {shown.length === 0 && <p className="py-8 text-center text-sm text-[#6B7280]">{rows.length ? 'Nothing matches that search.' : 'No objections yet.'}</p>}
     <div className="space-y-4">

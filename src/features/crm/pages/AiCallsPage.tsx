@@ -76,7 +76,7 @@ function secs(n: number | null) {
 
 function when(iso: string) {
   const d = new Date(iso);
-  return d.toLocaleString('en-GB', {
+  return d.toLocaleString('en-GB', { timeZone: 'Europe/London',
     day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
   });
 }

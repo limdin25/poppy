@@ -729,7 +729,7 @@ function SettingsDrawer({ onClose }: { onClose: () => void }) {
               {worker
                 ? Date.now() - new Date(worker.last_seen).getTime() < 120_000
                   ? `✅ online${worker.current ? ` — rendering ${worker.current}` : ''} · ${queueDepth} in queue`
-                  : `⚠️ last seen ${new Date(worker.last_seen).toLocaleString('en-GB')} — videos won't render until it's back`
+                  : `⚠️ last seen ${new Date(worker.last_seen).toLocaleString('en-GB', { timeZone: 'Europe/London' })}, videos won't render until it's back`
                 : '⚠️ never seen — the VPS worker isn’t running yet'}
             </div>
 

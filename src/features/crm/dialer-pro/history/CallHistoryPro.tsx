@@ -208,7 +208,7 @@ export default function CallHistoryPro({ onCountChange, onEditContact, onRedial 
   const formatDate = (iso: string | null) => {
     if (!iso) return '--';
     const d = new Date(iso);
-    return d.toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+    return d.toLocaleString('en-GB', { timeZone: 'Europe/London', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
   };
 
   if (isLoading) {

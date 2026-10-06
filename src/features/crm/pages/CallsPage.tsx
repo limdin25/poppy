@@ -16,7 +16,8 @@ import {
   CalendarDays,
   Home,
 } from 'lucide-react';
-import { format, startOfDay, endOfDay, subDays, startOfYesterday, endOfYesterday } from '@/features/crm/lib/dates';
+import { format, londonDayKey, londonDayStartMs, londonDayEndMs, shiftDayKey } from '@/features/crm/lib/dates';
+import { ukDateTime } from '@/features/crm/lib/ukTime';
 import { Popover, PopoverContent, PopoverTrigger } from '@/features/crm/ui/popover';
 import CallTranscriptModal from '../components/calls/CallTranscriptModal';
 import DealSnapshotDrawer from '../components/calls/DealSnapshotDrawer';
@@ -188,8 +189,9 @@ export default function CallsPage() {
   }, [dateFrom, dateTo]);
 
   const filteredCalls = useMemo(() => {
-    const fromTs = dateFrom ? startOfDay(new Date(dateFrom + 'T00:00:00')).getTime() : null;
-    const toTs = dateTo ? endOfDay(new Date(dateTo + 'T00:00:00')).getTime() : null;
+    // London calendar days, whatever zone the laptop is in.
+    const fromTs = dateFrom ? londonDayStartMs(dateFrom) : null;
+    const toTs = dateTo ? londonDayEndMs(dateTo) : null;
     return calls.filter((c) => {
       const contact = findContact(c);
       if (search) {
@@ -266,10 +268,10 @@ export default function CallsPage() {
             <div className="p-3 space-y-3">
               <div className="flex flex-wrap gap-1.5">
                 {[
-                  { label: 'Today', from: format(new Date(), 'yyyy-MM-dd'), to: format(new Date(), 'yyyy-MM-dd') },
-                  { label: 'Yesterday', from: format(startOfYesterday(), 'yyyy-MM-dd'), to: format(endOfYesterday(), 'yyyy-MM-dd') },
-                  { label: 'Last 7 days', from: format(subDays(new Date(), 6), 'yyyy-MM-dd'), to: format(new Date(), 'yyyy-MM-dd') },
-                  { label: 'Last 30 days', from: format(subDays(new Date(), 29), 'yyyy-MM-dd'), to: format(new Date(), 'yyyy-MM-dd') },
+                  { label: 'Today', from: londonDayKey(), to: londonDayKey() },
+                  { label: 'Yesterday', from: shiftDayKey(londonDayKey(), -1), to: shiftDayKey(londonDayKey(), -1) },
+                  { label: 'Last 7 days', from: shiftDayKey(londonDayKey(), -6), to: londonDayKey() },
+                  { label: 'Last 30 days', from: shiftDayKey(londonDayKey(), -29), to: londonDayKey() },
                 ].map((preset) => (
                   <button
                     key={preset.label}
@@ -501,12 +503,7 @@ export default function CallsPage() {
                       {formatPence(c.costPence)}
                     </td>
                     <td className="px-2 py-2.5 text-[11px] text-[#9CA3AF] tabular-nums">
-                      {new Date(c.startedAt).toLocaleString('en-GB', {
-                        month: 'short',
-                        day: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
+                      {ukDateTime(c.startedAt)}
                     </td>
                     <td className="px-2 py-2.5 text-right">
                       <div className="flex items-center justify-end gap-1">

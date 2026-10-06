@@ -13,7 +13,7 @@ export default function HostunicoCallMessages({ contactId, refreshVersion = 0 }:
     {error && <p role="alert" className="mt-2 text-xs text-amber-800">{error}</p>}
     {!loading && !error && !relevant.length && <p className="mt-2 text-xs text-slate-500">No messages yet. Your sent report and their reply appear here.</p>}
     <ol className="mt-2 max-h-80 space-y-2 overflow-y-auto">{visible.map((message) => <li key={message.id} className={`rounded-lg p-2 text-xs ${message.direction === 'inbound' ? 'border border-blue-200 bg-blue-50' : 'bg-slate-100'}`}>
-      <div className="flex flex-wrap justify-between gap-1 text-[10px] text-slate-500"><b>{message.direction === 'inbound' ? 'Their reply' : 'Our message'} / {message.channel.toUpperCase()}</b><time dateTime={message.createdAt}>{new Date(message.createdAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</time></div>
+      <div className="flex flex-wrap justify-between gap-1 text-[10px] text-slate-500"><b>{message.direction === 'inbound' ? 'Their reply' : 'Our message'} / {message.channel.toUpperCase()}</b><time dateTime={message.createdAt}>{new Date(message.createdAt).toLocaleString('en-GB', { timeZone: 'Europe/London', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</time></div>
       {message.subject && <p className="mt-1 font-semibold">{message.subject}</p>}
       <p className="mt-1 whitespace-pre-wrap break-words leading-relaxed">{message.body || (message.mediaUrls.length ? 'Media received. Open the full inbox to view it.' : 'Empty message')}</p>
       <p className="mt-1 text-[10px] text-slate-500">{message.status.replaceAll('_', ' ')}</p>

@@ -107,7 +107,7 @@ export default function DealSnapshotDrawer({ contact, call, agentName, stageName
             <span className="capitalize">{call.direction} · {call.status}</span>
             {call.durationSec > 0 && <span>{formatDuration(call.durationSec)}</span>}
             <span>
-              {new Date(call.startedAt).toLocaleString('en-GB', {
+              {new Date(call.startedAt).toLocaleString('en-GB', { timeZone: 'Europe/London',
                 day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
               })}
             </span>
@@ -169,7 +169,7 @@ export default function DealSnapshotDrawer({ contact, call, agentName, stageName
                     <div className="text-[11px] font-bold uppercase tracking-wider text-[#A83232]">
                       Deal withdrawn by the auditor
                       {selected.withdrawnAt
-                        ? ` · ${new Date(selected.withdrawnAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`
+                        ? ` · ${new Date(selected.withdrawnAt).toLocaleDateString('en-GB', { timeZone: 'Europe/London', day: 'numeric', month: 'short' })}`
                         : ''}
                     </div>
                     <ul className="mt-1 space-y-0.5">

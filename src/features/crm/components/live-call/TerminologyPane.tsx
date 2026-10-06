@@ -183,8 +183,8 @@ function MessagesTimeline({ contactId, messages }: { contactId?: string; message
 function MessageBubble({ message }: { message: CrmMessage }) {
   const isInbound = message.direction === 'inbound';
   const time = new Date(message.createdAt);
-  const timeStr = time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  const dateStr = time.toLocaleDateString([], { day: '2-digit', month: 'short' });
+  const timeStr = time.toLocaleTimeString([], { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit' });
+  const dateStr = time.toLocaleDateString([], { timeZone: 'Europe/London', day: '2-digit', month: 'short' });
   return (
     <div
       className={cn(
