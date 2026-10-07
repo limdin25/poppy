@@ -294,7 +294,8 @@ describe('reading what the model actually said', () => {
       'api/lib/brrr.ts',
       'api/webhooks/retell.ts',
       'api/webhooks/unipile.ts',
-      'api/webhooks/twilio-sms.ts',
+      // api/webhooks/twilio-sms.ts left this list on 7 Oct 2026: it no longer
+      // calls a model at all (tests/receptionist-off.test.ts).
       'api/follow-up/enqueue.ts',
     ]) {
       const src = read(f)

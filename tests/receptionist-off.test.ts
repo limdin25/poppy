@@ -54,3 +54,18 @@ describe('the AI receptionist sends nobody an automatic text', () => {
     expect(RETELL).toMatch(/dodgy AI thing/);
   });
 });
+
+// The second automatic texter, found 7 Oct 2026. Inbound texts to the old
+// receptionist numbers (5169, 8278) went to api/webhooks/twilio-sms.ts, which
+// had Claude write a reply and texted it straight back. It fired the day after
+// the 26 Aug order. It now only saves the inbound text.
+describe('an inbound text to the old receptionist numbers gets no automatic reply', () => {
+  const SMS = readFileSync('api/webhooks/twilio-sms.ts', 'utf8');
+  it('never sends a text or asks a model for a reply', () => {
+    expect(SMS).not.toMatch(/sendSMS|generateAIReply|api\.anthropic\.com|messages\.create/);
+    expect(SMS).not.toMatch(/sender: 'ai'/);
+  });
+  it('still saves what the person texted, so a human can answer', () => {
+    expect(SMS).toMatch(/direction: 'inbound'/);
+  });
+});
