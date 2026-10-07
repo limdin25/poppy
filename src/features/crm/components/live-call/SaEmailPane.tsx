@@ -63,12 +63,14 @@ interface Props {
   requireReport?: boolean;
   blocked?: boolean;
   alreadySent?: boolean;
+  /** The last report email to this lead bounced, so it may be sent again. */
+  bounced?: boolean;
   onSent?: () => void;
 }
 
 const VALID = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
-export default function SaEmailPane({ contactId, contactEmail, agentFirstName, listing, reportUrl, country, callbackNumber, requireReport = false, blocked = false, alreadySent = false, onSent }: Props) {
+export default function SaEmailPane({ contactId, contactEmail, agentFirstName, listing, reportUrl, country, callbackNumber, requireReport = false, blocked = false, alreadySent = false, bounced = false, onSent }: Props) {
   const { pushToast, patchContact } = useSmsV2();
   const persist = useContactPersistence();
   const [email, setEmail] = useState(contactEmail ?? '');
@@ -196,6 +198,7 @@ export default function SaEmailPane({ contactId, contactEmail, agentFirstName, l
           data-testid="sa-email-body"
           className="min-h-[200px] flex-1 w-full resize-y rounded border border-[#E5E7EB] px-2 py-1.5 text-[12px] leading-relaxed text-[#1A1A1A] focus:border-[#3C5A87] focus:outline-none"
         />
+        {bounced && !sent && <p data-testid="sa-email-bounced" className="text-xs font-semibold text-[#DC2626]">The last report email bounced and did not arrive. Check the address with them, then send it again, or send it by text instead.</p>}
         <button
           onClick={send}
           disabled={!canSend}

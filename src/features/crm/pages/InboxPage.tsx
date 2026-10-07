@@ -2020,14 +2020,14 @@ export default function InboxPage() {
                         only on a real failure. */}
                     {m.direction === 'outbound' && !isDraft && (() => {
                       const st = (m.status ?? '').toLowerCase();
-                      if (st === 'failed' || st === 'undelivered') {
+                      if (st === 'failed' || st === 'undelivered' || st === 'bounced') {
                         return (
                           <span
                             data-testid={`msg-status-${m.id}`}
-                            title={`This message did not go through (${st})`}
+                            title={st === 'bounced' ? 'This email bounced and did not arrive. Check the address or send a text instead.' : `This message did not go through (${st})`}
                             className="inline-flex items-center gap-0.5 text-[#DC2626] font-semibold"
                           >
-                            <AlertTriangle style={{ width: 10, height: 10 }} /> failed
+                            <AlertTriangle style={{ width: 10, height: 10 }} /> {st === 'bounced' ? 'bounced' : 'failed'}
                           </span>
                         );
                       }

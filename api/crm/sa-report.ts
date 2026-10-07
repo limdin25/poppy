@@ -198,7 +198,9 @@ export default async function handler(req: Request): Promise<Response> {
       const recipient = email ? String(body.to_email || c.email || '').trim().toLowerCase() : (c.hostunico_sms_phone || reportPhone(c.phone));
       if (email && (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(recipient) || !body.subject?.trim() || !body.email_body?.includes(row.report_url))) throw new Problem(400, 'Check the email address, subject and report link.');
       const stateField = email ? 'email_state' : 'sms_state';
-      if (row[stateField] && row[stateField] !== 'unsent') throw new Problem(409, 'This report has already been sent or is being sent. Check the inbox.');
+      // A bounced report email may be sent again, to a corrected address. A text never resends.
+      const sendableStates = email ? ['unsent', 'bounced'] : ['unsent'];
+      if (row[stateField] && !sendableStates.includes(row[stateField])) throw new Problem(409, 'This report has already been sent or is being sent. Check the inbox.');
       // A CRM tab opened before the follow-up review shipped sends no followups
       // field. It sends the report as before, with no reviewed plan saved or armed.
       const reviewed = body.followups !== undefined;
@@ -209,7 +211,7 @@ export default async function handler(req: Request): Promise<Response> {
       }
       const callback = await hostunicoCallback(supa, auth.user.id);
       const sms = reportSms(row.report_url, row.property?.areaEstimate === true, callback);
-      const claim = check(await supa.from('sa_property_reports').update({ [stateField]: 'sending', ...(email ? {} : { sms_requested_at: new Date().toISOString() }) }).eq('listing_id', listingId).eq('remote_id', row.remote_id).eq(stateField, 'unsent').select('listing_id'));
+      const claim = check(await supa.from('sa_property_reports').update({ [stateField]: 'sending', ...(email ? {} : { sms_requested_at: new Date().toISOString() }) }).eq('listing_id', listingId).eq('remote_id', row.remote_id).in(stateField, sendableStates).select('listing_id'));
       if (!claim.length) throw new Problem(409, 'This report has already been sent or is being sent. Check its message status before trying again.');
       // Once a provider request starts, an uncertain result is never retried automatically.
       try {

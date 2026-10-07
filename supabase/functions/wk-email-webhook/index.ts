@@ -26,6 +26,7 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
+import { emailDeliveryUpdate, recordEmailDelivery } from '../_shared/email-delivery-status.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -1138,6 +1139,18 @@ serve(async (req: Request) => {
     event = JSON.parse(rawBody) as ResendInboundEvent;
   } catch {
     return ok({ note: 'invalid json — accepted to stop retries' });
+  }
+
+  if (emailDeliveryUpdate(event.type)) {
+    try {
+      const { matched } = await recordEmailDelivery(supa, event.type, event.data?.email_id || event.data?.id || '');
+      return ok({ note: matched ? 'delivery status recorded' : 'not a CRM email', matched });
+    } catch {
+      console.error(`[wk-email-webhook] could not save delivery status type=${event.type}`);
+      // Resend retries with backoff, so a brief database problem does not lose the bounce.
+      return new Response(JSON.stringify({ error: 'status not saved' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
   }
 
   if (event.type !== 'email.received') {

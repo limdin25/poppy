@@ -15,6 +15,7 @@ vi.mock('@supabase/supabase-js', () => {
     select() { return this; }
     eq(k: string, v: any) { this.filters.push((r) => k.split('.').reduce((value, key) => value?.[key], r) === v); return this; }
     neq(k: string, v: any) { this.filters.push((r) => r[k] !== v); return this; }
+    in(k: string, values: any[]) { this.filters.push((r) => values.includes(r[k])); return this; }
     or(value: string) {
       this.filters.push((row) => value.split(',').some((condition) => {
         const [key, operator, ...parts] = condition.split('.'); const target = parts.join('.');
@@ -158,6 +159,21 @@ describe('human report sends', () => {
     const response = await handler(request('send_email', { to_email: 'test@example.invalid', subject: 'Report', email_body: 'Here it is: https://hostunico.com/r/A1b2C', followups: plan }));
     expect(response.status).toBe(200); expect(fixture.smsRequests).toBe(1);
     expect(fixture.tables.sa_property_reports[0].email_state).toBe('queued');
+  });
+  it('lets a bounced report email go again to a corrected address, but never a text or a delivered email', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.includes('crm-estimates/status')) return Response.json({ stage: 'ready', reportUrl: fixture.tables.sa_property_reports[0].report_url, reportPitch: fixture.tables.sa_property_reports[0].report_pitch });
+      fixture.smsRequests++; return Response.json({ external_id: 'email-receipt-2', status: 'queued' });
+    }));
+    const send = () => handler(request('send_email', { to_email: 'fixed@example.invalid', subject: 'Report', email_body: 'Here it is: https://hostunico.com/r/A1b2C' }));
+    Object.assign(fixture.tables.sa_property_reports[0], { email_state: 'delivered' });
+    expect((await send()).status).toBe(409);
+    Object.assign(fixture.tables.sa_property_reports[0], { email_state: 'bounced' });
+    expect((await send()).status).toBe(200);
+    expect(fixture.tables.sa_property_reports[0]).toMatchObject({ email_state: 'queued', email_id: 'email-receipt-2' });
+    Object.assign(fixture.tables.sa_property_reports[0], { sms_state: 'bounced' });
+    expect((await handler(request('send_sms', { permission: true }))).status).toBe(409);
+    expect(fixture.smsRequests).toBe(1);
   });
   it.each([129999, 100000, 83000])('blocks a ready report with %s pence earnings from every send attempt', async (monthlyGbpPence) => {
     Object.assign(fixture.tables.sa_property_reports[0].report_pitch, { monthlyGbpPence });
