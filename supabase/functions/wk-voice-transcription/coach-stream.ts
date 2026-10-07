@@ -22,6 +22,9 @@
 export interface SseEvent {
   delta: string;
   done: boolean;
+  /** Token counts. OpenAI sends them once, in the last chunk, and only when the
+   *  request asks with stream_options.include_usage. Absent on every other event. */
+  usage?: Record<string, unknown>;
 }
 
 export interface SseParseResult {
@@ -58,7 +61,10 @@ export function parseSseChunk(buf: string): SseParseResult {
     const delta =
       (json as { choices?: { delta?: { content?: string } }[] })?.choices?.[0]
         ?.delta?.content ?? '';
-    events.push({ delta, done: false });
+    const usage = (json as { usage?: unknown })?.usage;
+    events.push(usage && typeof usage === 'object'
+      ? { delta, done: false, usage: usage as Record<string, unknown> }
+      : { delta, done: false });
   }
   return { events, remaining };
 }

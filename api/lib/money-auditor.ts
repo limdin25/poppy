@@ -38,10 +38,11 @@
 // pure parts of this file (the breaker rule, the prompt builder, the move list)
 // and make them untestable without live credentials. Pure things stay pure.
 import type { DealState } from './deal-state.js';
+import { HOUSES_LIGHT_MODEL, HOUSES_LIGHT_FALLBACK } from './ai-models.js';
 
 /** Cheap on purpose. This is a second reader, not a second brain: the expensive
  *  model already made the decision and the deterministic fences already ran. */
-export const AUDITOR_MODEL = 'claude-haiku-4-5-20251001';
+export const AUDITOR_MODEL = HOUSES_LIGHT_MODEL;
 const AUDITOR_MAX_TOKENS = 500;
 
 /** The moves worth a second opinion: the ones where a wrong answer costs real
@@ -144,6 +145,7 @@ export async function auditMoneyMove(args: {
     out = await callLLM(
       AUDITOR_MODEL, SYSTEM,
       [{ role: 'user', content: auditorPrompt(args) }], AUDITOR_MAX_TOKENS,
+      { feature: 'houses-money-auditor', fallbackModel: HOUSES_LIGHT_FALLBACK },
     );
   } catch (e) {
     return { agrees: true, reason: '', unavailable: `error: ${String(e).slice(0, 100)}` };

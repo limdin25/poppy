@@ -202,7 +202,7 @@ async function getConversationHistory(conversationId: string): Promise<Array<{ro
 
 async function generateAIReply(systemPrompt: string, history: Array<{role: 'user' | 'assistant', content: string}>, businessId?: string, agentId?: string): Promise<string> {
   const model = await getModelForAgent(businessId || '', agentId);
-  const raw = await callLLM(model, systemPrompt, history);
+  const raw = await callLLM(model, systemPrompt, history, 1024, { feature: 'message-poll-reply' });
   return stripMarkdown(raw);
 }
 

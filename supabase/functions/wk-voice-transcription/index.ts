@@ -30,6 +30,7 @@ import { hostunicoUplift, HOSTUNICO_UPLIFT_BLOCK } from '../_shared/hostunico-up
 import { hostunicoRentQuestion, hostunicoRentExplanation } from '../_shared/hostunico-rent.ts';
 import { hostunicoCallStep } from '../_shared/hostunico-call-step.ts';
 import { raceHostunicoCoach, selectHostunicoJevAnswer } from '../_shared/hostunico-jev.ts';
+import { logAiUsage, tokensFromOpenAI, type AiUsageInput } from '../_shared/ai-usage.ts';
 import { hostunicoNeedsName } from '../_shared/hostunico-contact-name.ts';
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
@@ -43,6 +44,15 @@ import {
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+
+// Admin, AI Costs. A live coach card must never wait for its own cost log, so
+// the write runs in the background (EdgeRuntime.waitUntil keeps it alive after
+// the response) and any failure is swallowed inside logAiUsage.
+const usageDb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+function logUsageInBackground(u: AiUsageInput): void {
+  const write = logAiUsage(usageDb, u);
+  try { (globalThis as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } }).EdgeRuntime?.waitUntil?.(write); } catch { /* the write still runs */ }
+}
 const TWILIO_AUTH_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN') ?? '';
 
 const corsHeaders = {
@@ -1592,15 +1602,7 @@ async function streamCoachInternal(args: {
 }): Promise<CoachOutput | null> {
   const { apiKey, model, systemMessages, userMsg, onChunk, isAborted } = args;
 
-  const resp = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    signal: args.signal ? AbortSignal.any([args.signal, AbortSignal.timeout(15000)]) : AbortSignal.timeout(15000),
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-      'Accept': 'text/event-stream',
-    },
-    body: JSON.stringify(args.hostunicoTurn ? hostunicoCoachRequest({ model, userMsg, ...args.hostunicoTurn }) : {
+  const requestBody = args.hostunicoTurn ? hostunicoCoachRequest({ model, userMsg, ...args.hostunicoTurn }) : {
       model,
       // v9 (PR D 2026-04-30): dropped temperature 0.55 → 0.4. Hugo's
       // call: coach is too noisy / too creative; with the SILENCE RULE
@@ -1654,13 +1656,31 @@ async function streamCoachInternal(args: {
           .map((content) => ({ role: 'system' as const, content })),
         { role: 'user', content: userMsg },
       ],
-    }),
-  });
+    };
 
+  // Sent with token counting on, for Admin, AI Costs. If OpenAI ever refuses
+  // that option, ask again without it: the coach must NEVER go silent because
+  // of its own cost log (a refused option is NO coach at all, on every card).
+  const signal = args.signal ? AbortSignal.any([args.signal, AbortSignal.timeout(15000)]) : AbortSignal.timeout(15000);
+  const post = (withUsage: boolean) => fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    signal,
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      'Accept': 'text/event-stream',
+    },
+    body: JSON.stringify(withUsage ? { ...requestBody, stream_options: { include_usage: true } } : requestBody),
+  });
+  let resp = await post(true);
+  if (resp.status === 400 && /stream_options/i.test(await resp.clone().text().catch(() => ''))) resp = await post(false);
+
+  const feature = args.hostunico ? 'live-coach-hostunico' : 'live-coach';
   if (!resp.ok) {
     let errBody = '';
     try { errBody = await resp.text(); } catch { /* ignore */ }
     console.warn('[wk-voice-transcription] openai chat failed', resp.status, errBody.slice(0, 500));
+    logUsageInBackground({ provider: 'openai', model, feature, ok: false });
     return null;
   }
   if (!resp.body) {
@@ -1673,11 +1693,23 @@ async function streamCoachInternal(args: {
   let buffer = '';
   let accumulated = '';
   let isFirst = true;
+  let measured: Record<string, unknown> | null = null;
+  // A request cancelled mid-stream never receives OpenAI's token counts, but it
+  // is still billed for its whole prompt. Estimate it (about 4 characters a
+  // token) and mark it, rather than leave the single biggest multiplier out.
+  const logUsage = (ok: boolean) => logUsageInBackground({
+    provider: 'openai', model, feature, ok,
+    ...(measured
+      ? tokensFromOpenAI(measured)
+      : { inputTokens: Math.ceil(JSON.stringify((requestBody as { messages?: unknown }).messages ?? '').length / 4), outputTokens: Math.ceil(accumulated.length / 4) }),
+    ref: measured ? null : 'estimated',
+  });
 
   try {
     while (true) {
       if (isAborted()) {
         try { await reader.cancel(); } catch { /* ignore */ }
+        logUsage(false);
         return null;
       }
       const { done, value } = await reader.read();
@@ -1686,6 +1718,7 @@ async function streamCoachInternal(args: {
       const { events, remaining } = parseSseChunk(buffer);
       buffer = remaining;
       for (const ev of events) {
+        if (ev.usage) measured = ev.usage;
         if (ev.done) {
           // [DONE] marker — finish naturally.
           break;
@@ -1700,6 +1733,7 @@ async function streamCoachInternal(args: {
   } finally {
     try { reader.releaseLock(); } catch { /* ignore */ }
   }
+  logUsage(true);
 
   // Post-processor on the final accumulated text.
   return args.hostunico ? { kind: 'suggestion', scriptSection: null, body: cleanHostunicoCoach(accumulated) } : postProcessCoachText(accumulated);
@@ -2195,7 +2229,7 @@ serve(async (req: Request) => {
               if (!instant) {
                 const transcript = [...(recent.data || [])].reverse();
                 const output = await raceHostunicoCoach({
-                  fast: (signal) => rentQuestion ? Promise.resolve(null) : selectHostunicoJevAnswer({ apiKey: Deno.env.get('TYPESAFE_API_KEY') || '', latestCaller: transcriptText, transcript, country: contact?.hostunico_country || 'GB', provisional: !isFinal, signal }),
+                  fast: (signal) => rentQuestion ? Promise.resolve(null) : selectHostunicoJevAnswer({ apiKey: Deno.env.get('TYPESAFE_API_KEY') || '', latestCaller: transcriptText, transcript, country: contact?.hostunico_country || 'GB', provisional: !isFinal, signal, onUsage: (u) => logUsageInBackground({ provider: 'typesafe', model: 'jev-1.13.0', feature: 'live-coach-jev', inputTokens: u.input_tokens, outputTokens: u.output_tokens }) }),
                   generate: async (onChunk, signal) => {
                     // Jev predicts from partial speech. Contextual generation
                     // handles complete questions without competing per word.

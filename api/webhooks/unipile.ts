@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { logAiUsage, tokensFromAnthropic } from '../../supabase/functions/_shared/ai-usage.js';
 import { fetchAndStoreAvatar, fetchEmailAvatar } from '../lib/fetch-avatar.js';
 import { maybeAlertChannelDisconnected } from '../lib/channel-alerts.js';
 import { firstText } from '../lib/anthropic-content.js';
@@ -291,7 +292,9 @@ async function generateAIReply(
     const data = await res.json() as {
       content: Array<{ type: string; text?: string; id?: string; name?: string; input?: Record<string, string> }>;
       stop_reason: string;
+      usage?: Record<string, number>;
     };
+    await logAiUsage(supabase, { provider: 'anthropic', model, feature: 'whatsapp-ai-reply', ...tokensFromAnthropic(data.usage) });
 
     if (data.stop_reason === 'tool_use') {
       const toolResults: Array<Record<string, unknown>> = [];
@@ -422,7 +425,8 @@ async function classifyLead(businessId: string, conversationId: string, contactI
       }),
     });
     if (!res.ok) return;
-    const data = await res.json() as { content?: Array<{ text?: string }> };
+    const data = await res.json() as { content?: Array<{ text?: string }>; usage?: Record<string, number> };
+    await logAiUsage(supabase, { provider: 'anthropic', model, feature: 'whatsapp-lead-classifier', ...tokensFromAnthropic(data.usage) });
     const raw = firstText(data.content);
     const match = raw.match(/\{[\s\S]*\}/);
     if (!match) return;

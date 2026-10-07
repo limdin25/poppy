@@ -203,7 +203,7 @@ export default async function handler(req: Request): Promise<Response> {
     }
 
     const aiModel = await getModelForAgent(conv.business_id, conv.agent_id);
-    const newBody = stripMarkdown(await callLLM(aiModel, prompt, messages));
+    const newBody = stripMarkdown(await callLLM(aiModel, prompt, messages, 1024, { feature: 'inbox-rewrite' }));
 
     if (!newBody) {
       return new Response(JSON.stringify({ error: 'Empty AI response' }), { status: 502 });

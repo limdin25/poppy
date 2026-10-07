@@ -1,4 +1,7 @@
 import { HOSTUNICO_RULES } from '../../supabase/functions/_shared/hostunico-rules.js';
+import { logAiUsage, tokensFromAnthropic } from '../../supabase/functions/_shared/ai-usage.js';
+import { callLLM } from '../lib/llm.js';
+import { REPORT_MODEL, REPORT_FALLBACK } from '../lib/ai-models.js';
 // Daily agent reports — 17:30 UK, every day.
 //
 // Hugo 2026-07-24: "every day at 5:30pm it gives the daily reports, they write
@@ -35,7 +38,12 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
 
-const MODEL = 'claude-opus-4-8';
+// Hugo, 7 Oct 2026: reports on Gemini, not Anthropic. Opus stays as the
+// fallback for the day Google has no credit or does not answer.
+const MODEL = REPORT_FALLBACK;
+/** The model that wrote the report just made. Agents are handled one at a time
+ *  (a for-of loop), so this is read straight after each await. */
+let reportModelUsed: string = REPORT_MODEL;
 /** Per agent, per day. Plenty for a coaching card; keeps the job bounded. */
 const MAX_TOKENS = 8000;
 /** Cap transcripts sent to the model so one heavy day can't blow up the bill. */
@@ -371,7 +379,7 @@ ${script || '(script text unavailable, grade against the five beats above)'}
 
 TRANSCRIPTS OF TODAY'S LIVE CONVERSATIONS WITH LETTING AGENTS (voicemails excluded):
 ${transcripts || '(no live conversations today)'}`;
-  return callClaude(SA_SYSTEM, prompt);
+  return callReportModel(SA_SYSTEM, prompt);
 }
 
 /** The bundled auction script, read the same way as the property one. */
@@ -441,7 +449,7 @@ ${script || '(script text unavailable, grade against the five questions above)'}
 
 TRANSCRIPTS OF TODAY'S LIVE AUCTION CONVERSATIONS (voicemails excluded):
 ${transcripts || '(no live conversations today)'}`;
-  return callClaude(AUCTION_SYSTEM, prompt);
+  return callReportModel(AUCTION_SYSTEM, prompt);
 }
 
 /** Rough text of an HTML script, good enough for a model to read as THE
@@ -930,7 +938,7 @@ Notes on the script counts:
 TRANSCRIPTS OF TODAY'S LIVE CONVERSATIONS (voicemails excluded):
 ${transcripts || '(no live conversations today)'}`;
 
-  return callClaude(PROPERTY_SYSTEM, prompt);
+  return callReportModel(PROPERTY_SYSTEM, prompt);
 }
 
 /** Transcripts of real conversations only — voicemails carry no coaching signal. */
@@ -1072,11 +1080,23 @@ Notes on the script counts:
 TRANSCRIPTS OF TODAY'S LIVE CONVERSATIONS (voicemails excluded):
 ${transcripts || '(no live conversations today)'}`;
 
-  return callClaude(SYSTEM, prompt);
+  return callReportModel(SYSTEM, prompt);
 }
 
-/** One place for the model call, shared by the sales and property reports. */
-async function callClaude(system: string, prompt: string): Promise<string> {
+/** One place for the model call, shared by every desk's report. Gemini first;
+ *  if it has no key, no credit or gives nothing, the original Opus call below. */
+async function callReportModel(system: string, prompt: string): Promise<string> {
+  const viaGoogle = await callLLM(REPORT_MODEL, system, [{ role: 'user', content: prompt }], MAX_TOKENS, {
+    feature: 'daily-report', thinkingBudget: 4096, allowProviderFallback: false,
+  });
+  if (viaGoogle) { reportModelUsed = REPORT_MODEL; return viaGoogle; }
+  reportModelUsed = MODEL;
+  return callOpus(system, prompt);
+}
+
+/** The report as it was written before Gemini: Opus 4.8, adaptive thinking. */
+async function callOpus(system: string, prompt: string): Promise<string> {
+  const started = Date.now();
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -1097,7 +1117,12 @@ async function callClaude(system: string, prompt: string): Promise<string> {
   const data = (await res.json()) as {
     content?: Array<{ type: string; text?: string }>;
     stop_reason?: string;
+    usage?: Record<string, number>;
   };
+  await logAiUsage(supabase, {
+    provider: 'anthropic', model: MODEL, feature: 'daily-report', ...tokensFromAnthropic(data.usage),
+    ok: data.stop_reason !== 'refusal', requestedModel: REPORT_MODEL, latencyMs: Date.now() - started,
+  });
   if (data.stop_reason === 'refusal') throw new Error('model refused');
   return (data.content ?? [])
     .filter((b) => b.type === 'text')
@@ -1258,7 +1283,7 @@ export default async function handler(
       const { body, flags } = splitReport(raw);
       if (!body) continue;
       const { error } = await supabase.from('wk_agent_daily_reports').upsert(
-        { agent_id: agent.id, report_date: dateKey, stats, body_md: body, flags, model: MODEL, updated_at: new Date().toISOString() },
+        { agent_id: agent.id, report_date: dateKey, stats, body_md: body, flags, model: reportModelUsed, updated_at: new Date().toISOString() },
         { onConflict: 'agent_id,report_date' },
       );
       if (error) console.error(`[daily-report] upsert failed for ${name}:`, error.message);
@@ -1288,7 +1313,7 @@ export default async function handler(
       const { body, flags } = splitReport(raw);
       if (!body) continue;
       const { error } = await supabase.from('wk_agent_daily_reports').upsert(
-        { agent_id: agent.id, report_date: dateKey, stats, body_md: body, flags, model: MODEL, updated_at: new Date().toISOString() },
+        { agent_id: agent.id, report_date: dateKey, stats, body_md: body, flags, model: reportModelUsed, updated_at: new Date().toISOString() },
         { onConflict: 'agent_id,report_date' },
       );
       if (error) console.error(`[daily-report] upsert failed for ${name}:`, error.message);
@@ -1347,7 +1372,7 @@ export default async function handler(
       const { body, flags } = splitReport(raw);
       if (!body) continue;
       const { error } = await supabase.from('wk_agent_daily_reports').upsert(
-        { agent_id: agent.id, report_date: dateKey, stats, body_md: body, flags, model: MODEL, updated_at: new Date().toISOString() },
+        { agent_id: agent.id, report_date: dateKey, stats, body_md: body, flags, model: reportModelUsed, updated_at: new Date().toISOString() },
         { onConflict: 'agent_id,report_date' },
       );
       if (error) console.error(`[daily-report] upsert failed for ${name}:`, error.message);
@@ -1383,7 +1408,7 @@ export default async function handler(
     if (!body) continue;
 
     const { error } = await supabase.from('wk_agent_daily_reports').upsert(
-      { agent_id: agent.id, report_date: dateKey, stats, body_md: body, flags, model: MODEL, updated_at: new Date().toISOString() },
+      { agent_id: agent.id, report_date: dateKey, stats, body_md: body, flags, model: reportModelUsed, updated_at: new Date().toISOString() },
       { onConflict: 'agent_id,report_date' },
     );
     if (error) console.error(`[daily-report] upsert failed for ${name}:`, error.message);

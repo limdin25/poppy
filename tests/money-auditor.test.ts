@@ -58,7 +58,7 @@ describe('it only guards the moves that cost money', () => {
   })
 
   it('is a cheap model, because the expensive one already decided', () => {
-    expect(AUDITOR_MODEL).toMatch(/haiku/)
+    expect(AUDITOR_MODEL).toMatch(/haiku|flash-lite/)
   })
 })
 

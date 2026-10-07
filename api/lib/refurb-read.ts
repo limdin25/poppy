@@ -20,6 +20,7 @@
 // src/features/crm/lib/refurbCard.ts and nowhere else.
 
 import { callLLM, type LLMBlock } from './llm.js';
+import { HOUSES_MODEL, HOUSES_FALLBACK, HOUSES_LIGHT_MODEL, HOUSES_LIGHT_FALLBACK } from './ai-models.js';
 import { fetchListing, type Listing } from './rightmove-listing.js';
 import { readCallTranscript, formatTranscript } from './call-transcript.js';
 import { heardFactsBlock } from './deal-state.js';
@@ -46,10 +47,17 @@ export const LISTING_TTL_MS = 7 * 24 * 60 * 60 * 1000;
  *  different places, and the disagreements are exactly what we want to catch,
  *  because a job only one of them can see is a job nobody should be paying for
  *  off a photograph. Sonnet reads carefully, Haiku is cheap and blunt, and the
- *  merge only prices what both of them independently named. */
+ *  merge only prices what both of them independently named.
+ *
+ *  7 Oct 2026, Hugo: Gemini instead of Anthropic. Two Gemini tiers now play the
+ *  same two parts (a careful reader and a cheap, blunt one), and each one's
+ *  `fallback` is the Claude it used to be. If Google is unavailable the pair is
+ *  Sonnet and Haiku again, two different families, exactly as before. The ids
+ *  `sonnet` and `haiku` stay as the readers' names: they are stored on saved
+ *  assessments and the merge keys on them. */
 const READERS = [
-  { id: 'sonnet', model: 'claude-sonnet-5' },
-  { id: 'haiku', model: 'claude-haiku-4-5-20251001' },
+  { id: 'sonnet', model: HOUSES_MODEL, fallback: HOUSES_FALLBACK },
+  { id: 'haiku', model: HOUSES_LIGHT_MODEL, fallback: HOUSES_LIGHT_FALLBACK },
 ] as const;
 
 // ---------------------------------------------------------------------------
@@ -380,7 +388,7 @@ export async function readProperty(
       attempts += 1;
       try {
         const raw = await callLLM(r.model, SYSTEM, [{ role: 'user', content: blocks }], 8000,
-          { thinkingBudget: 1024 });
+          { thinkingBudget: 1024, feature: 'houses-refurb-photos', fallbackModel: r.fallback });
         const read = raw ? parseVisionRead(raw) : null;
         if (read) return { id: r.id, model: r.model, read, attempts };
         console.warn(`[refurb] ${r.id} attempt ${attempts} gave ${raw ? 'unparseable' : 'nothing'}`,

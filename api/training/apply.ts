@@ -83,7 +83,7 @@ Rules:
 - 4-6 services and 4-6 FAQs, all grounded in the knowledge (never invent prices — use null if unknown).
 - Keep answers short (1-2 sentences). Return ONLY the JSON object, nothing else.`;
 
-  const text = await callLLM(model, systemPrompt, [{ role: 'user', content: userContent }], 2000);
+  const text = await callLLM(model, systemPrompt, [{ role: 'user', content: userContent }], 2000, { feature: 'training-apply' });
   if (!text) {
     return new Response(JSON.stringify({ error: 'AI setup failed — please try again.' }), { status: 500 });
   }

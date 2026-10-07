@@ -59,6 +59,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { BANDS } from './condition-vocab.js';
 import { CHECKLIST_KEYS, HEARD_KEY } from './deal-state.js';
+import { HOUSES_MODEL, HOUSES_FALLBACK } from './ai-models.js';
 
 // The same loose client shape ballpark.ts and deal-manager-run.ts already use.
 // A structural `{ from: ... }` looks equivalent and is not: readNewestTranscript
@@ -68,7 +69,7 @@ import { CHECKLIST_KEYS, HEARD_KEY } from './deal-state.js';
 type Sb = SupabaseClient<any, any, any>;
 
 /** Cheap on purpose: this is transcription reading, not judgement. */
-export const EXTRACT_MODEL = 'claude-sonnet-5';
+export const EXTRACT_MODEL = HOUSES_MODEL;
 
 /** Where the machine's evidence lives on `qualification`.
  *
@@ -261,7 +262,7 @@ export async function extractChecklistFromCall(sb: Sb, args: {
     for (let attempt = 0; attempt < 2 && !out; attempt++) {
       if (attempt > 0) await new Promise((r) => setTimeout(r, 1200));
       out = await callLLM(EXTRACT_MODEL, CHECKLIST_SYSTEM, [{ role: 'user', content: user }], 2000,
-        { thinkingBudget: 800 });
+        { thinkingBudget: 800, feature: 'houses-call-listener', fallbackModel: HOUSES_FALLBACK });
     }
   } catch (e) {
     return { ...empty, callId: transcript.callId, reason: `model_error: ${String(e).slice(0, 90)}` };

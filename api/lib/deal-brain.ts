@@ -133,7 +133,7 @@ export async function assess(state: DealState): Promise<{
     out = await callLLM(
       DEAL_MANAGER_MODEL, DEAL_MANAGER_SYSTEM,
       [{ role: 'user', content: dealManagerPrompt(state) }], DEAL_MANAGER_MAX_TOKENS,
-      { thinkingBudget: DEAL_MANAGER_THINKING },
+      { thinkingBudget: DEAL_MANAGER_THINKING, feature: 'deal-brain' },
     );
   } catch (e) {
     return { verdict: fallbackVerdict(state), source: 'fallback', refused: `model_error: ${String(e).slice(0, 120)}` };

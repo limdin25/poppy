@@ -275,7 +275,7 @@ async function handleCrmWarmupCall(
       try {
         const out = await callLLM('claude-sonnet-4-6',
           'Summarise this inbound sales call in 1–2 short sentences: what the caller wants and any next step. Plain text, no markdown.',
-          [{ role: 'user', content: transcript.slice(0, 6000) }], 200);
+          [{ role: 'user', content: transcript.slice(0, 6000) }], 200, { feature: 'receptionist-recap' });
         if (out.trim()) summary = out.trim();
       } catch { /* keep default */ }
     }

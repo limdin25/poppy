@@ -121,6 +121,7 @@ async function summariseInBackground(sourceId: string, rawText: string, business
       'Summarise the following text into a concise, well-structured knowledge base. Preserve ALL original content, meaning, intent, tone, and style. Do not censor, reinterpret, or editorialize. Just organise it clearly.',
       [{ role: 'user', content: rawText }],
       1500,
+      { feature: 'training-scrape' },
     );
 
     if (!summary) {
@@ -181,6 +182,7 @@ async function scrapeInBackground(sourceId: string, url: string, businessId: str
       'Summarise the following website content into a concise, well-structured knowledge base. Preserve ALL original content, meaning, and intent. Just organise it clearly.',
       [{ role: 'user', content: `Website content:\n${rawText}` }],
       1500,
+      { feature: 'training-scrape' },
     );
 
     if (!summary) {

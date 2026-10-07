@@ -421,7 +421,7 @@ export default async function handler(req: Request): Promise<Response> {
     systemPrompt += `\n\nVIDEO FUNNEL CONTEXT: this lead (${vsl.owner_first || 'owner'} at ${vsl.business_name}) ${stage[vsl.state] || vsl.state}. Their personal video page is ${vslUrl}. Include it when nudging them to watch or sign up. Goal: get them to watch, then tap the button (it's £1 for the first 10 days, we set everything up for them). Keep it warm and human, never pushy.`;
   }
 
-  const reply = (await callLLM(cfg.model || 'claude-sonnet-4-6', systemPrompt, llmMessages, 300)).trim();
+  const reply = (await callLLM(cfg.model || 'claude-sonnet-4-6', systemPrompt, llmMessages, 300, { feature: 'crm-ai-reply' })).trim();
   if (!reply) return json(200, { skipped: 'empty_reply' });
 
   const draft = cfg.mode === 'draft';

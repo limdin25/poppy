@@ -71,7 +71,7 @@ export default async function handler(req: Request) {
       const pending = rows.filter((r) => r.classification_pending && !r.overridden_at).slice(0, 3);
       await Promise.all(pending.map(async (r) => {
         let raw = '';
-        try { if (!explicitOptOut(r.reply_body || '')) raw = await callLLM('gpt-5.4-mini', REPLY_CLASSIFIER_PROMPT, [{ role: 'user', content: String(r.reply_body || '').slice(0, 4000) }], 500, { allowProviderFallback: false, reasoningEffort: 'none', jsonOutput: true, timeoutMs: 6500 }); } catch { /* Neutral keeps Pedro in control if OpenAI is unavailable. */ }
+        try { if (!explicitOptOut(r.reply_body || '')) raw = await callLLM('gpt-5.4-mini', REPLY_CLASSIFIER_PROMPT, [{ role: 'user', content: String(r.reply_body || '').slice(0, 4000) }], 500, { feature: 'reply-classifier', allowProviderFallback: false, reasoningEffort: 'none', jsonOutput: true, timeoutMs: 6500 }); } catch { /* Neutral keeps Pedro in control if OpenAI is unavailable. */ }
         const result = safeReplyClassification(r.reply_body || '', raw);
         const updated = checked(await db.from('sa_report_followups').update({ intent: result.intent, reason: result.reason, confidence: result.confidence, classification_pending: false, cold_at: result.intent === 'negative' ? new Date().toISOString() : null, updated_at: new Date().toISOString() }).eq('contact_id', r.contact_id).eq('replied_at', r.replied_at).is('overridden_at', null).eq('classification_pending', true).select('contact_id'));
         if (updated.length && result.intent === 'negative') checked(await db.from('wk_contact_tags').upsert({ contact_id: r.contact_id, tag: 'not-interested' }, { onConflict: 'contact_id,tag', ignoreDuplicates: true }));

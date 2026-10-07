@@ -12,6 +12,7 @@ const CallMonitorPage = lazy(() => import('./pages/CallMonitorPage'))
 const ConversationMonitorPage = lazy(() => import('./pages/ConversationMonitorPage'))
 const BillingPage = lazy(() => import('./pages/BillingPage'))
 const AIManagementPage = lazy(() => import('./pages/AIManagementPage'))
+const AICostsPage = lazy(() => import('./pages/AICostsPage'))
 const NumberManagementPage = lazy(() => import('./pages/NumberManagementPage'))
 const FeatureFlagsPage = lazy(() => import('./pages/FeatureFlagsPage'))
 const SystemHealthPage = lazy(() => import('./pages/SystemHealthPage'))
@@ -51,6 +52,7 @@ export default function AdminApp() {
               <Route path="conversations" element={<ConversationMonitorPage />} />
               <Route path="billing" element={<BillingPage />} />
               <Route path="ai" element={<AIManagementPage />} />
+              <Route path="ai-costs" element={<AICostsPage />} />
               <Route path="numbers" element={<NumberManagementPage />} />
               <Route path="feature-flags" element={<FeatureFlagsPage />} />
               <Route path="properties" element={<PropertiesPage />} />

@@ -26,6 +26,7 @@ import {
   LogOut,
   Star,
   GraduationCap,
+  Coins,
 } from 'lucide-react'
 import { cn } from '@/core/lib/cn'
 import { useAuth } from '@/core/auth/AuthProvider'
@@ -87,6 +88,7 @@ const navGroups = [
     items: [
       { to: '/admin/billing', icon: CreditCard, label: 'Billing' },
       { to: '/admin/ai', icon: Bot, label: 'AI Management' },
+      { to: '/admin/ai-costs', icon: Coins, label: 'AI Costs' },
       { to: '/admin/numbers', icon: Hash, label: 'Numbers' },
       { to: '/admin/feature-flags', icon: Flag, label: 'Feature Flags' },
     ],

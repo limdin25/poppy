@@ -48,7 +48,7 @@ export default async function handler(req: Request): Promise<Response> {
 
   const refined = await callLLM(model, systemPrompt, [
     { role: 'user', content: `Original text:\n${body.text}` },
-  ]);
+  ], 1024, { feature: 'agent-refine' });
 
   return new Response(JSON.stringify({ refined: refined.trim() || body.text }), { status: 200 });
 }

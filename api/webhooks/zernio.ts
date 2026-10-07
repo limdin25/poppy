@@ -49,7 +49,7 @@ async function draftReply(businessId: string, review: { rating: number; text?: s
   const system = `You write short owner replies to Google reviews for ${bizName}, a UK service business. UK English. Warm, specific, professional. 1-3 sentences. Address the reviewer by first name. Reference something specific from their review when possible. Never offer incentives, discounts or refunds. For 1-3 star reviews: apologise sincerely, take responsibility without excuses, and invite them to contact the business directly to put it right. Output ONLY the reply text.`;
   const user = `Review from ${reviewer} (${review.rating} stars):\n"${review.text || '(no comment left)'}"`;
 
-  const reply = await callLLM('claude-sonnet-4-6', system, [{ role: 'user', content: user }], 300);
+  const reply = await callLLM('claude-sonnet-4-6', system, [{ role: 'user', content: user }], 300, { feature: 'review-reply' });
   return reply.trim();
 }
 

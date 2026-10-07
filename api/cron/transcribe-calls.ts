@@ -22,6 +22,7 @@
 import type { IncomingMessage, ServerResponse } from 'http';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { transcribeUrl, type AaiUtterance } from '../lib/assemblyai.js';
+import { logAiUsage } from '../../supabase/functions/_shared/ai-usage.js';
 
 export const config = { maxDuration: 300 };
 
@@ -70,7 +71,9 @@ async function transcribeOne(sb: SupabaseClient, rec: Rec): Promise<{ id: string
     throw new Error(`could not sign recording: ${signErr?.message ?? 'no url'}`);
   }
 
-  const utterances: AaiUtterance[] = await transcribeUrl(signed.signedUrl);
+  const utterances: AaiUtterance[] = await transcribeUrl(signed.signedUrl, {
+    onComplete: (seconds) => logAiUsage(sb, { provider: 'assemblyai', model: 'universal-2', feature: 'call-transcript', units: seconds / 60, ref: rec.call_id }),
+  });
   if (!utterances.length) throw new Error('transcription returned no speech');
 
   // ts is the wall-clock moment the words were said, so these rows sort and

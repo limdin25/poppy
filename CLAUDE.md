@@ -259,6 +259,31 @@ Pedro rings letting agents about city-centre flats to rent. Full write-up:
 
 ---
 
+## AI costs: every paid AI call is counted, and the models live in one file (Hugo, 2026-10-07)
+
+Admin, **AI Costs** (`/admin/ai-costs`) shows spend by hour, day, model, provider and job, in dollars.
+It reads `ai_usage_log`, which the database prices from `ai_model_prices` (editable on that page).
+Writers send tokens or audio minutes, never dollars, so every writer shares one price list.
+
+- **Every new AI call must be counted.** Go through `callLLM` in `api/lib/llm.ts` and pass `{ feature: 'what-it-is-for' }`.
+  If you must call a provider directly, call `logAiUsage` from `supabase/functions/_shared/ai-usage.ts` after it.
+  An unlabelled call still counts, as `unlabelled`, and that is a bug to fix.
+- **Which model each job runs on is `api/lib/ai-models.ts`.** Reports and the House desk tools name a Gemini model plus
+  the Claude they used to run on (`fallbackModel`). Gemini answers only when `GEMINI_API_KEY` is set on Vercel AND the
+  Google account has credit. Until then, or the moment it runs dry (HTTP 402), the named Claude answers exactly as before
+  and the dashboard shows "asked for X" on those calls. `callLLM` stops asking Google for 10 minutes after a 401/402/403.
+- **Gemini thinks before it answers and thinking shares `maxOutputTokens` with the answer.** `callLLM` therefore grows the
+  ceiling by the thinking allowance. Never lower it: a low ceiling returns an EMPTY reply that looks like a model that could
+  not do the task (the VPS floor-plan reader lost plans to this).
+- **The live coach counts tokens with `stream_options.include_usage`.** If OpenAI ever refuses that option the request is
+  repeated without it, because a refused option is NO coach at all. A coach request cancelled mid-stream never receives
+  counts, so it is logged as an estimate (`ref = 'estimated'`, about 4 characters a token).
+- **Costs start 2026-10-07.** Nothing earlier counted tokens. Not counted: Twilio's own charges, Retell, the voice invoice and
+  onboarding buttons, the Margarita assistant, and the overnight property reader on the VPS (it has its own key and spend).
+- **Prices change.** Gemini 3.6/3.7/3.8 Flash are at a launch price until 2026-12-31 and double on 2027-01-01 (already in the
+  price list as dated rows). TypeSafe (Jev) has no public price: its row is empty, so its calls show "no price" until someone
+  types the figure from the invoice.
+
 ## Test loop (run before every commit)
 
 ```bash

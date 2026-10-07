@@ -18,6 +18,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { callLLM } from '../lib/llm.js';
+import { HOUSES_MODEL, HOUSES_FALLBACK } from '../lib/ai-models.js';
 import { readCallTranscript, formatTranscript } from '../lib/call-transcript.js';
 
 export const config = { runtime: 'edge' };
@@ -27,7 +28,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
 
-const MODEL = 'claude-sonnet-5';
+const MODEL = HOUSES_MODEL;
 
 const SYSTEM = [
   'You review one phone call. A property buyer\'s agent rang an ESTATE AGENT about a house.',
@@ -111,6 +112,7 @@ export default async function handler(req: Request): Promise<Response> {
     SYSTEM,
     [{ role: 'user', content: `THE CALL:\n${lines.join('\n').slice(0, 24_000)}` }],
     1200,
+    { feature: 'houses-call-review', fallbackModel: HOUSES_FALLBACK },
   );
 
   if (!out) {

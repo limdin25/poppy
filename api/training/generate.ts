@@ -112,7 +112,7 @@ Rules for generation:
 - draft_mode: false means auto-send, true means create draft for human review
 - Return ONLY valid JSON`;
 
-  const text = await callLLM(model, systemPrompt, [{ role: 'user', content: userContent }], 4000);
+  const text = await callLLM(model, systemPrompt, [{ role: 'user', content: userContent }], 4000, { feature: 'training-generate' });
 
   if (!text) {
     return new Response(JSON.stringify({ error: 'AI generation failed' }), { status: 500 });

@@ -216,7 +216,7 @@ export default async function handler(req: Request): Promise<Response> {
     userMessage = `Job description:\n${transcript}`;
   }
 
-  const reply = await callLLM(MODEL, systemPrompt, [{ role: 'user', content: userMessage }], 1024);
+  const reply = await callLLM(MODEL, systemPrompt, [{ role: 'user', content: userMessage }], 1024, { feature: 'invoice-extract' });
   const jsonMatch = reply.match(/\{[\s\S]*\}/);
   if (!jsonMatch) {
     console.error(`[invoices/extract] no JSON in LLM reply: ${reply.slice(0, 200)}`);

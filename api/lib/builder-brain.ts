@@ -487,7 +487,7 @@ export async function runBuilderBrain(
       role: (t.direction === 'inbound' ? 'user' : 'assistant') as 'user' | 'assistant',
       content: t.body.trim(),
     }));
-  const raw = await callLLM(model, brainSystemPrompt(facts), messages, 400);
+  const raw = await callLLM(model, brainSystemPrompt(facts), messages, 400, { feature: 'builder-brain' });
   const verdict = parseBrainVerdict(raw);
   return { decision: decideForBuilder(verdict, facts), verdict };
 }

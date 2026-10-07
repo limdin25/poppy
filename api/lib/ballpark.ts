@@ -17,6 +17,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { callLLM } from './llm.js';
+import { HOUSES_MODEL, HOUSES_FALLBACK } from './ai-models.js';
 import { QUALIFICATION_QUESTIONS } from './brrr.js';
 import { buildNextStepBrief } from './next-step-brief.js';
 import { readDealMoney } from './brrr-offer.js';
@@ -25,7 +26,7 @@ import { readCallTranscript, formatTranscript } from './call-transcript.js';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Sb = SupabaseClient<any, any, any>;
 
-const MODEL = 'claude-sonnet-5';
+const MODEL = HOUSES_MODEL;
 const ENGINE_URL = process.env.SCRAPER_REPRICE_URL || 'https://scraper.heyelsie.com/api/reprice';
 
 // The rate card's whole vocabulary. Anything else the model might say is not
@@ -287,7 +288,7 @@ export async function runBallparkPreview(
   for (let attempt = 0; attempt < 3 && !heard; attempt++) {
     if (attempt > 0) await new Promise((r) => setTimeout(r, 1500 * attempt));
     const raw = await callLLM(MODEL, SYSTEM_EXTRACT, [{ role: 'user', content: user }], 2600,
-      { thinkingBudget: 1024 });
+      { thinkingBudget: 1024, feature: 'houses-ballpark', fallbackModel: HOUSES_FALLBACK });
     if (raw) heard = parseExtraction(raw);
   }
   if (!heard) {

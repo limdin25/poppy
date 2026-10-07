@@ -148,6 +148,7 @@ export default async function handler(req: Request): Promise<Response> {
       systemPrompt,
       [...history, { role: 'user', content: message }],
       300,
+      { feature: 'site-demo-chat' },
     );
   } catch (e) {
     console.error('[site-demo/chat] llm threw:', e);

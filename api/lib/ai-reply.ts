@@ -121,6 +121,6 @@ export async function getConversationHistory(conversationId: string): Promise<Ar
 
 export async function generateAIReply(systemPrompt: string, history: Array<{role: 'user' | 'assistant', content: string}>, businessId?: string, agentId?: string): Promise<string> {
   const model = await getModelForAgent(businessId || '', agentId);
-  const raw = await callLLM(model, systemPrompt, history);
+  const raw = await callLLM(model, systemPrompt, history, 1024, { feature: 'inbox-ai-reply' });
   return stripMarkdown(raw);
 }

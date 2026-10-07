@@ -15,6 +15,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { callLLM } from '../lib/llm.js';
+import { HOUSES_MODEL, HOUSES_FALLBACK } from '../lib/ai-models.js';
 
 export const config = { runtime: 'edge' };
 
@@ -23,7 +24,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
 
-const MODEL = 'claude-sonnet-5';
+const MODEL = HOUSES_MODEL;
 
 interface Body {
   contact_id?: string;
@@ -127,7 +128,8 @@ export default async function handler(req: Request): Promise<Response> {
     return Response.json({ note: 'Nothing on file yet for this contact. Check in and find out where things stand.' });
   }
 
-  const out = await callLLM(MODEL, SYSTEM, [{ role: 'user', content: facts }], 300);
+  const out = await callLLM(MODEL, SYSTEM, [{ role: 'user', content: facts }], 300,
+    { feature: 'houses-followup-note', fallbackModel: HOUSES_FALLBACK });
   if (!out) {
     return Response.json({ error: 'The model did not answer. Try again.' }, { status: 502 });
   }

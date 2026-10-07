@@ -54,7 +54,11 @@ async function call(path: string, init?: RequestInit): Promise<any> {
  */
 export async function transcribeUrl(
   audioUrl: string,
-  opts: { timeoutMs?: number; pollMs?: number } = {},
+  opts: {
+    timeoutMs?: number; pollMs?: number;
+    /** Called once with the length of the audio, in seconds, for the cost log. */
+    onComplete?: (audioSeconds: number) => void | Promise<void>;
+  } = {},
 ): Promise<AaiUtterance[]> {
   const timeoutMs = opts.timeoutMs ?? 10 * 60_000;
   const pollMs = opts.pollMs ?? 4_000;
@@ -82,6 +86,10 @@ export async function transcribeUrl(
     const r = await call(`/transcript/${id}`);
     if (r?.status === 'error') throw new Error(`assemblyai: ${r?.error ?? 'transcription failed'}`);
     if (r?.status !== 'completed') continue;
+
+    // Billed per audio minute per channel, whatever the words say. Counting it
+    // must never cost us the transcript it is counting.
+    try { await opts.onComplete?.(Number(r?.audio_duration ?? 0)); } catch { /* ignore */ }
 
     return ((r?.utterances ?? []) as Array<{ channel?: unknown; start?: unknown; text?: unknown }>)
       .map((u) => ({

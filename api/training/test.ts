@@ -62,7 +62,7 @@ export default async function handler(req: Request): Promise<Response> {
   prompt += '\n\nAnswer the customer using ONLY the information above. If you do not know, say you will check and get back to them. Plain text only, no markdown. Keep it short and natural.';
 
   const model = await getModelForAgent(businessId, null);
-  const answer = stripMarkdown(await callLLM(model, prompt, [{ role: 'user', content: question.slice(0, 1000) }], 600));
+  const answer = stripMarkdown(await callLLM(model, prompt, [{ role: 'user', content: question.slice(0, 1000) }], 600, { feature: 'training-test' }));
 
   if (!answer) {
     return new Response(JSON.stringify({ error: 'Elsie could not answer — check your AI key / knowledge and try again.' }), { status: 502 });

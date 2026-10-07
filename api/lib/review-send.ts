@@ -57,7 +57,7 @@ export async function composeSmsBody(opts: {
   // token so we control the URL; falls back to the default template if it doesn't.
   const system = `You write ONE short SMS asking a customer for a Google review on behalf of a UK service business. Rules: UK English; warm and human, never corporate; address the customer by first name; mention the business name; include the literal token {review_link} exactly once where the link should go; NEVER offer any incentive, discount or reward; no emojis; no hashtags; max 300 characters; output ONLY the message text.`;
   const user = `Business: ${opts.businessName}. Customer first name: ${opts.firstName}.${opts.settings.owner_first_name ? ` Owner first name: ${opts.settings.owner_first_name}.` : ''}`;
-  const generated = (await callLLM('claude-sonnet-4-6', system, [{ role: 'user', content: user }], 200)).trim();
+  const generated = (await callLLM('claude-sonnet-4-6', system, [{ role: 'user', content: user }], 200, { feature: 'review-request-text' })).trim();
 
   const body = generated.includes('{review_link}')
     ? substitute(generated, vars)

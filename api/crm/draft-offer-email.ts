@@ -35,6 +35,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { callLLM } from '../lib/llm.js';
+import { HOUSES_MODEL, HOUSES_FALLBACK } from '../lib/ai-models.js';
 import { stripInventedHouseNumber, fixGreeting, redactFigures } from '../lib/draft-guards.js';
 import { decideCounter, respectsCeiling } from '../lib/counter-position.js';
 import { externalDoNow } from '../lib/next-step-brief.js';
@@ -49,7 +50,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
 
-const MODEL = 'claude-sonnet-5';
+const MODEL = HOUSES_MODEL;
 
 interface Body {
   /** wk_calls.id of the call this offer follows, when there is one. */
@@ -746,6 +747,7 @@ export default async function handler(req: Request): Promise<Response> {
             : SYSTEM_OFFER,
     [{ role: 'user', content: user }],
     isAddressOnly ? 400 : isVideoRequest ? 700 : isCounterReply ? 700 : isFollowUp ? 800 : 1200,
+    { feature: 'houses-offer-email', fallbackModel: HOUSES_FALLBACK },
   );
   if (!out) {
     return new Response(JSON.stringify({ error: 'The model did not answer. Try again.' }), {

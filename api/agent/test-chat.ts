@@ -51,7 +51,7 @@ Respond with ONLY valid JSON, no other text:
 If confirmed: {"confirmed":true,"service":"name","customer_name":"if known","datetime":"Thu 8 May, 8:00 PM","datetime_iso":"2026-05-08T20:00:00"}
 If not: {"confirmed":false}`;
 
-  const raw = await callLLM('claude-haiku-4-5-20251001', prompt, conversation, 300);
+  const raw = await callLLM('claude-haiku-4-5-20251001', prompt, conversation, 300, { feature: 'agent-test-chat' });
   try {
     const match = raw.match(/\{[\s\S]*?\}/);
     if (match) return JSON.parse(match[0]);
@@ -81,7 +81,7 @@ Rules:
 
 Respond with ONLY a JSON array, nothing else: [{"message":"..."}]`;
 
-  const raw = await callLLM('claude-haiku-4-5-20251001', prompt, conversation, 600);
+  const raw = await callLLM('claude-haiku-4-5-20251001', prompt, conversation, 600, { feature: 'agent-test-chat' });
   try {
     const match = raw.match(/\[[\s\S]*?\]/);
     if (match) {

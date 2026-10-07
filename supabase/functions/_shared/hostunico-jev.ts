@@ -32,7 +32,7 @@ export function hostunicoJevAnswer(payload: unknown, country = 'GB', provisional
   return approved ? `SAY: ${hostunicoAnswerCopy(approved, country)}\nASK: ${approved.nextQuestion || ''}` : null;
 }
 
-export async function selectHostunicoJevAnswer(input: { apiKey: string; latestCaller: string; transcript: { speaker: string; body: string }[]; country: string; provisional?: boolean; signal: AbortSignal; fetcher?: typeof fetch }): Promise<string | null> {
+export async function selectHostunicoJevAnswer(input: { apiKey: string; latestCaller: string; transcript: { speaker: string; body: string }[]; country: string; provisional?: boolean; signal: AbortSignal; fetcher?: typeof fetch; onUsage?: (usage: { input_tokens?: number; output_tokens?: number }) => void }): Promise<string | null> {
   if (!input.apiKey || input.signal.aborted) return null;
   try {
     const response = await (input.fetcher ?? fetch)('https://api.typesafe.ai/v1/systemone', {
@@ -43,7 +43,10 @@ export async function selectHostunicoJevAnswer(input: { apiKey: string; latestCa
     });
     // No retries in a live turn. The OpenAI stream is already running.
     if (!response.ok) return null;
-    return hostunicoJevAnswer(await response.json(), input.country, input.provisional);
+    const payload = await response.json();
+    // Jev reports what it used. Hand it on for the cost log; never let that break the answer.
+    try { const usage = (payload as { usage?: { input_tokens?: number; output_tokens?: number } } | null)?.usage; if (usage) input.onUsage?.(usage); } catch { /* ignore */ }
+    return hostunicoJevAnswer(payload, input.country, input.provisional);
   } catch { return null; }
 }
 
