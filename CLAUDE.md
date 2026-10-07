@@ -97,6 +97,7 @@ people who rang that line.
 |---|---|---|
 | The AI answering any phone number | Twilio: all 3 numbers removed from the Retell SIP trunk `TK6634fb175ebebc312bb6683327cb0ee6` and repointed at `wk-voice-twiml-incoming` | list the trunk's phone numbers, it must be empty |
 | The after-call recap and sales pitch texts | `CALLER_RECAP_BUSINESS_IDS` in `api/webhooks/retell.ts` is an EMPTY set | `tests/receptionist-off.test.ts` |
+| The AI reply to texts sent TO 5169 / 8278 (missed on 26 Aug, fired again 27 Aug, switched off 7 Oct) | `api/webhooks/twilio-sms.ts` only saves the inbound text, no model, no send | `tests/receptionist-off.test.ts` |
 | Builder invites, chases and escalation emails | all 3 builder crons off `vercel.json` AND answering 410 | `tests/builder-automation-off.test.ts` |
 | The AI property caller | retired 2026-08-09, deleted | `tests/property-no-ai-calls.test.ts` |
 | Video auto-send | `enabled:false` | see Claude memory `project_video_auto_send` |
