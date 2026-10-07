@@ -270,7 +270,9 @@ Writers send tokens or audio minutes, never dollars, so every writer shares one 
   An unlabelled call still counts, as `unlabelled`, and that is a bug to fix.
 - **Which model each job runs on is `api/lib/ai-models.ts`.** Reports and the House desk tools name a Gemini model plus
   the Claude they used to run on (`fallbackModel`). Gemini answers only when `GEMINI_API_KEY` is set on Vercel AND the
-  Google account has credit. Until then, or the moment it runs dry (HTTP 402), the named Claude answers exactly as before
+  Google account has credit. The key (copied from the VPS scraper's, as Hugo asked) has been on Vercel production since
+  2026-10-07, but its prepaid credit was depleted that day, so Claude still answers until someone tops it up in Google AI
+  Studio. Until then, or the moment it runs dry (HTTP 402), the named Claude answers exactly as before
   and the dashboard shows "asked for X" on those calls. `callLLM` stops asking Google for 10 minutes after a 401/402/403.
 - **Gemini thinks before it answers and thinking shares `maxOutputTokens` with the answer.** `callLLM` therefore grows the
   ceiling by the thinking allowance. Never lower it: a low ceiling returns an EMPTY reply that looks like a model that could
@@ -278,6 +280,9 @@ Writers send tokens or audio minutes, never dollars, so every writer shares one 
 - **The live coach counts tokens with `stream_options.include_usage`.** If OpenAI ever refuses that option the request is
   repeated without it, because a refused option is NO coach at all. A coach request cancelled mid-stream never receives
   counts, so it is logged as an estimate (`ref = 'estimated'`, about 4 characters a token).
+- **After-call transcripts (AssemblyAI) run from 2026-10-07**, for the last 7 days only (Hugo's choice). The key was never on
+  Vercel before, so `/api/cron/transcribe-calls` had failed every 5 minutes since 18 Aug and 3,310 recordings were waiting.
+  The 2,893 older than 7 days are marked `transcript_status = 'skipped'`; set it back to NULL to transcribe one. About $0.85 a day.
 - **Costs start 2026-10-07.** Nothing earlier counted tokens. Not counted: Twilio's own charges, Retell, the voice invoice and
   onboarding buttons, the Margarita assistant, and the overnight property reader on the VPS (it has its own key and spend).
 - **Prices change.** Gemini 3.6/3.7/3.8 Flash are at a launch price until 2026-12-31 and double on 2027-01-01 (already in the
