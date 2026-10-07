@@ -235,6 +235,17 @@ class SizeTests(unittest.TestCase):
         with self.assertRaisesRegex(module.Rejected, 'not_a_whole_property'):
             module.screen(ScreeningTests().row(), advert(kind='3 bed house').replace('feature--price-whole-property', 'feature--price-room-only'), sizes={'2', '3'})
 
+    def test_the_list_price_per_bedroom_matches_the_live_whole_price(self):
+        for listed, live, kind in [('392pcm', '785 pcm', '2 bed house'), ('291pcm', '875 pcm', '3 bed house'),
+                                   ('950pcm', '1,900 pcm', '2 bed flat'), ('1100pcm', '1,100 pcm', '2 bed flat')]:
+            item = module.screen(ScreeningTests().row(Name='Home', Price=listed), advert(price=live, kind=kind), sizes={'2', '3'})
+            self.assertEqual(item['rent_pcm'], float(module.rent(live.replace(',', '').replace(' ', ''))[0]))
+        for listed, live, kind in [('266pcm', '900 pcm', '3 bed house'), ('392pw', '785 pcm', '2 bed house')]:
+            with self.assertRaisesRegex(module.Rejected, 'price_mismatch'):
+                module.screen(ScreeningTests().row(Name='Home', Price=listed), advert(price=live, kind=kind), sizes={'2', '3'})
+        with self.assertRaisesRegex(module.Rejected, 'price_mismatch'):
+            module.screen(ScreeningTests().row(Price='325pcm'), advert(price='650 pcm'))
+
     def test_a_three_bed_listing_is_stored_and_researched_as_three_bedrooms(self):
         api = PhoneRuleTests.Api(lambda: [{'id': 'fresh', 'desk': 'sa', 'owner_agent_id': 'pedro', 'do_not_call': False}])
         item = module.screen(ScreeningTests().row(Name='Family home'), advert(kind='3 bed house'), sizes={'2', '3'})

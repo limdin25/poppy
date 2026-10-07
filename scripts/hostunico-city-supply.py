@@ -153,6 +153,20 @@ def screen_city_advert(row, source, sizes=DEFAULT_SIZES):
     return screen(row, source, evidence, sizes)
 
 
+def per_room_list_price(listed, live, bedrooms):
+    # On a whole home with several bedrooms SpareRoom's search list shows the
+    # whole rent divided by the bedrooms, rounded down (£785 pcm for 2 beds is
+    # listed as £392 pcm). The live whole-property price stays authoritative.
+    if not bedrooms or bedrooms < 2:
+        return False
+    a = re.fullmatch(r'£?([0-9]+(?:\.[0-9]{1,2})?)\s*(pcm|pw)', str(listed).replace(',', '').strip(), re.I)
+    b = re.fullmatch(r'£?([0-9]+(?:\.[0-9]{1,2})?)\s*(pcm|pw)', str(live).replace(',', '').strip(), re.I)
+    if not a or not b or a[2].lower() != b[2].lower():
+        return False
+    per, whole = Decimal(a[1]), Decimal(b[1])
+    return per * bedrooms <= whole < (per + 1) * bedrooms
+
+
 def advertised_size(property_text):
     # SpareRoom: "This ad is for a Studio flat", "a 1 bed flat", "a 2 bed house", "a 3 bed property".
     m = re.search(r'This ad is for an? (?:(Studio) flat|(\d+) bed (flat|apartment|house|property|maisonette|bungalow))\b',
@@ -208,7 +222,7 @@ def screen(row, source, council_evidence=None, sizes=DEFAULT_SIZES):
         raise Rejected('no_live_whole_property_price')
     monthly, source_price = rent(price[1] + price[2])
     scraped_monthly, _ = rent(row.get('Price', ''))
-    if monthly != scraped_monthly:
+    if monthly != scraped_monthly and not per_room_list_price(row.get('Price', ''), price[1] + price[2], bedrooms):
         raise Rejected('price_mismatch')
     outcode = advert_outcode(page)
     prefix = re.match(r'[A-Z]+', outcode)[0]
