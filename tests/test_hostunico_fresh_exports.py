@@ -46,14 +46,30 @@ class FreshExportsTests(unittest.TestCase):
         for run, country in [(5, 'uk'), (4, 'us')]:
             self.assertEqual(module.fresh_advert_ids(self.query, self.home, run, country, ['recent', 'new'], now=200), ['recent', 'new'])
 
+    def test_a_week_old_sweep_is_skipped_for_a_later_fresh_run(self):
+        week = 7 * 86400
+        self.db.execute('update runs set started_at=? where id=1', (150 - week,))
+        self.db.execute('update runs set started_at=? where id=2', (10 - week,))
+        self.manifest(verified_after=100 - week)
+        self.assertEqual(module.fresh_advert_ids(self.query, self.home, 4, 'uk', ['recent', 'old', 'new'], now=200),
+                         ['old', 'new'])
+
     def test_expired_or_invalid_manifests_never_drop_adverts(self):
-        for values in [{'expires_at': 199}, {'verified_after': -90000}, {'run_ids': ['4']},
+        for values in [{'expires_at': 199}, {'verified_after': 200 - 14 * 86400 - 1}, {'run_ids': ['4']},
                        {'verified_after': 201}, {'expires_at': 9999999999}]:
             self.manifest(**values)
             self.assertEqual(module.fresh_advert_ids(self.query, self.home, 4, 'uk', ['recent'], now=200), ['recent'])
 
     def test_no_manifest_means_normal_export(self):
         self.assertEqual(module.fresh_advert_ids(self.query, self.home, 4, 'uk', ['recent'], now=200), ['recent'])
+        self.assertFalse(module.fresh_run(self.home, 4, 'uk', now=200))
+
+    def test_only_listed_live_uk_runs_count_as_fresh_runs_that_must_sign_in(self):
+        self.manifest()
+        self.assertTrue(module.fresh_run(self.home, 4, 'uk', now=200))
+        self.assertFalse(module.fresh_run(self.home, 5, 'uk', now=200))
+        self.assertFalse(module.fresh_run(self.home, 4, 'us', now=200))
+        self.assertFalse(module.fresh_run(self.home, 4, 'uk', now=300))
 
 
 if __name__ == '__main__':

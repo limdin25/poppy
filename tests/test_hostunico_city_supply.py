@@ -211,6 +211,80 @@ class HistoryTests(unittest.TestCase):
         self.assertTrue(patch['report_property']['areaEstimate'])
 
 
+class PhoneRuleTests(unittest.TestCase):
+    """New numbers go through the CRM's one-person-per-number RPC."""
+
+    class Api:
+        def __init__(self, rpc):
+            self.rpc, self.writes = rpc, []
+
+        def db(self, table, query=None, body=None, **kwargs):
+            if table == 'rpc/wk_ingest_contacts':
+                self.writes.append((table, body))
+                return self.rpc()
+            if body is not None:
+                self.writes.append((table, body))
+                return [{'id': 'property'}]
+            if table in ('sa_listings', 'wk_contacts', 'wk_dialer_queue', 'wk_calls'):
+                return []
+            raise AssertionError(table)
+
+    def item(self):
+        return module.screen(ScreeningTests().row(), advert())
+
+    def test_new_contact_is_labelled_with_the_requested_batch_and_held_for_the_report(self):
+        api = self.Api(lambda: [{'id': 'fresh', 'desk': 'sa', 'owner_agent_id': 'pedro', 'do_not_call': False}])
+        module.import_property(api, self.item(), 'pedro', 'new-lead', 'uk-fresh-2026-10-07')
+        tables = [t for t, _ in api.writes]
+        self.assertEqual(tables, ['rpc/wk_ingest_contacts', 'sa_listings', 'wk_dialer_queue'])
+        self.assertEqual(api.writes[0][1]['p_contacts']['custom_fields']['source_batch'], 'uk-fresh-2026-10-07')
+        queue = api.writes[2][1]
+        self.assertEqual((queue['status'], queue['hostunico_uplift_hold']), ('skipped', True))
+
+    def test_cooldown_or_permanent_suppression_rejects_the_lead_without_listing_or_queue(self):
+        for code, reason in [('23514', 'phone_suppressed_or_in_cooldown'), ('22023', 'invalid_number')]:
+            def refuse(code=code):
+                raise RuntimeError('CRM rpc HTTP 400 code ' + code)
+            api = self.Api(refuse)
+            with self.assertRaisesRegex(module.Rejected, reason):
+                module.import_property(api, self.item(), 'pedro', 'new-lead')
+            self.assertEqual([t for t, _ in api.writes], ['rpc/wk_ingest_contacts'])
+
+    def test_other_crm_failures_stay_retryable(self):
+        def fail():
+            raise RuntimeError('CRM rpc HTTP 503')
+        with self.assertRaises(RuntimeError):
+            module.import_property(self.Api(fail), self.item(), 'pedro', 'new-lead')
+
+    def test_canonical_contact_on_another_desk_or_opted_out_is_never_attached(self):
+        for row in [{'id': 'house', 'desk': 'houses', 'owner_agent_id': 'pedro', 'do_not_call': False},
+                    {'id': 'other', 'desk': 'sa', 'owner_agent_id': 'marr', 'do_not_call': False},
+                    {'id': 'dnc', 'desk': 'sa', 'owner_agent_id': 'pedro', 'do_not_call': True}]:
+            api = self.Api(lambda row=row: [row])
+            with self.assertRaises(module.Rejected):
+                module.import_property(api, self.item(), 'pedro', 'new-lead')
+            self.assertEqual([t for t, _ in api.writes], ['rpc/wk_ingest_contacts'])
+
+    def test_returned_existing_person_with_call_history_gets_no_new_queue_row(self):
+        api = self.Api(lambda: [{'id': 'known', 'desk': 'sa', 'owner_agent_id': 'pedro', 'do_not_call': False}])
+        original = api.db
+        api.db = lambda table, *a, **k: [{'id': 'call'}] if table == 'wk_calls' else original(table, *a, **k)
+        module.import_property(api, self.item(), 'pedro', 'new-lead')
+        self.assertNotIn('wk_dialer_queue', [t for t, _ in api.writes])
+
+    def test_crm_errors_keep_only_the_postgres_code(self):
+        error = urllib_error(400, b'{"code":"23514","message":"Phone number +447700900123 is in cooldown"}')
+        api = module.Api({'SUPABASE_URL': 'https://loggyxryrhqsbtqpteog.supabase.co', 'SUPABASE_SERVICE_ROLE_KEY': 'k'}, 't')
+        with patch.object(module.urllib.request, 'urlopen', side_effect=error):
+            with self.assertRaises(RuntimeError) as raised:
+                api.db('rpc/wk_ingest_contacts', body={})
+        self.assertEqual(str(raised.exception), 'CRM rpc HTTP 400 code 23514')
+
+
+def urllib_error(status, body):
+    return module.urllib.error.HTTPError('https://example.invalid', status, 'error', {}, io.BytesIO(body))
+
+
 class ReportProgressTests(unittest.TestCase):
     def test_service_outage_defers_remote_requests_but_still_counts_cached_research(self):
         class Api:

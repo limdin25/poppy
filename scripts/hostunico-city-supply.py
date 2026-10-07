@@ -233,7 +233,14 @@ class Api:
                 data = r.read()
             return json.loads(data) if data else None
         except urllib.error.HTTPError as e:
-            raise RuntimeError('CRM ' + table.split('/')[0] + ' HTTP ' + str(e.code)) from None
+            # Only the Postgres error code is kept, never the message or the request.
+            try:
+                code = json.loads(e.read()).get('code')
+            except Exception:
+                code = None
+            code = code if isinstance(code, str) and re.fullmatch(r'[0-9A-Z]{5}', code) else None
+            raise RuntimeError('CRM ' + table.split('/')[0] + ' HTTP ' + str(e.code) +
+                               (' code ' + code if code else '')) from None
 
     def report(self, action, data):
         assert action in ('start', 'status')
@@ -247,16 +254,29 @@ class Api:
             raise RuntimeError('Report ' + action + ' HTTP ' + str(e.code)) from None
 
 
-def import_property(api, item, owner, stage):
+def ingest(api, contact):
+    # The CRM phone rule (one person per number, 30 day cooldown, permanent
+    # do not contact) answers with these codes. Both are final for this lead.
+    try:
+        return api.db('rpc/wk_ingest_contacts', body={'p_contacts': contact})
+    except RuntimeError as e:
+        if str(e).endswith(' code 23514'):
+            raise Rejected('phone_suppressed_or_in_cooldown') from None
+        if str(e).endswith(' code 22023'):
+            raise Rejected('invalid_number') from None
+        raise
+
+
+def import_property(api, item, owner, stage, batch=BATCH):
     listing = api.db('sa_listings', {'select': 'id,wk_contact_id,rent_pcm,source_price,photo_urls,report_property,hostunico_call_eligible',
                                    'rightmove_id': 'eq.spareroom:' + item['advert_id']})
     existing = api.db('wk_contacts', {'select': 'id,desk,owner_agent_id,do_not_call',
                                      'or': '(phone.eq.' + item['phone'] + ',hostunico_sms_phone.eq.' + item['phone'] + ')'})
     if existing and not listing:
-        api.db('rpc/wk_ingest_contacts', body={'p_contacts': {
+        ingest(api, {
             'name': item['name'], 'phone': item['phone'], 'desk': 'sa', 'owner_agent_id': owner,
             'custom_fields': {'listing_url': item['url'], 'property_address': item['title'],
-                              'source': 'spareroom', 'source_batch': BATCH}}})
+                              'source': 'spareroom', 'source_batch': batch}})
     if len(existing) > 1 or any(x['desk'] != 'sa' or x['owner_agent_id'] != owner for x in existing):
         raise Rejected('number_conflict_or_another_owner')
     new_contact = not existing
@@ -267,11 +287,19 @@ def import_property(api, item, owner, stage):
     if listing and Decimal(str(listing[0]['rent_pcm'])) != Decimal(str(item['rent_pcm'])):
         raise Rejected('existing_listing_price_changed')
     if not existing:
-        existing = api.db('rpc/wk_ingest_contacts', body={'p_contacts': {'name': item['name'], 'phone': item['phone'], 'desk': 'sa',
+        existing = ingest(api, {'name': item['name'], 'phone': item['phone'], 'desk': 'sa',
                            'owner_agent_id': owner, 'pipeline_column_id': stage, 'ai_enabled': False,
                            'custom_fields': {'lead_type': 'hostunico_owner', 'source': 'spareroom',
-                                             'source_batch': BATCH, 'owner_name': item['name'],
-                                             'advertiser_type': item['authority'], 'next_step': 'Offer the property report'}}})
+                                             'source_batch': batch, 'owner_name': item['name'],
+                                             'advertiser_type': item['authority'], 'next_step': 'Offer the property report'}})
+        if not existing:
+            raise RuntimeError('CRM contact not returned')
+        # The RPC hands back the one canonical contact for the number. If that
+        # person already lives on another desk or with another agent, leave them.
+        if existing[0].get('desk', 'sa') != 'sa' or existing[0].get('owner_agent_id', owner) != owner:
+            raise Rejected('number_conflict_or_another_owner')
+        if existing[0].get('do_not_call'):
+            raise Rejected('contact_opted_out')
     contact_id = existing[0]['id']
     new_property = not listing
     if not listing:
@@ -306,7 +334,8 @@ def import_property(api, item, owner, stage):
     # Preserve every existing queue row, including skipped, missed and done.
     queue = api.db('wk_dialer_queue', {'select': 'id', 'campaign_id': 'eq.' + CAMPAIGN,
                                      'contact_id': 'eq.' + contact_id})
-    history = [] if new_contact or queue else api.db('wk_calls', {'select': 'id', 'contact_id': 'eq.' + contact_id, 'limit': '1'})
+    # Checked for new contacts too: the RPC may have returned an existing person.
+    history = [] if queue else api.db('wk_calls', {'select': 'id', 'contact_id': 'eq.' + contact_id, 'limit': '1'})
     if not queue and not history:
         api.db('wk_dialer_queue', body={'campaign_id': CAMPAIGN, 'contact_id': contact_id,
                                       'status': 'skipped', 'hostunico_uplift_hold': True,
@@ -371,8 +400,8 @@ def sync_reports(api, selected):
     return ready, waiting, errors
 
 
-def supply_runs(db, ops):
-    config = ops / 'supply-runs.json'
+def supply_runs(db, ops, config_name='supply-runs.json'):
+    config = ops / config_name
     ids = json.loads(config.read_text()) if config.exists() else list(range(10, 21))
     if not isinstance(ids, list) or not ids or any(type(x) is not int or x <= 0 for x in ids):
         raise ValueError('Supply run config must contain positive integer run IDs')
@@ -413,18 +442,26 @@ def main():
     parser.add_argument('--max-items', type=int, default=35)
     parser.add_argument('--stop-at', type=float, default=STOP_AT, help='Explicit UTC Unix deadline for a resumed persistent run')
     parser.add_argument('--report-sync-seconds', type=int, default=900, help='Status refresh interval for newly researched reports')
+    parser.add_argument('--batch', default=BATCH, help='source_batch label written on new contacts')
+    parser.add_argument('--state', default='supply-state.json', help='State file name inside ops/')
+    parser.add_argument('--runs-file', default='supply-runs.json', help='Run ID config file name inside ops/')
     args = parser.parse_args()
     if not 60 <= args.report_sync_seconds <= 900:
         parser.error('Report refresh interval must be between 60 and 900 seconds')
+    for name in (args.state, args.runs_file):
+        if not re.fullmatch(r'[a-z0-9-]+\.json', name):
+            parser.error('State and run files are plain names inside ops/')
+    if not re.fullmatch(r'[a-z0-9-]+', args.batch):
+        parser.error('Batch is a plain lowercase label')
     os.umask(0o077)
     home = Path(args.home)
     ops = home / 'ops'
     ops.mkdir(exist_ok=True)
     lock = open(ops / 'supply.lock', 'w')
     fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    state_file = ops / 'supply-state.json'
+    state_file = ops / args.state
     state = json.loads(state_file.read_text()) if state_file.exists() else {
-        'batch': BATCH, 'checked': {}, 'contacts': {}, 'properties': [], 'rejections': {}, 'new_contacts': 0, 'new_properties': 0}
+        'batch': args.batch, 'checked': {}, 'contacts': {}, 'properties': [], 'rejections': {}, 'new_contacts': 0, 'new_properties': 0}
     prepare_border_recheck(state)
     def save_state():
         temporary = state_file.with_suffix('.tmp')
@@ -442,7 +479,7 @@ def main():
     while run_window_open(args.once, args.stop_at):
         db = sqlite3.connect(home / 'data/spareroom.db')
         db.row_factory = sqlite3.Row
-        runs = supply_runs(db, ops)
+        runs = supply_runs(db, ops, args.runs_file)
         db.close()
         candidates = {}
         for run in runs:
@@ -477,7 +514,7 @@ def main():
                 with urllib.request.urlopen(photo, timeout=15) as r:
                     if not r.headers.get('Content-Type', '').startswith('image/'):
                         raise Rejected('actual_photo_not_available')
-                cid, lid, new_contact, new_property = import_property(api, item, owner, stage)
+                cid, lid, new_contact, new_property = import_property(api, item, owner, stage, args.batch)
                 state['contacts'].setdefault(cid, lid)
                 if lid not in state['properties']:
                     state['properties'].append(lid)
