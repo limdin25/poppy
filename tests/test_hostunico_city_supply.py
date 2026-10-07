@@ -211,6 +211,39 @@ class HistoryTests(unittest.TestCase):
         self.assertTrue(patch['report_property']['areaEstimate'])
 
 
+class SizeTests(unittest.TestCase):
+    """Hugo, 7 Oct: whole 2 and 3-bed homes too, flats or houses, never rooms."""
+
+    def test_two_and_three_bed_whole_homes_are_read_with_their_type(self):
+        two = module.screen(ScreeningTests().row(Name='2 bed flat'), advert(kind='2 bed flat'), sizes={'2', '3'})
+        self.assertEqual((two['bedrooms'], two['kind'], two['studio']), (2, 'Flat', False))
+        three = module.screen(ScreeningTests().row(Name='Family home'), advert(kind='3 bed house'), sizes={'2', '3'})
+        self.assertEqual((three['bedrooms'], three['kind']), (3, 'House'))
+
+    def test_the_default_batch_still_takes_only_studios_and_one_bed_flats(self):
+        for kind in ['2 bed flat', '3 bed house', '1 bed house']:
+            with self.assertRaisesRegex(module.Rejected, 'not_a_studio_or_one_bed_flat'):
+                module.screen(ScreeningTests().row(), advert(kind=kind))
+        self.assertEqual(module.screen(ScreeningTests().row(), advert())['bedrooms'], None)
+
+    def test_a_two_and_three_bed_batch_refuses_other_sizes_and_rooms(self):
+        for kind in ['Studio flat', '1 bed flat', '4 bed house']:
+            with self.assertRaisesRegex(module.Rejected, 'size_outside_this_batch'):
+                module.screen(ScreeningTests().row(), advert(kind=kind), sizes={'2', '3'})
+        with self.assertRaises(module.Rejected):
+            module.screen(ScreeningTests().row(Name='Double room in 3 bed house'), advert(kind='3 bed house'), sizes={'2', '3'})
+        with self.assertRaisesRegex(module.Rejected, 'not_a_whole_property'):
+            module.screen(ScreeningTests().row(), advert(kind='3 bed house').replace('feature--price-whole-property', 'feature--price-room-only'), sizes={'2', '3'})
+
+    def test_a_three_bed_listing_is_stored_and_researched_as_three_bedrooms(self):
+        api = PhoneRuleTests.Api(lambda: [{'id': 'fresh', 'desk': 'sa', 'owner_agent_id': 'pedro', 'do_not_call': False}])
+        item = module.screen(ScreeningTests().row(Name='Family home'), advert(kind='3 bed house'), sizes={'2', '3'})
+        module.import_property(api, item, 'pedro', 'new-lead', 'uk-2-3-bed-2026-10-07')
+        listing = [b for t, b in api.writes if t == 'sa_listings'][0]
+        self.assertEqual((listing['bedrooms'], listing['property_type'], listing['report_property']['bedrooms']), (3, 'House', 3))
+        self.assertIn('3-bedroom house', listing['hostunico_eligibility_note'])
+
+
 class PhoneRuleTests(unittest.TestCase):
     """New numbers go through the CRM's one-person-per-number RPC."""
 

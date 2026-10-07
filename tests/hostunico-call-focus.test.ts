@@ -34,6 +34,15 @@ describe('the property changes with the call', () => {
     expect(next).not.toContain('Princess Road');
     expect(next).toContain('What mobile number can I text the report to? Or would you prefer email?');
   });
+  it('asks for the whole property on two and three-bedroom homes only (Hugo, 7 Oct)', () => {
+    const line = 'ideally we would manage the whole property as one Airbnb listing. We can do it room by room as well';
+    const two = renderToStaticMarkup(createElement(HostunicoScriptPane, { listing: { ...listing, propertyType: 'house', bedrooms: 3 }, agentName: 'Pedro', onOpener: () => {} }));
+    expect(two).toContain('your 3-bedroom house in Manchester');
+    expect(two).toContain(line);
+    for (const small of [listing, { ...listing, propertyType: 'flat', bedrooms: 1 }]) {
+      expect(renderToStaticMarkup(createElement(HostunicoScriptPane, { listing: small, agentName: 'Pedro', onOpener: () => {} }))).not.toContain(line);
+    }
+  });
 });
 describe('fast answers stay current', () => {
   it('keeps a newer streamed update when an older backfill completes', () => {

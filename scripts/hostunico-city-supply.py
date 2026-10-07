@@ -41,6 +41,12 @@ LONDON_COUNCILS = {
 }
 
 
+# Which advertised sizes a batch accepts. The original batches were whole
+# studios and one-bedroom flats; Hugo opened whole 2 and 3-bed homes on 7 Oct.
+DEFAULT_SIZES = frozenset({'studio', '1'})
+ALLOWED_SIZES = frozenset({'studio', '1', '2', '3'})
+
+
 class Rejected(Exception):
     pass
 
@@ -135,7 +141,7 @@ def lookup_outcode_councils(outcode):
     return data.get('result') if data.get('status') == 200 else None
 
 
-def screen_city_advert(row, source):
+def screen_city_advert(row, source, sizes=DEFAULT_SIZES):
     page = Visible()
     page.feed(source)
     outcode = advert_outcode(page)
@@ -144,10 +150,24 @@ def screen_city_advert(row, source):
     evidence = lookup_outcode_councils(outcode)
     if not outside_london(outcode, evidence):
         raise Rejected('london_or_london_border')
-    return screen(row, source, evidence)
+    return screen(row, source, evidence, sizes)
 
 
-def screen(row, source, council_evidence=None):
+def advertised_size(property_text):
+    # SpareRoom: "This ad is for a Studio flat", "a 1 bed flat", "a 2 bed house", "a 3 bed property".
+    m = re.search(r'This ad is for an? (?:(Studio) flat|(\d+) bed (flat|apartment|house|property|maisonette|bungalow))\b',
+                  property_text, re.I)
+    if not m:
+        return None, None, None
+    if m[1]:
+        return 'studio', None, 'Studio'
+    beds, kind = int(m[2]), m[3].lower()
+    if beds == 1 and kind not in ('flat', 'apartment'):
+        return None, None, None
+    return str(beds), beds, 'Flat' if beds == 1 else kind.capitalize()
+
+
+def screen(row, source, council_evidence=None, sizes=DEFAULT_SIZES):
     number = phone(row.get('Number'))
     if not number:
         raise Rejected('invalid_number')
@@ -164,10 +184,10 @@ def screen(row, source, council_evidence=None):
     part = Visible()
     part.feed(section[1])
     property_text = part.text()
-    studio = bool(re.search(r'This ad is for a Studio flat\b', property_text, re.I))
-    one_bed = bool(re.search(r'This ad is for a 1 bed (?:flat|apartment)\b', property_text, re.I))
-    if not studio and not one_bed:
-        raise Rejected('not_a_studio_or_one_bed_flat')
+    size, bedrooms, kind = advertised_size(property_text)
+    if size not in sizes:
+        raise Rejected('not_a_studio_or_one_bed_flat' if sizes == DEFAULT_SIZES else 'size_outside_this_batch')
+    studio = size == 'studio'
     title = row.get('Name', '')
     ensuite_bedroom = re.search(r'\ben[- ]?suite\s+(?:(?:single|double)\s+)?bedroom\b', title, re.I)
     names_whole_home = re.search(r'\b(?:studio|flat|apartment)\b', title, re.I)
@@ -201,6 +221,7 @@ def screen(row, source, council_evidence=None):
     return {'advert_id': aid, 'phone': number, 'name': name, 'title': row['Name'].strip(),
             'location': row.get('Location', '').strip(), 'outcode': outcode,
             'rent_pcm': float(monthly), 'source_price': source_price, 'studio': studio,
+            'bedrooms': bedrooms, 'kind': kind,
             'photos': photos, 'url': row['Link'], 'authority': authority, 'text': text}
 
 
@@ -302,19 +323,26 @@ def import_property(api, item, owner, stage, batch=BATCH):
             raise Rejected('contact_opted_out')
     contact_id = existing[0]['id']
     new_property = not listing
+    beds = item.get('bedrooms') or (None if item.get('studio') else 1)
+    # Studios still use the one-bedroom area comparison, labelled as an assumption.
+    report_beds = beds or 1
+    if item.get('studio') or beds == 1:
+        note = 'Live whole studio/one-bedroom flat, asking price and actual photo verified.'
+    else:
+        note = 'Live whole %d-bedroom %s, asking price and actual photo verified.' % (beds, item['kind'].lower())
     if not listing:
-        property_data = {'postcode': item['outcode'], 'areaLabel': item['location'], 'bedrooms': 1,
+        property_data = {'postcode': item['outcode'], 'areaLabel': item['location'], 'bedrooms': report_beds,
                          'bathrooms': 1, 'wholeProperty': True, 'areaEstimate': True,
                          'advertisedRentPcm': item['rent_pcm']}
         listing = api.db('sa_listings', body={
             'rightmove_id': 'spareroom:' + item['advert_id'], 'source': 'spareroom', 'agency': item['name'],
             'agency_phone': item['phone'], 'wk_contact_id': contact_id, 'address': item['title'],
             'city': item['location'], 'outcode': item['outcode'], 'rent_pcm': item['rent_pcm'],
-            'source_price': item['source_price'], 'bedrooms': None if item['studio'] else 1, 'bathrooms': None,
-            'property_type': 'Studio' if item['studio'] else 'Flat', 'photo_urls': item['photos'],
+            'source_price': item['source_price'], 'bedrooms': beds, 'bathrooms': None,
+            'property_type': item.get('kind') or ('Studio' if item['studio'] else 'Flat'), 'photo_urls': item['photos'],
             'listing_url': item['url'], 'report_property': property_data, 'hostunico_call_eligible': True,
-            'hostunico_eligibility_note': 'Live whole studio/one-bedroom flat, asking price and actual photo verified.',
-            'summary': 'Whole flat verified from the live advert. Confirm availability, authority, full postcode and bathroom count. Area report assumptions are unconfirmed.',
+            'hostunico_eligibility_note': note,
+            'summary': 'Whole property verified from the live advert. Confirm availability, authority, full postcode and bathroom count. Area report assumptions are unconfirmed.',
             'dealt_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())})
     else:
         # Earlier imports can lack source evidence. Repair missing fields using
@@ -324,11 +352,11 @@ def import_property(api, item, owner, stage, batch=BATCH):
             patch['photo_urls'] = item['photos']
         if not listing[0].get('report_property'):
             patch['report_property'] = {'postcode': item['outcode'], 'areaLabel': item['location'],
-                                        'bedrooms': 1, 'bathrooms': 1, 'wholeProperty': True,
+                                        'bedrooms': report_beds, 'bathrooms': 1, 'wholeProperty': True,
                                         'areaEstimate': True, 'advertisedRentPcm': item['rent_pcm']}
         if not listing[0].get('hostunico_call_eligible'):
             patch['hostunico_call_eligible'] = True
-            patch['hostunico_eligibility_note'] = 'Live whole studio/one-bedroom flat, asking price and actual photo verified.'
+            patch['hostunico_eligibility_note'] = note
         if patch:
             api.db('sa_listings', {'id': 'eq.' + listing[0]['id']}, body=patch, method='PATCH')
     # Preserve every existing queue row, including skipped, missed and done.
@@ -445,6 +473,7 @@ def main():
     parser.add_argument('--batch', default=BATCH, help='source_batch label written on new contacts')
     parser.add_argument('--state', default='supply-state.json', help='State file name inside ops/')
     parser.add_argument('--runs-file', default='supply-runs.json', help='Run ID config file name inside ops/')
+    parser.add_argument('--beds', default='studio,1', help='Advertised sizes to import, from studio,1,2,3')
     args = parser.parse_args()
     if not 60 <= args.report_sync_seconds <= 900:
         parser.error('Report refresh interval must be between 60 and 900 seconds')
@@ -453,11 +482,15 @@ def main():
             parser.error('State and run files are plain names inside ops/')
     if not re.fullmatch(r'[a-z0-9-]+', args.batch):
         parser.error('Batch is a plain lowercase label')
+    sizes = frozenset(x.strip() for x in args.beds.split(',') if x.strip())
+    if not sizes or not sizes <= ALLOWED_SIZES:
+        parser.error('Sizes must come from studio,1,2,3')
     os.umask(0o077)
     home = Path(args.home)
     ops = home / 'ops'
     ops.mkdir(exist_ok=True)
-    lock = open(ops / 'supply.lock', 'w')
+    # One importer per state file. The original batch keeps its original lock name.
+    lock = open(ops / ('supply.lock' if args.state == 'supply-state.json' else Path(args.state).stem + '.lock'), 'w')
     fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     state_file = ops / args.state
     state = json.loads(state_file.read_text()) if state_file.exists() else {
@@ -501,7 +534,7 @@ def main():
                     with urllib.request.urlopen(req, timeout=25) as r:
                         source = r.read().decode('utf-8', errors='replace')
                     path.write_text(source)
-                item = screen_city_advert(row, path.read_text())
+                item = screen_city_advert(row, path.read_text(), sizes)
                 if aid in state.get('refresh_source_ids', []):
                     # Only a previously rejected property outside London reaches
                     # here. Verify the current page again before importing it.
@@ -509,7 +542,7 @@ def main():
                     with urllib.request.urlopen(req, timeout=25) as r:
                         source = r.read().decode('utf-8', errors='replace')
                     path.write_text(source)
-                    item = screen_city_advert(row, source)
+                    item = screen_city_advert(row, source, sizes)
                 photo = urllib.request.Request(item['photos'][0], method='HEAD')
                 with urllib.request.urlopen(photo, timeout=15) as r:
                     if not r.headers.get('Content-Type', '').startswith('image/'):

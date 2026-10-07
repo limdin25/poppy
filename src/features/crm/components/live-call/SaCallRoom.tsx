@@ -107,7 +107,7 @@ export default function SaCallRoom({ contact, contactHeader, emptyState, current
               {!selected && <HostunicoListingLinks contactId={contact.id} />}
               {listings.length > 1 ? <label className="block text-xs text-slate-500">{listings.length} properties, one contact<select aria-label="Property on this call" value={selected?.id || ''} onChange={(e) => setSelectedId(e.target.value)} className="mt-1 w-full rounded-lg border bg-white px-2 py-2 text-xs text-slate-900">{listings.map((l) => <option key={l.id} value={l.id}>{l.address}</option>)}</select></label> : <p className="text-sm font-medium">{selected?.address || 'Property details to confirm'}</p>}
               <div className="flex flex-wrap gap-1 text-[11px]">{[facts.layout, facts.bathroom, facts.rent].filter(Boolean).map((fact) => <span key={fact} className="rounded-md bg-slate-100 px-2 py-1">{fact}</span>)}</div>
-              <p className="text-[11px] text-slate-500">Whole studio or one-bedroom advert. Report assumptions are labelled.</p>
+              <p className="text-[11px] text-slate-500">Whole-property advert. Report assumptions are labelled.</p>
               {selected?.summary && <details><summary className="cursor-pointer text-xs font-medium">Read advert description</summary><p className="mt-2 whitespace-pre-line text-xs leading-relaxed text-slate-600">{selected.summary}</p></details>}
             </div>
           </section>
