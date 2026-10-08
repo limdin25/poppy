@@ -167,6 +167,20 @@ def per_room_list_price(listed, live, bedrooms):
     return per * bedrooms <= whole < (per + 1) * bedrooms
 
 
+def room_price_range_matches(listed, live, bedrooms):
+    # Unequal bedroom prices appear as a range in the search export. Both
+    # endpoints must be represented in the total, including rounding down.
+    if bedrooms not in (2, 3):
+        return False
+    pattern = r'£?([0-9]+(?:\.[0-9]{1,2})?)\s*(pcm|pw)'
+    span = re.fullmatch(pattern + r'\s*-\s*' + pattern, str(listed).replace(',', '').strip(), re.I)
+    whole = re.fullmatch(pattern, str(live).replace(',', '').strip(), re.I)
+    if not span or not whole or len({span[2].lower(), span[4].lower(), whole[2].lower()}) != 1:
+        return False
+    low, high, total = Decimal(span[1]), Decimal(span[3]), Decimal(whole[1])
+    return 0 < low <= high and low * (bedrooms - 1) + high <= total < low + high * (bedrooms - 1) + bedrooms
+
+
 def advertised_size(property_text):
     # SpareRoom: "This ad is for a Studio flat", "a 1 bed flat", "a 2 bed house", "a 3 bed property".
     m = re.search(r'This ad is for an? (?:(Studio) flat|(\d+) bed (flat|apartment|house|property|maisonette|bungalow))\b',
@@ -205,7 +219,9 @@ def screen(row, source, council_evidence=None, sizes=DEFAULT_SIZES):
     title = row.get('Name', '')
     ensuite_bedroom = re.search(r'\ben[- ]?suite\s+(?:(?:single|double)\s+)?bedroom\b', title, re.I)
     names_whole_home = re.search(r'\b(?:studio|flat|apartment)\b', title, re.I)
-    if re.search(r'\broom\b|house\s*share', title, re.I) or (ensuite_bedroom and not names_whole_home):
+    room_title = re.sub(r'\b(?:living|dining|reception)\s+rooms?\b|\bbed\s+rooms?\b', '', title, flags=re.I)
+    individual_bedroom = re.search(r'\b(?:one|1|single|double)\s+bedroom\s+(?:is\s+)?(?:available|to\s+(?:let|rent))\b', title, re.I)
+    if re.search(r'\brooms?\b|house\s*share', room_title, re.I) or individual_bedroom or (ensuite_bedroom and not names_whole_home):
         raise Rejected('room_title')
     page = Visible()
     page.feed(source)
@@ -221,7 +237,8 @@ def screen(row, source, council_evidence=None, sizes=DEFAULT_SIZES):
     if not price:
         raise Rejected('no_live_whole_property_price')
     monthly, source_price = rent(price[1] + price[2])
-    scraped_monthly, _ = rent(row.get('Price', ''))
+    range_matches = room_price_range_matches(row.get('Price', ''), price[1] + price[2], bedrooms)
+    scraped_monthly = monthly if range_matches else rent(row.get('Price', ''))[0]
     if monthly != scraped_monthly and not per_room_list_price(row.get('Price', ''), price[1] + price[2], bedrooms):
         raise Rejected('price_mismatch')
     outcode = advert_outcode(page)
@@ -543,20 +560,12 @@ def main():
         for aid, row in work:
             try:
                 path = source_dir / (aid + '.html')
-                if not path.exists():
+                if not path.exists() or aid in state.get('refresh_source_ids', []):
                     req = urllib.request.Request(row['Link'], headers={'User-Agent': 'Mozilla/5.0'})
                     with urllib.request.urlopen(req, timeout=25) as r:
                         source = r.read().decode('utf-8', errors='replace')
                     path.write_text(source)
                 item = screen_city_advert(row, path.read_text(), sizes)
-                if aid in state.get('refresh_source_ids', []):
-                    # Only a previously rejected property outside London reaches
-                    # here. Verify the current page again before importing it.
-                    req = urllib.request.Request(row['Link'], headers={'User-Agent': 'Mozilla/5.0'})
-                    with urllib.request.urlopen(req, timeout=25) as r:
-                        source = r.read().decode('utf-8', errors='replace')
-                    path.write_text(source)
-                    item = screen_city_advert(row, source, sizes)
                 photo = urllib.request.Request(item['photos'][0], method='HEAD')
                 with urllib.request.urlopen(photo, timeout=15) as r:
                     if not r.headers.get('Content-Type', '').startswith('image/'):

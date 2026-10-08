@@ -246,6 +246,28 @@ class SizeTests(unittest.TestCase):
         with self.assertRaisesRegex(module.Rejected, 'price_mismatch'):
             module.screen(ScreeningTests().row(Price='325pcm'), advert(price='650 pcm'))
 
+    def test_unequal_room_price_ranges_use_the_verified_whole_rent(self):
+        for listed, live, kind in [('575pcm - 625pcm', '1200 pcm', '2 bed house'),
+                                   ('152pw - 153pw', '305 pw', '2 bed flat'),
+                                   ('580pcm - 635pcm', '1795 pcm', '3 bed flat'),
+                                   ('730pcm - 735pcm', '2195 pcm', '3 bed flat')]:
+            item = module.screen(ScreeningTests().row(Name='Whole home', Price=listed),
+                                 advert(price=live, kind=kind), sizes={'2', '3'})
+            self.assertEqual(item['rent_pcm'], float(module.rent(live)[0]))
+        for listed, live in [('300pw - 400pw', '800 pw'), ('500pcm - 700pw', '1200 pcm'),
+                             ('650pcm - 550pcm', '1200 pcm')]:
+            with self.assertRaises(module.Rejected):
+                module.screen(ScreeningTests().row(Name='Whole home', Price=listed),
+                              advert(price=live, kind='2 bed flat'), sizes={'2', '3'})
+
+    def test_living_room_and_bed_room_in_whole_home_titles_are_not_room_lets(self):
+        for title in ['2 Bed 2 Living Room House to Let', '2 Bed Room Flat, Part Furnished']:
+            item = module.screen(ScreeningTests().row(Name=title), advert(kind='2 bed house'), sizes={'2', '3'})
+            self.assertEqual(item['bedrooms'], 2)
+        for title in ['Double Room Available', '1 Bedroom is available very near University', '1 Room Left in Student House']:
+            with self.assertRaises(module.Rejected):
+                module.screen(ScreeningTests().row(Name=title), advert(kind='2 bed house'), sizes={'2', '3'})
+
     def test_a_three_bed_listing_is_stored_and_researched_as_three_bedrooms(self):
         api = PhoneRuleTests.Api(lambda: [{'id': 'fresh', 'desk': 'sa', 'owner_agent_id': 'pedro', 'do_not_call': False}])
         item = module.screen(ScreeningTests().row(Name='Family home'), advert(kind='3 bed house'), sizes={'2', '3'})
