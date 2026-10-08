@@ -20,8 +20,9 @@ export default function HostunicoScriptPane({ listing, agentName, onOpener, onMo
   const property = hostunicoProperty(listing);
   const { place } = property;
   const rent = property.rent ? ` at ${property.rent}` : '';
+  const sourceName = /^https:\/\/(www\.)?rightmove\.co\.uk\//.test(listing?.listingUrl || '') ? 'Rightmove' : 'SpareRoom';
   const opener = mode === 'spareroom'
-    ? `Hi, this is ${agentName || 'Pedro'} here. I saw your ${property.description} in ${place}${rent} on SpareRoom. Is it still available?`
+    ? `Hi, this is ${agentName || 'Pedro'} here. I saw your ${property.description} in ${place}${rent} on ${sourceName}. Is it still available?`
     : mode === 'facebook'
       ? `Hi, this is ${agentName || 'Pedro'} here. You enquired about partnering with us for short-term lets through Airbnb. Is the property still available?`
       : `Hi, this is ${agentName || 'Pedro'} here. We spoke about your property and I sent you the earnings report. Have you had a chance to look at it?`;
@@ -59,7 +60,7 @@ export default function HostunicoScriptPane({ listing, agentName, onOpener, onMo
       {controls}
       <h2 className="sr-only">Your script</h2>
       <select aria-label="Choose the call script" value={mode} onChange={(e) => setMode(e.target.value as Mode)} className="h-8 min-w-0 flex-1 rounded-lg border bg-white py-1 pl-2 pr-5 text-xs font-semibold">
-        <option value="spareroom">1. SpareRoom</option><option value="facebook">1. Facebook</option><option value="followup">2. Review report</option>
+        <option value="spareroom">1. {sourceName}</option><option value="facebook">1. Facebook</option><option value="followup">2. Review report</option>
       </select>
       <button title={rolling ? 'Pause scrolling' : 'Auto-scroll'} aria-label={rolling ? 'Pause scrolling' : 'Auto-scroll'} className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${rolling ? 'bg-slate-900 text-white' : 'bg-white text-slate-600'}`} onClick={() => setRolling(!rolling)} aria-pressed={rolling}>{rolling ? <Pause size={14} /> : <Play size={14} />}</button>
       <CallTextSizeControls pane="script" size={size} onChange={changeSize} />

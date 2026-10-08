@@ -44,6 +44,11 @@ describe('the property changes with the call', () => {
     }
   });
 });
+it('names the actual property website in the spoken opener', () => {
+  const html = renderToStaticMarkup(createElement(HostunicoScriptPane, { listing: { ...listing, listingUrl: 'https://www.rightmove.co.uk/properties/123456789', bedrooms: 2 }, agentName: 'Pedro', onOpener: () => {} }));
+  expect(html).toContain('on Rightmove. Is it still available?');
+  expect(html).not.toContain('on SpareRoom. Is it still available?');
+});
 describe('fast answers stay current', () => {
   it('keeps a newer streamed update when an older backfill completes', () => {
     expect(mergeLiveRows([{ id: '1', ts: '2026-09-30', body: 'old' }], [{ id: '1', ts: '2026-09-30', body: 'new' }, { id: '2', ts: '2026-10-01', body: 'latest' }]).map((r) => r.body)).toEqual(['new', 'latest']);

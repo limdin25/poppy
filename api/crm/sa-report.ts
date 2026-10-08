@@ -94,7 +94,7 @@ export default async function handler(req: Request): Promise<Response> {
       // continues until twenty reports are ready, going past unavailable leads.
       await Promise.all(queue.slice(offset, offset + 2).map(async (lead) => {
         try {
-          const listings = check(await supa.from('sa_listings').select('id,report_property,hostunico_uplift_status').eq('wk_contact_id', lead.contact_id).eq('source', 'spareroom').eq('hostunico_call_eligible', true).order('dealt_at', { ascending: false }).order('id').limit(100));
+          const listings = check(await supa.from('sa_listings').select('id,report_property,hostunico_uplift_status').eq('wk_contact_id', lead.contact_id).in('source', ['spareroom', 'rightmove']).eq('hostunico_call_eligible', true).order('dealt_at', { ascending: false }).order('id').limit(100));
           const listing = listings.find((l) => l.hostunico_uplift_status === 'eligible') || listings.find((l) => l.hostunico_uplift_status === 'pending') || listings[0];
           if (!listing || !reportProperty(listing.report_property)) { needsDetails++; return; }
           const result = await start(listing);
