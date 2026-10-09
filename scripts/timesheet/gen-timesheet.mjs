@@ -31,9 +31,83 @@ const RATE = 2.5; // 40 hours for $100
 // ---------------------------------------------------------------------------
 const WEEKS = [
   {
+    id: 'oct05',
+    tab: '5 to 9 October',
+    tabSub: 'This week',
+    sub: 'Monday 5 October to Friday 9 October 2026, counted up to 15:28',
+    range: ['2026-10-05', '2026-10-09'],
+    prevRange: ['2026-09-28', '2026-10-02'],
+    prevLabel: '28 Sep to 2 Oct',
+    thisLabel: '5 to 9 Oct',
+    daysLabel: 'Monday to Friday, counted up to Friday afternoon',
+    extraBreakH: 0,
+    cutoff: '15:28',
+    preparedOn: 'Friday 9 October 2026',
+    unique: { last: { dialled: 132, spoken: 55 }, this: { dialled: 384, spoken: 211 } },
+    notes: { '2026-09-28': 0, '2026-09-29': 0, '2026-09-30': 0, '2026-10-01': 2, '2026-10-02': 12,
+             '2026-10-05': 12, '2026-10-06': 12, '2026-10-07': 17, '2026-10-08': 11, '2026-10-09': 3 },
+    texts: { '2026-09-28': 0, '2026-09-29': 0, '2026-09-30': 0, '2026-10-01': 1, '2026-10-02': 17,
+             '2026-10-05': 16, '2026-10-06': 14, '2026-10-07': 20, '2026-10-08': 13, '2026-10-09': 1 },
+    statuses: [
+      ['Calls you dialled that connected', 503, 'out', true],
+      ['Calls you dialled that failed to connect', 23, 'out', false],
+      ['Calls you dialled that rang out, nobody answered', 42, 'out', false],
+      ['Calls you dialled that hit a busy line', 13, 'out', false],
+      ['Calls you dialled still queued when this page was prepared', 2, 'out', false],
+      ['Calls that came in to you and connected', 10, 'in', true],
+      ['Calls in to you saved with no length recorded', 12, 'in', false],
+      ['Calls in to you that rang out or failed', 26, 'in', false],
+      ['Calls in to you still marked as ringing, nobody picked up', 8, 'in', false],
+    ],
+    voicemailSec: 5437,
+    noOutcome: 111,
+    outcomesExtra: ['Report sent', 'New lead', 'Onboarded'],
+    forwardExtra: { '2026-10-05': 12, '2026-10-06': 12, '2026-10-07': 19, '2026-10-08': 11, '2026-10-09': 2 },
+    prevPaidNote: null,
+    rulesExtra: [
+      'This week is Monday to Friday, because you are being paid on the Friday. Saturday will be added on tomorrow\'s update of this same tab if you dial.',
+    ],
+    dayNotes: {
+      '2026-10-05': [
+        { fair: true, text: 'A full dialling day back. 132 calls from 09:18 to 19:03, 62 real conversations, 2h 13m of talk time, 12 reports sent and 12 new leads. 12 notes written and 16 texts and emails sent.' },
+        { fair: false, text: 'Seven stops over 10 minutes, 4h 10m in total. The longest were 58 minutes at the start (09:18 to 10:16) and 71 minutes from 17:51 to 19:02 after a late call in.' },
+      ],
+      '2026-10-06': [
+        { fair: true, text: '173 calls, the most of any day this week so far. 12 reports sent, 3 new leads, 12 notes and 14 texts and emails.' },
+        { fair: false, text: 'Nine stops over 10 minutes, 3h 05m in total. Talk time was 1h 45m and 99 calls went to voicemail, which is the numbers and not you.' },
+        { fair: false, text: 'The first dial was at 10:10. A 63 minute stop from 15:07 to 16:10 cut the afternoon.' },
+      ],
+      '2026-10-07': [
+        { fair: true, text: 'Your strongest day for hours and reports: 170 calls from 10:39 to 18:46, 54 real conversations, 2h 25m of talk, 19 reports sent and 5 new leads. 17 notes written and 20 texts and emails.' },
+        { fair: false, text: 'Six stops over 10 minutes, 2h 08m in total. The first dial was at 10:39.' },
+      ],
+      '2026-10-08': [
+        { fair: true, text: 'Your best day for talk and real conversations: 148 calls, 81 real conversations, 2h 54m of talk time, 11 reports sent and 6 new leads. 11 notes and 13 texts and emails.' },
+        { fair: false, text: 'Six stops over 10 minutes, 3h 17m in total, including 47 minutes from 10:56 to 11:43 and 51 minutes from 12:56 to 13:47. The first dial was at 10:19.' },
+      ],
+      '2026-10-09': [
+        { fair: false, text: 'A light morning so far. 16 calls from 10:40 to 14:52, 6 real conversations, 2 reports sent. A 189 minute stop from 11:05 to 14:14 dominates the day on the call clock.' },
+        { fair: true, text: 'Counted up to 15:28 today. Anything you dial later today or on Saturday goes onto this same tab when it is updated tomorrow. It is not lost.' },
+      ],
+    },
+    outcomeNote: (m) => `<p class="note"><strong>Report sent, New lead and Onboarded are on this week's board.</strong> ${m.cfg.noOutcome} of your ${m.B.calls} calls have no button pressed on the call itself. None of this changes your pay.</p>`,
+    verdict: [
+      (m) => `<p><strong>A full dialling week against a short one.</strong> ${m.B.calls} calls against ${m.A.calls} the Monday to Friday before, when Monday to Wednesday were mostly study and hold time. You dialled ${m.B.unique.dialled} offices this week against ${m.A.unique.dialled}, spoke with ${m.B.unique.spoken} against ${m.A.unique.spoken}, and sent ${(m.B.dispo['Report sent'] || 0)} reports. Talk time went from ${m.hm(m.A.talk)} to ${m.hm(m.B.talk)}.</p>`,
+      (m) => `<p>Hours paid are ${m.paidHours.toFixed(2)} against ${m.prevPaidH.toFixed(2)} on the same Monday to Friday basis. Every hour on this page is call time plus the free break. There is no advance coming off this week.</p>`,
+      (m) => `<p>The honest other side. Across the week there were ${m.weekGaps} stops over 10 minutes, ${m.hm(m.B.idle)} in total, ${Math.round((100 * m.B.idle) / m.B.span)} percent of the shift. First dials landed between 09:18 and 10:40. Friday so far is light, with a long midday stop, and will be updated on Saturday if you dial more.</p>`,
+    ],
+    fairness: [
+      (m) => `<div class="note fair"><strong>Numbers nobody answers are not your fault.</strong> ${m.B.dispo['Voicemail'] || 0} calls went to voicemail and ${m.B.dispo['No pickup'] || 0} had no pickup. Every one still counts as a call made and as time worked. Only the gaps between calls were counted, never the outcome of a call.</div>`,
+      () => `<div class="note fair"><strong>Short pauses are free.</strong> Anything under 10 minutes, writing a note, getting a drink, finishing a text, is all paid as working time. Most of your gaps are under 30 seconds and none of those are even looked at.</div>`,
+      () => `<div class="note fair"><strong>A call that comes in after you have finished costs you nothing.</strong> Late call backs stretch the shift on the page, but the time in between is counted as a stop, and your pay is what it would be without those calls when the day already had its free hour.</div>`,
+      (m) => `<div class="note fair"><strong>Not pressing the outcome buttons costs you nothing here.</strong> ${m.cfg.noOutcome} calls this week have no outcome on the call itself. Your pay is worked out from the calls themselves, not from the buttons.</div>`,
+      (m) => `<div class="note fair"><strong>You are not judged on results here.</strong> This page is about hours. The ${m.B.dispo['Report sent'] || 0} reports you sent this week are yours regardless of the pay figure.</div>`,
+    ],
+  },
+  {
     id: 'sep28',
     tab: '28 September to 3 October',
-    tabSub: 'This week',
+    tabSub: 'Paid',
     sub: 'Monday 28 September to Saturday 3 October 2026',
     range: ['2026-09-28', '2026-10-03'],
     prevRange: ['2026-09-21', '2026-09-26'],
@@ -503,7 +577,7 @@ function cmpRow(label, aTxt, bTxt, d) {
 }
 
 const DAY_NAME = { Mon: 'Monday', Tue: 'Tuesday', Wed: 'Wednesday', Thu: 'Thursday', Fri: 'Friday', Sat: 'Saturday', Sun: 'Sunday' };
-const MONTH = { Aug: 'August', Sep: 'September', Sept: 'September' };
+const MONTH = { Aug: 'August', Sep: 'September', Sept: 'September', Oct: 'October' };
 const WIN_START = 9 * 3600, WIN_END = 20 * 3600;
 const WIN = WIN_END - WIN_START;
 function secOfDay(clock) {
