@@ -2,16 +2,16 @@ import { hostunicoPriceCopy } from '../../../../../supabase/functions/_shared/ho
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Pause, Play } from 'lucide-react';
 import { HOSTUNICO_ANSWERS, hostunicoAnswerCopy } from '../../../../../supabase/functions/_shared/hostunico-sales';
-import type { SaListing } from '../../hooks/useSaListings';
+import { saSourceName, type SaListing } from '../../hooks/useSaListings';
 import { hostunicoProperty } from '../../lib/hostunicoProperty';
 import CallTextSizeControls, { useCallTextSize } from './CallTextSizeControls';
 import { hostunicoReportIntroduction, hostunicoReportHook, hostunicoReportRecipient, type HostunicoReportPitch } from '../../lib/hostunicoReportPitch';
 import SpokenText from './SpokenText';
 import { hostunicoNeedsName } from '../../../../../supabase/functions/_shared/hostunico-contact-name';
 
-type Mode = 'spareroom' | 'facebook' | 'followup';
+type Mode = 'listing' | 'facebook' | 'followup';
 export default function HostunicoScriptPane({ listing, agentName, onOpener, onMode, country = 'GB', reportPitch, controls, phone, reportMobile, onArrangeCallback, agentSpeech = '', contactName, onEditName }: { onMode?: (mode: Mode) => void; country?: string; listing: SaListing | null; agentName: string; onOpener: (line: string) => void; reportPitch?: HostunicoReportPitch | null; controls?: ReactNode; phone?: string; reportMobile?: string | null; onArrangeCallback?: () => void; agentSpeech?: string; contactName?: string; onEditName?: () => void }) {
-  const [mode, setMode] = useState<Mode>('spareroom');
+  const [mode, setMode] = useState<Mode>('listing');
   const [rolling, setRolling] = useState(false);
   const { size, changeSize } = useCallTextSize('script');
   const secondaryText = { fontSize: Math.max(12, Math.round(size * 0.5)) };
@@ -20,8 +20,8 @@ export default function HostunicoScriptPane({ listing, agentName, onOpener, onMo
   const property = hostunicoProperty(listing);
   const { place } = property;
   const rent = property.rent ? ` at ${property.rent}` : '';
-  const sourceName = /^https:\/\/(www\.)?rightmove\.co\.uk\//.test(listing?.listingUrl || '') ? 'Rightmove' : 'SpareRoom';
-  const opener = mode === 'spareroom'
+  const sourceName = saSourceName(listing);
+  const opener = mode === 'listing'
     ? `Hi, this is ${agentName || 'Pedro'} here. I saw your ${property.description} in ${place}${rent} on ${sourceName}. Is it still available?`
     : mode === 'facebook'
       ? `Hi, this is ${agentName || 'Pedro'} here. You enquired about partnering with us for short-term lets through Airbnb. Is the property still available?`
@@ -60,7 +60,7 @@ export default function HostunicoScriptPane({ listing, agentName, onOpener, onMo
       {controls}
       <h2 className="sr-only">Your script</h2>
       <select aria-label="Choose the call script" value={mode} onChange={(e) => setMode(e.target.value as Mode)} className="h-8 min-w-0 flex-1 rounded-lg border bg-white py-1 pl-2 pr-5 text-xs font-semibold">
-        <option value="spareroom">1. {sourceName}</option><option value="facebook">1. Facebook</option><option value="followup">2. Review report</option>
+        <option value="listing">1. {sourceName}</option><option value="facebook">1. Facebook</option><option value="followup">2. Review report</option>
       </select>
       <button title={rolling ? 'Pause scrolling' : 'Auto-scroll'} aria-label={rolling ? 'Pause scrolling' : 'Auto-scroll'} className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${rolling ? 'bg-slate-900 text-white' : 'bg-white text-slate-600'}`} onClick={() => setRolling(!rolling)} aria-pressed={rolling}>{rolling ? <Pause size={14} /> : <Play size={14} />}</button>
       <CallTextSizeControls pane="script" size={size} onChange={changeSize} />

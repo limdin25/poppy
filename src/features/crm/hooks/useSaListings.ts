@@ -26,6 +26,8 @@ export interface SaListing {
   propertyType: string | null;
   summary: string | null;
   listingUrl: string | null;
+  /** sa_listings.source: 'rightmove' or 'spareroom'. */
+  source?: string | null;
   photoUrls: string[];
   firstListedAt: string | null;
   letAvailableDate: string | null;
@@ -50,6 +52,7 @@ interface Row {
   property_type: string | null;
   summary: string | null;
   listing_url: string | null;
+  source?: string | null;
   photo_urls: string[] | null;
   first_listed_at: string | null;
   let_available_date: string | null;
@@ -76,6 +79,7 @@ export function rowToSaListing(r: Row): SaListing {
     propertyType: r.property_type,
     summary: r.summary,
     listingUrl: r.listing_url,
+    source: r.source ?? null,
     photoUrls: Array.isArray(r.photo_urls) ? r.photo_urls : [],
     firstListedAt: r.first_listed_at,
     letAvailableDate: r.let_available_date,
@@ -132,6 +136,15 @@ export function spokenArea(city: string | null | undefined): string {
   return c === 'London' ? 'central London' : `${c} city centre`;
 }
 
+/** The site the advert is on, said aloud: the listing's source first, the
+ *  advert URL as a fallback for rows imported before source was set. */
+export function saSourceName(l: Pick<SaListing, 'source' | 'listingUrl'> | null | undefined): 'Rightmove' | 'SpareRoom' {
+  const source = (l?.source ?? '').toLowerCase();
+  if (source === 'rightmove') return 'Rightmove';
+  if (source === 'spareroom') return 'SpareRoom';
+  return /^https:\/\/(www\.)?rightmove\.co\.uk\//.test(l?.listingUrl || '') ? 'Rightmove' : 'SpareRoom';
+}
+
 /** The tokens the SA script reads for the flat on screen. */
 export function saScriptTokens(l: SaListing | null): Record<string, string> {
   if (!l) return {};
@@ -144,6 +157,7 @@ export function saScriptTokens(l: SaListing | null): Record<string, string> {
     sa_city: l.city ?? '',
     sa_area: spokenArea(l.city),
     sa_agency: l.agency,
+    sa_source: saSourceName(l),
   };
 }
 
@@ -155,7 +169,7 @@ export function useSaListings(contactId: string | null | undefined) {
     queryFn: async (): Promise<SaListing[]> => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error } = await (supabase.from('sa_listings' as any) as any)
-        .select('id, rightmove_id, agency, agency_phone, city, outcode, address, rent_pcm, source_price, bedrooms, bathrooms, property_type, summary, listing_url, photo_urls, first_listed_at, let_available_date, dealt_at, outcome, outcome_note, outcome_at')
+        .select('id, rightmove_id, agency, agency_phone, city, outcode, address, rent_pcm, source_price, bedrooms, bathrooms, property_type, summary, listing_url, source, photo_urls, first_listed_at, let_available_date, dealt_at, outcome, outcome_note, outcome_at')
         .eq('wk_contact_id', contactId)
         .eq('hostunico_call_eligible', true)
         .eq('hostunico_uplift_status', 'eligible')

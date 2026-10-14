@@ -2206,7 +2206,7 @@ serve(async (req: Request) => {
             const callerHistory = [...(recent.data || [])].reverse().filter((line) => line.speaker === 'caller').map((line) => line.body as string);
             if (callerHistory.at(-1) === transcriptText) callerHistory.pop();
             const instant = rentQuestion ? null : hostunicoInstantAnswer(transcriptText, contact?.hostunico_country || 'GB', { phone: contact?.phone, mobile: contact?.hostunico_sms_phone }, callerHistory);
-            const context = `${listingId || ''}:${fields.hostunico_script_mode || 'spareroom'}:${contact?.hostunico_country || 'GB'}`;
+            const context = `${listingId || ''}:${fields.hostunico_script_mode || 'listing'}:${contact?.hostunico_country || 'GB'}`;
             const { data: cardId, error: cardError } = liveSpeech
               ? await supa.rpc('wk_hostunico_start_live_coach', { p_call_id: call.id, p_generation: generationId, p_context: context, p_sequence: liveSpeech.sequence, p_utterance: liveSpeech.utterance_id })
               : await supa.rpc('wk_hostunico_start_coach', { p_call_id: call.id, p_generation: generationId, p_context: context });
@@ -2248,7 +2248,7 @@ serve(async (req: Request) => {
                     const rentExplanation = rentQuestion ? hostunicoRentExplanation(listing.data?.source_price, listing.data?.rent_pcm) : null;
                     if (rentExplanation) { const answer = `SAY: ${rentExplanation}\nASK:`; onChunk(answer, true); return answer; }
                     const reportContext = report.data ? { ...report.data, latestDelivery: hostunicoReportDelivery(report.data.report_url, messages.data || []) } : null;
-                    const mode = fields.hostunico_script_mode || 'spareroom';
+                    const mode = fields.hostunico_script_mode || 'listing';
                     const scripted = hostunicoCallStep({ mode, leadName: contact?.name, latestCaller: transcriptText, transcript, report: reportContext });
                     if (scripted) { onChunk(scripted, true); return scripted; }
                     const approvedOpening = hostunicoReportHook(report.data?.state === 'ready' ? report.data.report_pitch : null);

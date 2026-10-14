@@ -37,7 +37,7 @@ export default function SaCallRoom({ contact, contactHeader, emptyState, current
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
   const [opener, setOpener] = useState('');
-  const [mode, setMode] = useState('spareroom');
+  const [mode, setMode] = useState('listing');
   const [ahead, setAhead] = useState('');
   const [country, setCountry] = useState('GB');
   const [pitchSnapshot, setPitchSnapshot] = useState<{ listingId: string; country: string; value: HostunicoReportPitch | null } | null>(null);

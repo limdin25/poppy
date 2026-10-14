@@ -57,7 +57,7 @@ export const SCRIPT_TEXT_TOKENS = [
   'lot_number', 'lot_address', 'auction_house', 'auction_date', 'guide_price',
   // Serviced Accommodation call (2026-09-23). From the listing on the SA
   // room's Flat tab, via `extra`, never persisted by the script.
-  'sa_address', 'sa_street', 'sa_rent', 'sa_beds', 'sa_type', 'sa_city', 'sa_area', 'sa_agency',
+  'sa_address', 'sa_street', 'sa_rent', 'sa_beds', 'sa_type', 'sa_city', 'sa_area', 'sa_agency', 'sa_source',
 ] as const;
 
 const PH_OPEN = '<span class="ph">';

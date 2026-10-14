@@ -7,7 +7,7 @@ export function hostunicoCallStep(input: {
   leadName?: string | null;
   report: { state?: string; report_pitch?: HostunicoReportPitch | null; latestDelivery?: unknown } | null;
 }) {
-  if (!['spareroom', 'facebook'].includes(input.mode)) return null;
+  if (!['listing', 'spareroom', 'facebook'].includes(input.mode)) return null;
   const caller = input.latestCaller.toLowerCase().replace(/[.,!?]/g, '').trim();
   const agent = [...input.transcript].reverse().find((row) => row.speaker === 'agent')?.body || '';
   const permission = /^(?:yes|yeah|yep|sure|okay|ok|please)(?:\s+(?:yes|okay|ok|please|go on|tell me more|explain|you can|that's fine))*$/i.test(caller);
