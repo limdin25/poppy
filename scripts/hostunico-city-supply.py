@@ -208,6 +208,9 @@ def screen(row, source, council_evidence=None, sizes=DEFAULT_SIZES):
     authority = row.get('AgentType', '').lower()
     if not re.search(r'landlord|agent', authority) or re.search(r'flatmate|tenant', authority):
         raise Rejected('authority_not_established')
+    # Hugo, 14 Oct 2026 16:50: Pedro calls private landlords only, no agencies.
+    if re.search(r'agent', authority):
+        raise Rejected('agency_advertiser')
     section = re.search(r'<section\b[^>]*class=["\'][^"\']*feature--price-whole-property[^"\']*["\'][^>]*>(.*?)</section>', source, re.I | re.S)
     if not section:
         raise Rejected('not_a_whole_property')

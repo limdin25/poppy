@@ -64,6 +64,10 @@ class ScreeningTests(unittest.TestCase):
         with self.assertRaisesRegex(module.Rejected, 'authority'):
             module.screen(self.row(AgentType='current flatmate'), advert())
 
+    def test_agency_advertiser_is_rejected_landlords_only(self):
+        with self.assertRaisesRegex(module.Rejected, 'agency_advertiser'):
+            module.screen(self.row(AgentType='agent'), advert())
+
     def test_missing_photo_and_two_bed_property_are_blocked(self):
         for text in [advert().replace('href=', 'data-other='), advert(kind='2 bed flat')]:
             with self.assertRaises(module.Rejected):
