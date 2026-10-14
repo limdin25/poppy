@@ -23,7 +23,7 @@ const pedro = check(await supa.from('profiles').select('id').eq('email', 'pedro@
 const stage = check(await supa.from('wk_pipeline_columns').select('id').eq('pipeline_id', pipelineId).eq('name', 'New lead').single());
 const campaign = check(await supa.from('wk_dialer_campaigns').select('desk').eq('id', campaignId).single());
 if (campaign.desk !== 'sa') throw new Error('Wrong campaign desk.');
-let contactsAdded = 0, propertiesAdded = 0, queued = 0, optedOut = 0;
+let contactsAdded = 0, propertiesAdded = 0, queued = 0, optedOut = 0, skippedKnown = 0;
 // Validate conflicts before any mutation; never move an existing lead from another desk or owner.
 const existing = check(await supa.from('wk_contacts').select('id,phone,desk,owner_agent_id,do_not_call,custom_fields').in('phone', plan.contacts.map((c) => c.phone)));
 if (existing.some((c) => c.desk !== 'sa' || c.owner_agent_id !== pedro.id)) throw new Error('A number belongs to another desk or agent. Review without reassigning it.');
@@ -31,8 +31,11 @@ const timestamp = Date.now();
 for (const [index, c] of plan.contacts.entries()) {
   let contact = existing.find((row) => row.phone === c.phone);
   if (!contact) {
-    contact = check(await supa.rpc('wk_ingest_contacts', { p_contacts: { name: c.name, phone: c.phone, desk: 'sa', owner_agent_id: pedro.id, pipeline_column_id: stage.id, ai_enabled: false,
-      custom_fields: { lead_type: 'hostunico_owner', source: 'spareroom', owner_name: c.name, advertiser_type: c.advertiserType, next_step: 'Offer the property report', property_count: String(c.properties.length) } } }).select('id,do_not_call').single());
+    // Never a number the CRM already knows (any desk, past calls, registry, do-not-call).
+    const id = check(await supa.rpc('wk_admit_new_contact', { p_contact: { name: c.name, phone: c.phone, desk: 'sa', owner_agent_id: pedro.id, pipeline_column_id: stage.id, ai_enabled: false,
+      custom_fields: { lead_type: 'hostunico_owner', source: 'spareroom', owner_name: c.name, advertiser_type: c.advertiserType, next_step: 'Offer the property report', property_count: String(c.properties.length) } } }));
+    if (!id) { skippedKnown++; continue; }
+    contact = { id, do_not_call: false };
     contactsAdded++;
   }
   for (const [pIndex, property] of c.properties.entries()) {
@@ -56,4 +59,4 @@ for (const [index, c] of plan.contacts.entries()) {
   const history = check(await supa.from('wk_dialer_queue').select('id').eq('campaign_id', campaignId).eq('contact_id', contact.id).limit(1));
   if (!history.length) { check(await supa.from('wk_dialer_queue').insert({ campaign_id: campaignId, contact_id: contact.id, status: 'pending', priority: plan.contacts.length - index })); queued++; }
 }
-console.log(JSON.stringify({ contactsAdded, propertiesAdded, queued, optedOut, automaticMessages: 0 }));
+console.log(JSON.stringify({ contactsAdded, propertiesAdded, queued, optedOut, skippedKnown, automaticMessages: 0 }));

@@ -269,7 +269,7 @@ class SizeTests(unittest.TestCase):
                 module.screen(ScreeningTests().row(Name=title), advert(kind='2 bed house'), sizes={'2', '3'})
 
     def test_a_three_bed_listing_is_stored_and_researched_as_three_bedrooms(self):
-        api = PhoneRuleTests.Api(lambda: [{'id': 'fresh', 'desk': 'sa', 'owner_agent_id': 'pedro', 'do_not_call': False}])
+        api = PhoneRuleTests.Api(lambda: 'fresh')
         item = module.screen(ScreeningTests().row(Name='Family home'), advert(kind='3 bed house'), sizes={'2', '3'})
         module.import_property(api, item, 'pedro', 'new-lead', 'uk-2-3-bed-2026-10-07')
         listing = [b for t, b in api.writes if t == 'sa_listings'][0]
@@ -278,14 +278,14 @@ class SizeTests(unittest.TestCase):
 
 
 class PhoneRuleTests(unittest.TestCase):
-    """New numbers go through the CRM's one-person-per-number RPC."""
+    """New numbers go through the CRM's strict door: never a number it already knows."""
 
     class Api:
         def __init__(self, rpc):
             self.rpc, self.writes = rpc, []
 
         def db(self, table, query=None, body=None, **kwargs):
-            if table == 'rpc/wk_ingest_contacts':
+            if table == 'rpc/wk_admit_new_contact':
                 self.writes.append((table, body))
                 return self.rpc()
             if body is not None:
@@ -299,44 +299,41 @@ class PhoneRuleTests(unittest.TestCase):
         return module.screen(ScreeningTests().row(), advert())
 
     def test_new_contact_is_labelled_with_the_requested_batch_and_held_for_the_report(self):
-        api = self.Api(lambda: [{'id': 'fresh', 'desk': 'sa', 'owner_agent_id': 'pedro', 'do_not_call': False}])
+        api = self.Api(lambda: 'fresh')
         module.import_property(api, self.item(), 'pedro', 'new-lead', 'uk-fresh-2026-10-07')
         tables = [t for t, _ in api.writes]
-        self.assertEqual(tables, ['rpc/wk_ingest_contacts', 'sa_listings', 'wk_dialer_queue'])
-        self.assertEqual(api.writes[0][1]['p_contacts']['custom_fields']['source_batch'], 'uk-fresh-2026-10-07')
+        self.assertEqual(tables, ['rpc/wk_admit_new_contact', 'sa_listings', 'wk_dialer_queue'])
+        self.assertEqual(api.writes[0][1]['p_contact']['custom_fields']['source_batch'], 'uk-fresh-2026-10-07')
         queue = api.writes[2][1]
         self.assertEqual((queue['status'], queue['hostunico_uplift_hold']), ('skipped', True))
 
-    def test_cooldown_or_permanent_suppression_rejects_the_lead_without_listing_or_queue(self):
-        for code, reason in [('23514', 'phone_suppressed_or_in_cooldown'), ('22023', 'invalid_number')]:
+    def test_the_default_batch_label_is_the_day_of_the_run_not_a_fixed_date(self):
+        self.assertEqual(module.default_batch(1791936000), 'uk-cities-2026-10-14')
+        api = self.Api(lambda: 'fresh')
+        module.import_property(api, self.item(), 'pedro', 'new-lead')
+        self.assertRegex(api.writes[0][1]['p_contact']['custom_fields']['source_batch'], r'^uk-cities-\d{4}-\d{2}-\d{2}$')
+
+    def test_a_number_the_crm_already_knows_is_skipped_without_listing_or_queue(self):
+        # Another desk, a past call, the registry or do-not-call: the door answers null.
+        api = self.Api(lambda: None)
+        with self.assertRaisesRegex(module.Rejected, 'number_already_in_crm'):
+            module.import_property(api, self.item(), 'pedro', 'new-lead')
+        self.assertEqual([t for t, _ in api.writes], ['rpc/wk_admit_new_contact'])
+
+    def test_database_refusals_reject_the_lead_without_listing_or_queue(self):
+        for code, reason in [('23505', 'number_already_in_crm'), ('23514', 'number_already_in_crm'), ('22023', 'invalid_number')]:
             def refuse(code=code):
                 raise RuntimeError('CRM rpc HTTP 400 code ' + code)
             api = self.Api(refuse)
             with self.assertRaisesRegex(module.Rejected, reason):
                 module.import_property(api, self.item(), 'pedro', 'new-lead')
-            self.assertEqual([t for t, _ in api.writes], ['rpc/wk_ingest_contacts'])
+            self.assertEqual([t for t, _ in api.writes], ['rpc/wk_admit_new_contact'])
 
     def test_other_crm_failures_stay_retryable(self):
         def fail():
             raise RuntimeError('CRM rpc HTTP 503')
         with self.assertRaises(RuntimeError):
             module.import_property(self.Api(fail), self.item(), 'pedro', 'new-lead')
-
-    def test_canonical_contact_on_another_desk_or_opted_out_is_never_attached(self):
-        for row in [{'id': 'house', 'desk': 'houses', 'owner_agent_id': 'pedro', 'do_not_call': False},
-                    {'id': 'other', 'desk': 'sa', 'owner_agent_id': 'marr', 'do_not_call': False},
-                    {'id': 'dnc', 'desk': 'sa', 'owner_agent_id': 'pedro', 'do_not_call': True}]:
-            api = self.Api(lambda row=row: [row])
-            with self.assertRaises(module.Rejected):
-                module.import_property(api, self.item(), 'pedro', 'new-lead')
-            self.assertEqual([t for t, _ in api.writes], ['rpc/wk_ingest_contacts'])
-
-    def test_returned_existing_person_with_call_history_gets_no_new_queue_row(self):
-        api = self.Api(lambda: [{'id': 'known', 'desk': 'sa', 'owner_agent_id': 'pedro', 'do_not_call': False}])
-        original = api.db
-        api.db = lambda table, *a, **k: [{'id': 'call'}] if table == 'wk_calls' else original(table, *a, **k)
-        module.import_property(api, self.item(), 'pedro', 'new-lead')
-        self.assertNotIn('wk_dialer_queue', [t for t, _ in api.writes])
 
     def test_crm_errors_keep_only_the_postgres_code(self):
         error = urllib_error(400, b'{"code":"23514","message":"Phone number +447700900123 is in cooldown"}')

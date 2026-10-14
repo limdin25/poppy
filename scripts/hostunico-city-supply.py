@@ -25,8 +25,10 @@ import csv
 
 CAMPAIGN = '5d9657f9-d9b4-4e27-a2d1-83db80867f92'
 PIPELINE = 'dadce4ac-90b5-4320-9291-ff6bb1cf89f0'
-BATCH = 'uk-cities-2026-10-01'
-STOP_AT = 1790924400  # 2 October 2026, 07:00 UTC (08:00 London).
+
+def default_batch(now=None):
+    # Each run labels its new contacts with the day it ran, never a fixed date.
+    return 'uk-cities-' + time.strftime('%Y-%m-%d', time.gmtime(time.time() if now is None else now))
 LONDON_PREFIXES = {'E', 'EC', 'N', 'NW', 'SE', 'SW', 'W', 'WC'}
 LONDON_BORDER_PREFIXES = {'HA', 'UB', 'IG', 'RM', 'SM', 'CR', 'BR', 'KT', 'TW', 'EN'}
 # Verified against the 33 council options on London Councils on 2 October 2026:
@@ -319,7 +321,25 @@ def ingest(api, contact):
         raise
 
 
-def import_property(api, item, owner, stage, batch=BATCH):
+def admit(api, contact):
+    # Hugo, 2026-10-14: a number is never added twice. The CRM's strict door
+    # adds the contact only when the number is unknown everywhere (any desk,
+    # past calls, the phone registry, do-not-call) and answers null otherwise.
+    try:
+        contact_id = api.db('rpc/wk_admit_new_contact', body={'p_contact': contact})
+    except RuntimeError as e:
+        if str(e).endswith(' code 22023'):
+            raise Rejected('invalid_number') from None
+        if str(e).endswith((' code 23505', ' code 23514')):
+            raise Rejected('number_already_in_crm') from None
+        raise
+    if not contact_id:
+        raise Rejected('number_already_in_crm')
+    return [{'id': contact_id, 'desk': contact['desk'], 'owner_agent_id': contact['owner_agent_id'], 'do_not_call': False}]
+
+
+def import_property(api, item, owner, stage, batch=None):
+    batch = batch or default_batch()
     listing = api.db('sa_listings', {'select': 'id,wk_contact_id,rent_pcm,source_price,photo_urls,report_property,hostunico_call_eligible',
                                    'rightmove_id': 'eq.spareroom:' + item['advert_id']})
     existing = api.db('wk_contacts', {'select': 'id,desk,owner_agent_id,do_not_call',
@@ -339,7 +359,7 @@ def import_property(api, item, owner, stage, batch=BATCH):
     if listing and Decimal(str(listing[0]['rent_pcm'])) != Decimal(str(item['rent_pcm'])):
         raise Rejected('existing_listing_price_changed')
     if not existing:
-        existing = ingest(api, {'name': item['name'], 'phone': item['phone'], 'desk': 'sa',
+        existing = admit(api, {'name': item['name'], 'phone': item['phone'], 'desk': 'sa',
                            'owner_agent_id': owner, 'pipeline_column_id': stage, 'ai_enabled': False,
                            'custom_fields': {'lead_type': 'hostunico_owner', 'source': 'spareroom',
                                              'source_batch': batch, 'owner_name': item['name'],
@@ -499,13 +519,15 @@ def main():
     parser.add_argument('--home', default='/opt/spareroom')
     parser.add_argument('--once', action='store_true')
     parser.add_argument('--max-items', type=int, default=35)
-    parser.add_argument('--stop-at', type=float, default=STOP_AT, help='Explicit UTC Unix deadline for a resumed persistent run')
+    parser.add_argument('--stop-at', type=float, default=None, help='UTC Unix deadline for a persistent run, default 12 hours from now')
     parser.add_argument('--report-sync-seconds', type=int, default=900, help='Status refresh interval for newly researched reports')
-    parser.add_argument('--batch', default=BATCH, help='source_batch label written on new contacts')
+    parser.add_argument('--batch', default=None, help="source_batch label written on new contacts, default uk-cities-<today>")
     parser.add_argument('--state', default='supply-state.json', help='State file name inside ops/')
     parser.add_argument('--runs-file', default='supply-runs.json', help='Run ID config file name inside ops/')
     parser.add_argument('--beds', default='studio,1', help='Advertised sizes to import, from studio,1,2,3')
     args = parser.parse_args()
+    args.batch = args.batch or default_batch()
+    args.stop_at = args.stop_at or time.time() + 12 * 3600
     if not 60 <= args.report_sync_seconds <= 900:
         parser.error('Report refresh interval must be between 60 and 900 seconds')
     for name in (args.state, args.runs_file):
