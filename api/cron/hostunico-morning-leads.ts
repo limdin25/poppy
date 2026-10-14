@@ -22,7 +22,7 @@ import { inBatches, listingUnfurnished, londonClock, morningLevel, morningSettin
 export const config = { maxDuration: 300 };
 
 type Listing = { id: string; wk_contact_id: string; hostunico_uplift_status: string | null; report_property: unknown; photo_urls: string[] | null; address: string | null; listing_url: string | null; property_type: string | null; rent_pcm: number | null; source_price: string | null; hostunico_call_eligible: boolean; summary: string | null };
-type Report = { listing_id: string; remote_id: string; access_token: string; state: string | null; report_url: string | null; property: unknown };
+type Report = { listing_id: string; remote_id: string; access_token: string; state: string | null; report_url: string | null; property: unknown; report_pitch: { planning?: boolean } | null };
 
 const send = (res: ServerResponse, status: number, body: unknown) => { res.statusCode = status; res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(body)); };
 
@@ -81,7 +81,7 @@ export async function morningPass(db: SupabaseClient, now = new Date(), deadline
   const reports = new Map<string, Report>();
   const listingIds = listings.map((l) => l.id);
   for (let i = 0; i < listingIds.length; i += 200) {
-    for (const r of await rows<Report>(db.from('sa_property_reports').select('listing_id,remote_id,access_token,state,report_url,property').in('listing_id', listingIds.slice(i, i + 200)))) reports.set(r.listing_id, r);
+    for (const r of await rows<Report>(db.from('sa_property_reports').select('listing_id,remote_id,access_token,state,report_url,property,report_pitch').in('listing_id', listingIds.slice(i, i + 200)))) reports.set(r.listing_id, r);
   }
   const contactOf = new Map(queue.map((q) => [q.contact_id, q.wk_contacts]));
   const work: { listing: Listing; report: Report | undefined }[] = [];
@@ -90,7 +90,8 @@ export async function morningPass(db: SupabaseClient, now = new Date(), deadline
     const listing = pickReportListing(listings.filter((l) => l.wk_contact_id === id));
     if (!listing || !reportProperty(listing.report_property)) continue;
     const report = reports.get(listing.id);
-    if (report?.state === 'ready' || report?.state === 'review') continue;
+    // A rent-matching placeholder is 'ready' but still waits for market research: keep refreshing it.
+    if ((report?.state === 'ready' && report.report_pitch && !report.report_pitch.planning) || report?.state === 'review') continue;
     if (!report) { if (startRoom <= 0) continue; startRoom--; }
     work.push({ listing, report });
   }
@@ -103,7 +104,7 @@ export async function morningPass(db: SupabaseClient, now = new Date(), deadline
         const token = Array.from(crypto.getRandomValues(new Uint8Array(32)), (b) => b.toString(16).padStart(2, '0')).join('');
         const { error } = await db.from('sa_property_reports').upsert({ listing_id: listing.id, access_token: token, property: reportProperty(listing.report_property) }, { onConflict: 'listing_id', ignoreDuplicates: true });
         if (error) throw new Error(error.message);
-        const { data, error: readError } = await db.from('sa_property_reports').select('listing_id,remote_id,access_token,state,report_url,property').eq('listing_id', listing.id).single();
+        const { data, error: readError } = await db.from('sa_property_reports').select('listing_id,remote_id,access_token,state,report_url,property,report_pitch').eq('listing_id', listing.id).single();
         if (readError || !data) throw new Error('report row unavailable');
         row = data as Report;
         started++;
@@ -117,7 +118,7 @@ export async function morningPass(db: SupabaseClient, now = new Date(), deadline
       const { error } = await db.from('sa_property_reports').update({ state: result.stage, message: result.message ?? null, report_url: result.reportUrl ?? null, report_pitch: ready ? result.reportPitch : null, updated_at: new Date().toISOString() })
         .eq('listing_id', listing.id).eq('remote_id', row.remote_id);
       if (error) throw new Error(error.message);
-      if (ready) nowReady++;
+      if (ready && !(result.reportPitch as { planning?: boolean }).planning) nowReady++;
     } catch {
       failures++;
     }

@@ -25,6 +25,7 @@ import os
 from pathlib import Path
 import re
 import sqlite3
+import sys
 import time
 import urllib.parse
 import urllib.request
@@ -59,8 +60,9 @@ def nightly_settings(raw):
 
 def contacts_needed(counts, settings):
     """New contacts worth importing tonight. About two in three researched homes
-    clear the 30% uplift, so ask for half as many again as the gap."""
-    gap = settings['target_ready'] - counts.get('ready', 0) - counts.get('held_waiting_report', 0)
+    clear the 30% uplift, so ask for half as many again as the gap. Leads still
+    held for research are not counted: many of them never qualify."""
+    gap = settings['target_ready'] - counts.get('ready', 0)
     return max(0, -(-gap * 3 // 2))
 
 
@@ -73,6 +75,28 @@ def session_state(runs):
     if not done or sum(r['total'] for r in done) == 0:
         return 'unknown'
     return 'ok' if sum(r['with_phone'] for r in done) else 'expired'
+
+
+def spareroom_login(home=HOME):
+    """'ok' or 'expired': one sign-in with the scraper's saved UK account, no search."""
+    if str(home / 'app') not in sys.path:
+        sys.path.insert(0, str(home / 'app'))
+    spec = importlib.util.spec_from_file_location('spareroom_app', home / 'app/server.py')
+    app = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(app)
+    holder = app.App.__new__(app.App)
+    holder.data_dir, holder.env_path = str(home / 'data'), str(home / 'data/.env')
+    holder.account_path = str(home / 'data/account.json')
+    try:
+        email, password = app.App.credentials(holder, 'uk')
+        if not email or not password:
+            return 'expired'
+        app.SpareRoom(20, 'uk').login(email, password, lambda _: None, attempts=1)
+        return 'ok'
+    except app.LoginError:
+        return 'expired'
+    except app.ScrapeError:
+        return 'unknown'
 
 
 class Scraper:
@@ -146,6 +170,13 @@ def main():
         record(api, day, {**vps, 'status': 'disabled'})
         return
     row = record(api, day, {**vps, 'status': 'checking'})
+    # Checked every night, so Hugo hears about a dead login before stock runs out.
+    vps['session'] = spareroom_login() if not read_runs(day) else 'ok'
+    if vps['session'] == 'expired':
+        # Without a working login SpareRoom hides every phone number.
+        record(api, day, {**vps, 'status': 'blocked'})
+        print(json.dumps({'status': 'blocked', 'session': 'expired'}), flush=True)
+        return
     room = settings['max_new_listings'] - row['added_listings']
     if need == 0 or room <= 0:
         record(api, day, {**vps, 'status': 'enough stock' if need == 0 else 'nightly cap reached'})

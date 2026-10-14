@@ -21,7 +21,7 @@ class NightlySupplyTests(unittest.TestCase):
     def test_contacts_needed_covers_the_gap_to_the_target(self):
         settings = {'target_ready': 150}
         self.assertEqual(module.contacts_needed({'ready': 150, 'held_waiting_report': 0}, settings), 0)
-        self.assertEqual(module.contacts_needed({'ready': 100, 'held_waiting_report': 20}, settings), 45)
+        self.assertEqual(module.contacts_needed({'ready': 100, 'held_waiting_report': 20}, settings), 75)
         self.assertEqual(module.contacts_needed({'ready': 200, 'held_waiting_report': 50}, settings), 0)
 
     def test_an_expired_spareroom_login_is_reported_not_hidden(self):
