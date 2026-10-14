@@ -5,6 +5,7 @@ import { reportPhone, reportPhoneKind } from '../../supabase/functions/_shared/h
 import { hostunicoUplift, hostunicoOutreachAllowed } from '../../supabase/functions/_shared/hostunico-uplift.js';
 
 import { reportFollowupPlan, saveReportFollowupPlan } from '../lib/hostunico-followup-plan.js';
+import { listingUnfurnished } from '../lib/hostunico-morning.js';
 import type { ReportFollowupItem } from '../../src/core/hostunicoFollowupPlan.js';
 
 export const config = { runtime: 'edge' };
@@ -15,8 +16,8 @@ function check<T>({ data, error }: { data: T; error: { message: string } | null 
   if (error) throw new Problem(503, 'Could not save or load the report. Please try again.');
   return data;
 }
-function reportListing(listing: { address: string; photo_urls?: string[]; listing_url?: string; property_type?: string; rent_pcm?: number; source_price?: string; hostunico_call_eligible?: boolean }) {
-  return { title: listing.address, photo: listing.photo_urls?.[0], url: listing.listing_url, propertyType: listing.property_type, advertisedRentPcm: listing.rent_pcm, sourcePrice: listing.source_price, wholePropertyVerified: listing.hostunico_call_eligible === true };
+function reportListing(listing: { address: string; photo_urls?: string[]; listing_url?: string; property_type?: string; rent_pcm?: number; source_price?: string; hostunico_call_eligible?: boolean; summary?: string | null }) {
+  return { title: listing.address, photo: listing.photo_urls?.[0], url: listing.listing_url, propertyType: listing.property_type, advertisedRentPcm: listing.rent_pcm, sourcePrice: listing.source_price, wholePropertyVerified: listing.hostunico_call_eligible === true, ...(listingUnfurnished(listing) ? { unfurnished: true } : {}) };
 }
 async function remote(action: string, payload: Record<string, unknown>) {
   const token = process.env.HOSTUNICO_CRM_TOKEN;
@@ -57,7 +58,7 @@ export default async function handler(req: Request): Promise<Response> {
       const token = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
       check(await supa.from('sa_property_reports').upsert({ listing_id: listing.id, access_token: token, property }, { onConflict: 'listing_id', ignoreDuplicates: true }));
       const row = check(await supa.from('sa_property_reports').select('*').eq('listing_id', listing.id).single());
-      const leadListing = check(await supa.from('sa_listings').select('wk_contact_id,address,listing_url,photo_urls,property_type,rent_pcm,source_price,hostunico_call_eligible').eq('id', listing.id).single());
+      const leadListing = check(await supa.from('sa_listings').select('wk_contact_id,address,listing_url,photo_urls,property_type,rent_pcm,source_price,hostunico_call_eligible,summary').eq('id', listing.id).single());
       const lead = await contact(leadListing.wk_contact_id);
       if (cachedReportReady(row) && typeof row.report_pitch?.monthlyGbpPence === 'number' && !row.report_pitch.planning && Date.now() - Date.parse(row.updated_at) < 300000) {
         return { stage: 'ready', message: row.message, reportUrl: row.report_url, reportPitch: row.report_pitch, qualification: hostunicoUplift(row.state, row.report_pitch, leadListing.rent_pcm) };
@@ -107,14 +108,14 @@ export default async function handler(req: Request): Promise<Response> {
     }
     const listingId = String(body.listing_id ?? '');
     if (!/^[0-9a-f-]{36}$/i.test(listingId)) throw new Problem(400, 'Choose a property.');
-    const listing = check(await supa.from('sa_listings').select('id,wk_contact_id,report_property,address,listing_url,photo_urls,property_type,rent_pcm,source_price,hostunico_call_eligible').eq('id', listingId).maybeSingle());
+    const listing = check(await supa.from('sa_listings').select('id,wk_contact_id,report_property,address,listing_url,photo_urls,property_type,rent_pcm,source_price,hostunico_call_eligible,summary').eq('id', listingId).maybeSingle());
     if (!listing) throw new Problem(404, 'Property not found.');
     const c = await contact(listing.wk_contact_id);
     const textOptOut = check(await supa.from('wk_contact_tags').select('tag').eq('contact_id', c.id).eq('tag', 'do-not-text').limit(1));
     const sendingPolicy = { contactBlocked: !!c.do_not_call, smsBlocked: !!c.do_not_call || textOptOut.length > 0 };
     if (action === 'send_sms' && sendingPolicy.smsBlocked) throw new Problem(409, 'SMS is blocked for this contact. Their do-not-text preference is still active.');
     if (action === 'coach_context' && req.method === 'POST') {
-      if (!['spareroom', 'facebook', 'followup'].includes(body.mode || '')) throw new Problem(400, 'Choose a call script.');
+      if (!['listing', 'spareroom', 'facebook', 'followup'].includes(body.mode || '')) throw new Problem(400, 'Choose a call script.');
       const changedAt = (body as { context_at?: string }).context_at;
       if (!changedAt || !Number.isFinite(Date.parse(changedAt)) || Math.abs(Date.now() - Date.parse(changedAt)) > 300000) throw new Problem(400, 'Refresh the property and try again.');
       check(await supa.rpc('wk_hostunico_call_context', { p_contact: c.id, p_listing: listingId, p_mode: body.mode, p_changed_at: changedAt }));

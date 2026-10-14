@@ -238,6 +238,10 @@
     {
       "path": "/api/cron/hostunico-followups",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/hostunico-morning-leads",
+      "schedule": "*/15 4-9 * * 1-6"
     }
   ]
 }
