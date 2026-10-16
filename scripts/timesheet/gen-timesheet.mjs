@@ -31,9 +31,77 @@ const RATE = 2.5; // 40 hours for $100
 // ---------------------------------------------------------------------------
 const WEEKS = [
   {
+    id: 'oct12',
+    tab: '12 to 16 October',
+    tabSub: 'This week',
+    sub: 'Monday 12 October to Friday 16 October 2026',
+    range: ['2026-10-12', '2026-10-16'],
+    prevRange: ['2026-10-05', '2026-10-09'],
+    prevLabel: '5 to 9 Oct',
+    thisLabel: '12 to 16 Oct',
+    daysLabel: 'Monday to Friday',
+    extraBreakH: 0,
+    bonusH: 4,
+    cutoff: '18:36',
+    preparedOn: 'Friday 16 October 2026',
+    unique: { last: { dialled: 391, spoken: 210 }, this: { dialled: 184, spoken: 85 } },
+    notes: { '2026-10-05': 12, '2026-10-06': 12, '2026-10-07': 17, '2026-10-08': 11, '2026-10-09': 20,
+             '2026-10-12': 1, '2026-10-13': 5, '2026-10-14': 7, '2026-10-15': 4, '2026-10-16': 0 },
+    texts: { '2026-10-05': 16, '2026-10-06': 14, '2026-10-07': 20, '2026-10-08': 13, '2026-10-09': 2,
+             '2026-10-12': 3, '2026-10-13': 4, '2026-10-14': 14, '2026-10-15': 16, '2026-10-16': 9 },
+    statuses: [
+      ['Calls you dialled that connected', 211, 'out', true],
+      ['Calls you dialled that failed to connect', 18, 'out', false],
+      ['Calls you dialled that rang out, nobody answered', 16, 'out', false],
+      ['Calls you dialled that hit a busy line', 1, 'out', false],
+      ['Calls that came in to you and connected', 7, 'in', true],
+      ['Calls in to you saved with no length recorded', 4, 'in', false],
+      ['Calls in to you that rang out or failed', 13, 'in', false],
+    ],
+    voicemailSec: 1770,
+    noOutcome: 89,
+    prevPaidNote: null,
+    rulesExtra: [
+      'This week is Monday to Friday. You are being paid on the Friday, so Saturday is not on this page.',
+      '4 bonus hours are added on top of the call hours. Hugo added them this week, and they are paid in full.',
+    ],
+    dayNotes: {
+      '2026-10-12': [
+        { fair: false, text: 'A short day. 15 calls from 11:17 to 12:40, with one stop of 65 minutes from 11:22 to 12:27. Working time inside the shift was 17 minutes, so most of the pay for Monday is the free hour of break.' },
+      ],
+      '2026-10-13': [
+        { fair: true, text: 'Your best day this week. 62 calls from 12:24 to 17:55, 1h 34m of talk, and 40 real conversations. 24 not interested and 19 voicemail, which is the numbers, not you.' },
+        { fair: false, text: 'One long stop, 2h 24m from 12:53 to 15:17. After 15:17 there was no stop over 10 minutes until you finished at 17:55.' },
+      ],
+      '2026-10-14': [
+        { fair: true, text: '94 calls, the most of the week, from 10:56 to 18:48. 14 texts and emails went out, and 7 notes were written.' },
+        { fair: false, text: 'Six stops, 5h 01m in total. The long one was 3 hours from 11:59 to 14:59. After 15:00 the stops were 15, 15 and 42 minutes.' },
+      ],
+      '2026-10-15': [
+        { fair: true, text: 'The earliest start of the week, a call at 08:41, and 16 texts and emails went out, the most of any day.' },
+        { fair: false, text: 'Nine stops, 6h 44m in total, the most idle of the week. The longest was 2h 15m from 14:09 to 16:24. Working time inside the shift was 1h 35m.' },
+      ],
+      '2026-10-16': [
+        { fair: false, text: 'A late start. First call at 12:02, then a stop of 3h 37m from 13:09 to 16:47. 47 calls and 31 minutes of talk.' },
+        { fair: true, text: 'Counted up to 18:36 today. Anything you dial later goes on next week\'s page, it is not lost.' },
+      ],
+    },
+    verdict: [
+      (m) => `<p><strong>A shorter week on the phones.</strong> ${m.B.calls} calls against ${m.A.calls} the Monday to Friday before, and talk time ${m.hm(m.B.talk)} against ${m.hm(m.A.talk)}. Offices you actually spoke with went from ${m.A.unique.spoken} to ${m.B.unique.spoken}.</p>`,
+      (m) => `<p>Hours from the calls come to ${(m.paidHours - m.cfg.bonusH).toFixed(2)}, then ${m.cfg.bonusH} bonus hours on top, so ${m.paidHours.toFixed(2)} hours are paid against ${m.prevPaidH.toFixed(2)} the week before. The bonus is extra. It is not a correction to the call log.</p>`,
+      (m) => `<p>The time off the phone is the difference. Idle was ${m.hm(m.B.idle)} this week against ${m.hm(m.A.idle)} last week, ${Math.round((100 * m.B.idle) / m.B.span)} percent of the shift against ${Math.round((100 * m.A.idle) / m.A.span)} percent. The long stops were Tuesday 12:53 to 15:17, Wednesday 11:59 to 14:59, Thursday 14:09 to 16:24, and Friday 13:09 to 16:47.</p>`,
+    ],
+    fairness: [
+      (m) => `<div class="note fair"><strong>Numbers nobody answers are not your fault.</strong> ${m.B.dispo['Voicemail'] || 0} calls went to voicemail and ${m.B.dispo['No pickup'] || 0} nobody picked up. Every one still counts as a call made and as time worked.</div>`,
+      () => `<div class="note fair"><strong>Short pauses are free.</strong> Anything under 10 minutes between calls is paid as working time.</div>`,
+      () => `<div class="note fair"><strong>The 4 bonus hours are on top.</strong> They are added after the call hours are worked out, and they are paid in full at the same rate. They do not depend on how many stops the log shows.</div>`,
+      (m) => `<div class="note fair"><strong>Not pressing the outcome buttons costs you nothing here.</strong> ${m.cfg.noOutcome} calls this week have no outcome on the call itself. Your pay is worked out from the calls, not from the buttons.</div>`,
+    ],
+  },
+  {
     id: 'sep21',
     tab: '21 to 26 September',
-    tabSub: 'This week',
+    tabSub: 'Paid',
     sub: 'Monday 21 September to Saturday 26 September 2026',
     range: ['2026-09-21', '2026-09-26'],
     prevRange: ['2026-09-14', '2026-09-19'],
@@ -413,7 +481,8 @@ function renderWeek(cfg) {
     return { ...d, credit, deducted: d.idle - credit, paid: d.worked + credit };
   });
   const paidBeforeExtra = rows.reduce((t, r) => t + r.paid, 0);
-  const paidTotal = paidBeforeExtra + cfg.extraBreakH * 3600;
+  const bonusH = cfg.bonusH || 0;
+  const paidTotal = paidBeforeExtra + (cfg.extraBreakH + bonusH) * 3600;
   const paidHours = paidTotal / 3600;
   const dueRaw = paidHours * RATE;
   const due = Math.ceil(dueRaw); // rounded up in Pedro's favour, as in July
@@ -559,7 +628,7 @@ function renderWeek(cfg) {
       <div class="sub">${cfg.sub}</div>
     </div>
     <div class="headline">
-      <div class="hstat"><div class="eyebrow">Hours paid</div><div class="val">${hm(paidTotal)}</div><div class="foot">Includes 1 hour of break on every day</div></div>
+      <div class="hstat"><div class="eyebrow">Hours paid</div><div class="val">${hm(paidTotal)}</div><div class="foot">${bonusH ? `Includes 1 hour of break each day, plus ${bonusH} bonus hours` : 'Includes 1 hour of break on every day'}</div></div>
       <div class="hstat"><div class="eyebrow">Days worked</div><div class="val">${daysWorked} days</div><div class="foot">${cfg.daysLabel}</div></div>
       <div class="hstat"><div class="eyebrow">Calls made</div><div class="val">${B.calls}</div><div class="foot">${hm(B.talk)} of talk time</div></div>
       <div class="hstat pay"><div class="eyebrow">${adv ? 'To pay you' : 'Pay due'}</div><div class="val">$${toPay}.00</div><div class="foot">${adv ? `$${due}.00 earned, less $${adv.deductNow}.00 of your advance` : `${paidHours.toFixed(2)} hours at $${RATE.toFixed(2)}`}</div></div>
@@ -670,6 +739,7 @@ ${dayCards}
         <div class="mrow"><span class="lbl">Idle over 10 minutes</span><span>-${hm(sum(rows, 'idle'))}</span></div>
         <div class="mrow"><span class="lbl">Break added back, 1 hour x ${daysWorked} days</span><span>+${hm(rows.reduce((t, r) => t + r.credit, 0))}</span></div>
         ${cfg.extraBreakH ? `<div class="mrow"><span class="lbl">Breaks we asked you to take, paid in full</span><span>+${cfg.extraBreakH}h 00m</span></div>` : ''}
+        ${bonusH ? `<div class="mrow"><span class="lbl">Bonus hours, added on top</span><span>+${bonusH}h 00m</span></div>` : ''}
         <div class="mrow"><span class="lbl">Hours paid</span><span>${hm(paidTotal)}</span></div>
         <div class="mrow"><span class="lbl">Hourly rate</span><span>$${RATE.toFixed(2)}</span></div>
         ${adv ? `<div class="mrow"><span class="lbl">Earned this week</span><span>$${due}.00</span></div>
@@ -757,7 +827,7 @@ export const TIMESHEET_HTML: string = ${JSON.stringify(html)};
 fs.writeFileSync('/Users/hugo/Whats/Poppy/api/lib/timesheet-html.ts', ts);
 for (const w of WEEKS) {
   const wk = pick(w.range);
-  const paid = wk.reduce((t, d) => t + d.worked + Math.min(3600, d.idle), 0) / 3600 + w.extraBreakH;
+  const paid = wk.reduce((t, d) => t + d.worked + Math.min(3600, d.idle), 0) / 3600 + w.extraBreakH + (w.bonusH || 0);
   console.log(`${w.id}  ${wk.length} days  paid ${paid.toFixed(2)}h  due $${Math.ceil(paid * RATE)}`);
 }
 console.log('written', html.length, 'chars');
